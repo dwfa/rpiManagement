@@ -1,0 +1,38 @@
+##############################################################################
+# Ansible task to wait for user input before continuing
+#
+# USAGE:
+#   This task pauses playbook execution and displays a custom message,
+#   waiting for the user to press Enter to continue.
+#
+# REQUIRED VARIABLES:
+#   - waitMsg: String containing the prompt message to display
+#
+# EXAMPLE:
+#   - name: Prompt user to insert SD card
+#     include_tasks:
+#       file: "{{ taskDir }}/misc/waitForInput.yaml"
+#     vars:
+#       waitMsg: "Insert SD card and press Enter to continue..."
+#
+# NOTES:
+#   - User input is not echoed to the console (echo: false)
+#   - Useful for interactive workflows requiring physical actions
+#   - Press Enter to continue, or Ctrl+C then 'A' to abort
+#
+# Copyright 2025 Douglas WF Acheson (dwfa@dwfa.ca)
+# Licensed under Apache License 2.0. See LICENSE.md for details.
+#
+# Version: 1.2
+# Date: October 16, 2025
+##############################################################################
+
+---                                            # identifies a YAML config file
+
+##############################################################################
+# wait for use input
+##############################################################################
+- name: wait for user input
+  pause:
+    echo:   false
+    prompt: "{{ waitMsg }}"

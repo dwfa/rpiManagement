@@ -1,0 +1,14 @@
+##############################################################################
+# Ansible task to download and manage RPi OS images
+#
+# Copyright 2025 Douglas WF Acheson (dwfa@dwfa.ca)
+# Licensed under Apache License 2.0. See LICENSE.md for details.
+#
+# Version: 1.1
+# Date: October 16, 2025
+##############################################################################
+---                                            # identifies a YAML config file
+
+- name: Include task to download/manage RPi image
+  include_tasks:
+    file: "{{ taskDir }}/rpi/manageImage.yaml"

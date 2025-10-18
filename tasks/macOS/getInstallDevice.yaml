@@ -1,0 +1,58 @@
+##############################################################################
+# macOS implementation for device detection
+#
+# This is the macOS-specific implementation called by getInstallDevice role.
+# See roles/getInstallDevice/tasks/main.yaml for role documentation.
+#
+# IMPLEMENTATION:
+#   Uses /usr/sbin/diskutil to compare device lists before/after attachment
+#   Sets installDevice fact with detected device path (/dev/diskN)
+#
+# Copyright 2025 Douglas WF Acheson (dwfa@dwfa.ca)
+# Licensed under Apache License 2.0. See LICENSE.md for details.
+#
+# Version: 1.3
+# Date: October 16, 2025
+##############################################################################
+---                                            # identifies a YAML config file
+
+- name: Get set of initial external devices
+  shell:
+    cmd: /usr/sbin/diskutil list external
+  register: initialExternalDevices
+
+- name: Ask and wait for new device to be attached
+  include_tasks:
+    file: "{{ taskDir }}/misc/waitForInput.yaml"
+  vars:
+    waitMsg: "Attach external device & press enter to continue ..."
+
+- name: Get current block devices
+  shell:
+    cmd: /usr/sbin/diskutil list external
+  register: currentExternalDevices
+
+- name: Extract device paths from initial scan
+  set_fact:
+    initialDevices: "{{ initialExternalDevices.stdout_lines | select('match', '/dev') | list }}"
+
+- name: Extract device paths from current scan
+  set_fact:
+    currentDevices: "{{ currentExternalDevices.stdout_lines | select('match', '/dev') | list }}"
+
+- name: Find newly attached devices
+  set_fact:
+    newDevices: "{{ currentDevices | difference(initialDevices) }}"
+
+- name: Determine install device
+  set_fact:
+    installDevice: "{{ newDevices[0] | regex_replace('^(/dev/disk\\d+).*$', '\\1') }}"
+  when: newDevices | length > 0
+
+- name: Display device detection result
+  debug:
+    msg: >-
+      {{ '[DEBUG] *** new attached device found [' + installDevice + ']'
+           if installDevice is defined else
+         '[DEBUG] *** no new attached device found!!!' }}
+  when: debugFlag is defined

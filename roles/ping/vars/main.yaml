@@ -1,0 +1,27 @@
+##############################################################################
+# Ansible role variables for ping role
+#
+# Copyright 2025 Douglas WF Acheson (dwfa@dwfa.ca)
+# Licensed under Apache License 2.0. See LICENSE.md for details.
+#
+# Version: 1.1
+# Date: October 16, 2025
+##############################################################################
+
+---                                            # identifies a YAML config file
+
+taskDir: "{{ playbook_dir }}/../tasks"
+dataDir: "{{ playbook_dir }}/../data"
+
+# this loads the user credentials
+# if no user is defined look for a default.yaml file
+userCredsPath: "{{ dataDir }}/credentials/{{ user | default('default') }}.yaml"
+userCreds:     "{{ lookup('file', userCredsPath) | from_yaml }}"
+
+# if no ssh pwd is provided use the ssh key
+ansible_user:                 "{{ userCreds['userData']['uid'] }}"
+ansible_ssh_pass:             "{{ userCreds['userData']['pwd'] }}"
+ansible_become:               "{{ becomeFlag | default('true') }}"
+ansible_become_password:      "{{ userCreds['userData']['sudoPWD'] }}"
+ansible_ssh_private_key_file: "{{ dataDir }}/keys/ssh.key"
+ansible_ssh_common_args:      "-o UserKnownHostsFile={{ dataDir }}/.ssh/knownHosts"

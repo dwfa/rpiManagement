@@ -1,0 +1,73 @@
+##############################################################################
+# .gitignore for Ansible rpiMgmnt project
+#
+# Excludes private data, temporary files, and system-specific files
+##############################################################################
+
+# Private data directory (separate git repo)
+data/
+
+# Project documentation (symlinked from data/)
+CLAUDE.md
+
+# Actual inventory file (moved to data/)
+inventory.yaml
+
+# Test and development files (not for public release)
+test.sh
+playbooks/test-pb.yaml
+roles/createRPiImage/
+
+# Wrapper scripts (not ready for public release)
+createImage.sh
+setupInstaller.sh
+setupRPiDNS.sh
+writeDiskPartitions.sh
+
+# Custom modules (not ready for public release)
+library/
+
+# Ansible temporary and cache files
+*.retry
+.ansible/
+ansible.log
+
+# Python compiled files and cache
+*.pyc
+__pycache__/
+*.pyo
+*.pyd
+
+# Ansible Galaxy cache
+.galaxy_cache/
+
+# Editor and IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.project
+.settings/
+
+# macOS system files
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Linux system files
+.directory
+
+# Backup files
+*.bak
+*.backup
+
+# Log files
+*.log
+
+# Temporary files
+*.tmp
+*.temp
+
+# VS Code workspace files
+*.code-workspace

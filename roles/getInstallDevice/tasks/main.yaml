@@ -1,0 +1,48 @@
+##############################################################################
+# Ansible role to detect newly attached writable media device
+#
+# USAGE:
+#   Detects newly attached external devices (USB drives, SD cards, etc.)
+#   by comparing device lists before and after user attachment.
+#   Platform-specific implementations for different operating systems.
+#
+# REQUIRED VARIABLES:
+#   - taskDir: Path to tasks directory
+#   - debugFlag: (optional) Enable debug output
+#
+# OUTPUT VARIABLES (facts set):
+#   - installDevice: Device path (e.g., /dev/disk4 on macOS) or undefined
+#
+# PLATFORM SUPPORT:
+#   - macOS (Darwin): Implemented using diskutil
+#   - Linux: Future expansion planned (lsblk)
+#   - Other Unix: Future expansion as needed
+#
+# WORKFLOW:
+#   1. Scan current attached devices
+#   2. Prompt user to attach new device
+#   3. Re-scan to detect newly attached device
+#   4. Set installDevice fact with device path
+#
+# EXAMPLE:
+#   - hosts: localhost
+#     roles:
+#       - role: getInstallDevice
+#
+# NOTES:
+#   - Only detects ONE newly attached device
+#   - Requires interactive user input
+#   - Platform detection via ansible_system fact
+#
+# Copyright 2025 Douglas WF Acheson (dwfa@dwfa.ca)
+# Licensed under Apache License 2.0. See LICENSE.md for details.
+#
+# Version: 1.2
+# Date: October 16, 2025
+##############################################################################
+---                                            # identifies a YAML config file
+
+- name: Include task to do the work
+  include_tasks:
+    file: "{{ taskDir }}/macOS/getInstallDevice.yaml"
+  when: ansible_system == "Darwin"

@@ -1,0 +1,22 @@
+##############################################################################
+# Ansible task to ping remote hosts
+#
+# Copyright 2025 Douglas WF Acheson (dwfa@dwfa.ca)
+# Licensed under Apache License 2.0. See LICENSE.md for details.
+#
+# Version: 1.1
+# Date: October 16, 2025
+##############################################################################
+---                                            # identifies a YAML config file
+
+##############################################################################
+# ping task
+##############################################################################
+- name: ping
+  ansible.builtin.ping:
+  register: pingResponse
+
+- name: ping debug msg
+  debug:
+    msg:
+      - "[DEBUG] *** Ping Response [{{ pingResponse }}]"

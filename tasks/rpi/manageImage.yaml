@@ -1,0 +1,294 @@
+##############################################################################
+# Ansible task for managing RPi OS image download and verification
+#
+# USAGE:
+#   Manages the complete lifecycle of RPi OS images: checking for updates,
+#   downloading, verifying checksums, and maintaining a symlink to current image.
+#
+# REQUIRED VARIABLES:
+#   - imageDir: Directory to store images
+#   - imagePath: Symlink path to current image
+#   - rpiImage: Image name from RPi API (e.g., "Raspberry Pi OS Lite (64-bit)")
+#   - rpiApiUrl: RPi OS catalog API URL
+#   - taskDir: Path to tasks directory
+#   - debugFlag: (optional) Enable debug output
+#   - allowFallback: (optional) Auto-use local image if API fails
+#
+# WORKFLOW:
+#   1. Check for existing local image and extract metadata
+#   2. Fetch RPi OS catalog from API
+#   3. Compare local vs. available image (by date and checksum)
+#   4. Download if newer or different
+#   5. Verify checksum of downloaded image
+#   6. Create/update symlink to current image
+#   7. Fallback to local image if API unavailable
+#
+# DOWNLOAD TRIGGERS:
+#   - No local image exists
+#   - Remote image has newer date
+#   - Same date but different checksum (updated release)
+#
+# EXAMPLE:
+#   - name: Update RPi OS image
+#     include_tasks:
+#       file: "{{ taskDir }}/rpi/manageImage.yaml"
+#
+# NOTES:
+#   - Images are downloaded compressed (.xz) then decompressed
+#   - Symlink (imagePath) points to decompressed image for faster access
+#   - Gracefully handles API failures with user confirmation
+#   - Checksums verified against official RPi Foundation values
+#
+# Copyright 2025 Douglas WF Acheson (dwfa@dwfa.ca)
+# Licensed under Apache License 2.0. See LICENSE.md for details.
+#
+# Version: 1.4
+# Date: October 16, 2025
+##############################################################################
+---                                            # identifies a YAML config file
+
+- name: Ensure image directory exists
+  file:
+    path: "{{ imageDir }}"
+    state: directory
+    mode: '0755'
+
+- name: Get local image info
+  block:
+    - name: Get symlink metadata
+      stat:
+        path: "{{ imagePath }}"
+        follow: no
+      register: symlinkStat
+
+    - name: Get actual file checksum
+      stat:
+        path: "{{ imagePath }}"
+        checksum_algorithm: sha256
+        get_checksum: yes
+        follow: yes
+      register: fileStat
+      when: symlinkStat.stat.exists
+
+    - name: Extract current image metadata
+      set_fact:
+        currentImage:
+          exists: "{{ symlinkStat.stat.exists }}"
+          filename: "{{ symlinkStat.stat.lnk_target | basename if (symlinkStat.stat.islnk | default(false)) else (imagePath | basename) }}"
+          date: "{{ ((symlinkStat.stat.lnk_target | basename if (symlinkStat.stat.islnk | default(false)) else (imagePath | basename)) | regex_search('^\\d{4}-\\d{2}-\\d{2}')) }}"
+          checksum: "{{ fileStat.stat.checksum | default('') }}"
+          path: "{{ imagePath }}"
+      when: symlinkStat.stat.exists
+
+    - name: Display local image file status
+      debug:
+        msg: >-
+          {{ '[DEBUG] *** Local image exists: [' + imagePath + '] w/' +
+             '\n\t date [' + currentImage.date + ']' +
+             '\n\t checksum: [' + currentImage.checksum + ']'
+               if currentImage.exists | default(false) else
+             '[DEBUG] *** Local image not found: [' + imagePath + ']' }}
+      when: debugFlag is defined
+
+- name: Fetch and process RPi OS catalog
+  block:
+    - name: Fetch RPi OS catalog info from API
+      uri:
+        url: "{{ rpiApiUrl }}"
+        return_content: yes
+        timeout: 30
+      register: rpiOsCatalog
+
+    - name: Search for RPi image in subitems
+      set_fact:
+        matchingImages: >-
+          {{ rpiOsCatalog.json.os_list
+             | selectattr('subitems', 'defined')
+             | map(attribute='subitems')
+             | flatten
+             | selectattr('name', 'equalto', rpiImage)
+             | list }}
+
+    - name: Display search results
+      debug:
+        msg: >-
+          {{ '[DEBUG] *** Found [' + matchingImages | length | string + '] RPi images'
+               if (matchingImages | length) > 0 else
+             '[DEBUG] *** Did not find a matching RPi image!' }}
+      when: debugFlag is defined
+
+    - name: Validate image metadata
+      assert:
+        that:
+          - matchingImages | length > 0
+          - matchingImages[0].url is defined
+          - matchingImages[0].extract_sha256 is defined
+        fail_msg: >-
+          RPi image [{{ rpiImage }}] not found or missing required fields.
+          Check available variants at [{{ rpiApiUrl }}]
+        success_msg: "RPi image [{{ rpiImage }}] validated successfully"
+
+    - name: Extract image metadata
+      set_fact:
+        newImage:
+          url: "{{ matchingImages[0].url }}"
+          checksum: "{{ matchingImages[0].extract_sha256 }}"
+          filename: "{{ matchingImages[0].url | basename }}"
+          date: "{{ (matchingImages[0].url | basename) | regex_search('^\\d{4}-\\d{2}-\\d{2}') }}"
+
+    # - name: Display extracted metadata
+    #   debug:
+    #     msg:
+    #       - "[DEBUG] *** RPi Image found: [{{ rpiImage }}]"
+    #       - "[DEBUG] *** Image filename: [{{ newImage.filename }}]"
+    #       - "[DEBUG] *** Published checksum: [{{ newImage.checksum }}]"
+    #       - "[DEBUG] *** Download URL: [{{ newImage.url }}]"
+    #   when:
+    #     - debugFlag is defined
+    #     - newImage.checksum is defined
+
+  rescue:
+    - name: Display API fetch failure
+      debug:
+        msg:
+          - "[WARNING] *** API fetch failed"
+          - "[WARNING] *** Error: [{{ ansible_failed_result.msg | default('Unknown error') }}]"
+          - "[WARNING] *** Checking for last known good local image"
+
+    - name: Fail if no fallback available
+      fail:
+        msg: >-
+          Failed to fetch RPi OS catalog and no valid local image exists.
+          Error: [{{ ansible_failed_result.msg | default('Unknown error') }}]
+          Check network connectivity and API availability.
+      when: not (currentImage.exists | default(false)) or not currentImage.checksum
+
+    - name: Display LKG information
+      debug:
+        msg:
+          - "[INFO] *** Last known good image available"
+          - "[INFO] *** Path: [{{ imagePath }}]"
+          - "[INFO] *** Checksum: [{{ currentImage.checksum }}]"
+      when: debugFlag is defined
+
+    - name: Prompt user for fallback decision
+      include_tasks:
+        file: "{{ taskDir }}/misc/waitForInput.yaml"
+      vars:
+        waitMsg: |
+
+          ============================================================
+          WARNING: Cannot fetch latest RPi OS image from API
+
+          Last Known Good Image Available:
+            Path: {{ imagePath }}
+            Checksum: {{ currentImage.checksum }}
+
+          Press Enter to use this image, or Ctrl+C then 'A' to abort
+          ============================================================
+      when: not (allowFallback | default(false))
+
+    - name: Set fallback flag
+      set_fact:
+        usingFallback: true
+
+- name: Determine if download is needed
+  set_fact:
+    needsDownload: >-
+      {{ (newImage.date is defined and newImage.checksum is defined) and
+         (not (currentImage.exists | default(false)) or
+          newImage.date > currentImage.date or
+          (newImage.date == currentImage.date and currentImage.checksum != newImage.checksum)) }}
+
+- name: Display download decision
+  debug:
+    msg: >-
+      {{ '[DEBUG] *** Download needed: NO - Using fallback (API unavailable)'
+           if newImage.date is not defined else
+         '[DEBUG] *** Download needed: YES - Local image file does not exist'
+           if not (currentImage.exists | default(false)) else
+         '[DEBUG] *** Download needed: YES - image out of date [' +
+           (currentImage.date | default('undefined')) +
+           '] < New date [' + newImage.date + ']'
+           if currentImage.date is defined and currentImage.date < newImage.date else
+         '[DEBUG] *** Download needed: YES - checksum mismatch (same date [' +
+           newImage.date + '] but checksum differs)'
+           if currentImage.date is defined and currentImage.date == newImage.date and
+              currentImage.checksum != newImage.checksum else
+         '[DEBUG] *** Download needed: NO - local image is current' }}
+  when: debugFlag is defined
+
+- name: Download and verify RPi OS image
+  block:
+    - name: Announce download start
+      debug:
+        msg:
+          - "[DEBUG] *** Starting download..."
+          - "[DEBUG] *** Source: [{{ newImage.url }}]"
+          - "[DEBUG] *** Destination: [{{ dlImagePath }}]"
+      when:
+        - debugFlag is defined
+
+    - name: Download RPi OS image
+      get_url:
+        url: "{{ newImage.url }}"
+        dest: "{{ dlImagePath }}"
+        mode: '0644'
+      register: downloadResult
+
+    - name: Display download completion
+      debug:
+        msg:
+          - "[DEBUG] *** Download completed successfully"
+          - "[DEBUG] *** File: [{{ dlImagePath }}]"
+          - "[DEBUG] *** Size: [{{ (downloadResult.msg | default('') | regex_search('(\\d+) bytes') | default('unknown')) }}]"
+          - "[DEBUG] *** Elapsed time: [{{ downloadResult.elapsed | default(0) }}s]"
+      when:
+        - debugFlag is defined
+
+    - name: Remove existing decompressed image if present
+      file:
+        path: "{{ decompressedImagePath }}"
+        state: absent
+
+    - name: Decompress RPi OS image
+      command: unxz "{{ dlImagePath }}"
+
+    - name: Calculate checksum of decompressed image
+      stat:
+        path: "{{ decompressedImagePath }}"
+        checksum_algorithm: sha256
+        get_checksum: yes
+      register: decompressedChecksum
+
+    - name: Validate decompressed image checksum
+      fail:
+        msg: >-
+          Checksum mismatch!
+          Expected: {{ newImage.checksum }}
+          Got: {{ decompressedChecksum.stat.checksum }}
+      when:
+        - decompressedChecksum.stat.checksum != newImage.checksum
+
+    - name: Create/update link to current image
+      file:
+        src: "{{ decompressedImagePath }}"
+        dest: "{{ imagePath }}"
+        state: link
+        force: yes
+  vars:
+    dlImagePath: "{{ imageDir }}/{{ newImage.filename }}"
+    decompressedImagePath: "{{ imageDir }}/{{ newImage.filename | regex_replace('\\.xz$', '') }}"
+  rescue:
+    - name: Clean up failed download
+      file:
+        path: "{{ dlImagePath }}"
+        state: absent
+      ignore_errors: yes
+
+    - name: Display download error
+      fail:
+        msg: >-
+          Failed to download RPi OS image from [{{ newImage.url }}].
+          Error: [{{ ansible_failed_result.msg | default('Download failed') }}]
+  when: needsDownload

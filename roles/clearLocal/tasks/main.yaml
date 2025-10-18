@@ -1,0 +1,44 @@
+##############################################################################
+# Ansible role to clear local SSH known hosts data
+#
+# USAGE:
+#   Clears the SSH known_hosts file to reset host key verification.
+#   Useful when re-imaging hosts or resetting environments.
+#
+# REQUIRED VARIABLES:
+#   - dataDir: Path to data directory
+#   - debugFlag: (optional) Enable debug output
+#
+# ACTIONS:
+#   1. Ensures data/.ssh directory exists
+#   2. Removes data/.ssh/knownHosts file
+#
+# NOTES:
+#   - Next SSH connection will prompt for host key verification
+#   - Use before provisioning new/re-imaged hosts
+#
+# Copyright 2025 Douglas WF Acheson (dwfa@dwfa.ca)
+# Licensed under Apache License 2.0. See LICENSE.md for details.
+#
+# Version: 1.2
+# Date: October 16, 2025
+##############################################################################
+
+---                                            # identifies a YAML config file
+
+# - name: clear ssh known hosts files
+- name: make sure directory exists
+  local_action: file path="{{ dataDir }}/.ssh" state="directory"
+  register: cdResponse
+
+- name: clear ssh known hosts files
+  local_action: file path="{{ dataDir }}/.ssh/knownHosts" state="absent"
+  register: rfResponse
+
+- name: debug message for clearing local data
+  debug:
+    msg:
+      - "[DEBUG] *** making directory  : {{ cdResponse }}"
+      - "[DEBUG] *** removing old file : {{ rfResponse }}"
+  when:
+    - debugFlag is defined

@@ -16,7 +16,6 @@ inventory.yaml
 # Test and development files (not for public release)
 test.sh
 playbooks/test-pb.yaml
-roles/createRPiImage/
 
 # Wrapper scripts (not ready for public release)
 createImage.sh

@@ -3,50 +3,37 @@
 #
 # USAGE:
 #   Writes a Raspberry Pi OS image to a block device (USB drive, SD card, etc.).
-#   This role can be used standalone with explicit parameters or integrated with
-#   prerequisite roles that set facts automatically.
+#   Requires prerequisite roles to set facts for device and image paths.
 #
 # REQUIRED VARIABLES:
-#   - defaultDevicePath: Target device path (e.g., /dev/disk4, /dev/sdb)
-#       Set explicitly when calling role, OR provided via installDevice fact
-#       from getInstallDevice role (defined in defaults/main.yaml)
-#   - defaultImageFilePath: Full path to image file (compressed or uncompressed)
-#       Set explicitly when calling role, OR provided via imagePath fact
-#       from updateRPiImage role (defined in defaults/main.yaml)
-#   - taskDir: Path to tasks directory (auto-set in vars/main.yaml)
+#   - installDevice: Target device path (e.g., /dev/disk4, /dev/sdb)
+#       Must be set by getInstallDevice role before calling this role
+#   - imagePath: Full path to image file (compressed or uncompressed)
+#       Must be set by updateRPiImage role before calling this role
+#   - taskDir: Path to tasks directory (inherited from common role)
 #   - debugFlag: (optional) Enable debug output
 #
 # WORKFLOW:
-#   1. Validate required parameters (defaultDevicePath and defaultImageFilePath)
-#   2. Write image to device using writeImage.yaml task
-#   3. (Future) Copy initialization files to boot partition
+#   1. Write image to device using writeImage.yaml task
+#   2. (Future) Copy initialization files to boot partition
 #
 # EXAMPLE:
-#   # Option 1: Standalone with explicit parameters
-#   - hosts: localhost
-#     roles:
-#       - role: createRPiImage
-#         vars:
-#           defaultDevicePath: "/dev/disk4"
-#           defaultImageFilePath: "/path/to/image.img"
-#
-#   # Option 2: Integrated with prerequisite roles (uses facts)
 #   - hosts: localhost
 #     roles:
 #       - role: getInstallDevice        # Sets installDevice fact
 #       - role: updateRPiImage          # Sets imagePath fact
-#       - role: createRPiImage          # Uses facts via defaults
+#       - role: createRPiImage          # Uses facts from prerequisite roles
 #
 # NOTES:
 #   - Requires sudo/root permissions for device write access
 #   - User will be prompted to confirm destructive operation
-#   - Validation fails fast with helpful messages if parameters missing
-#   - Microservices design: works standalone or integrated
+#   - Validation performed in writeImage.yaml task
+#   - Must run getInstallDevice and updateRPiImage roles first
 #
 # Copyright 2025 Douglas WF Acheson (dwfa@dwfa.ca)
 # Licensed under Apache License 2.0. See LICENSE.md for details.
 #
-# Version: 1.5
+# Version: 1.6
 # Date: October 18, 2025
 ##############################################################################
 ---                                            # identifies a YAML config file
@@ -58,8 +45,8 @@
   include_tasks:
     file: "{{ taskDir }}/fileSystem/writeImage.yaml"
   vars:
-    useDevicePath: "{{ defaultDevicePath }}"
-    useImagePath: "{{ defaultImageFilePath }}"
+    useDevicePath: "{{ installDevice }}"
+    useImagePath: "{{ imagePath }}"
 
 ##############################################################################
 # step 5. copy init files to boot partition

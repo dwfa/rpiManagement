@@ -16,10 +16,21 @@
 ##############################################################################
 ---                                            # identifies a YAML config file
 
+##############################################################################
+# Validate platform compatibility
+##############################################################################
+- name: Fail if not running on macOS
+  fail:
+    msg: "[ERROR] *** This task requires macOS but running on [{{ ansible_system }}]"
+  when: ansible_system != 'Darwin'
+
+##############################################################################
+# Capture the states of external devices initial and after prompt
+##############################################################################
 - name: Get set of initial external devices
   shell:
     cmd: /usr/sbin/diskutil list external
-  register: initialExternalDevices
+  register: _initialExternalDevices
 
 - name: Ask and wait for new device to be attached
   include_tasks:
@@ -30,29 +41,27 @@
 - name: Get current block devices
   shell:
     cmd: /usr/sbin/diskutil list external
-  register: currentExternalDevices
+  register: _currentExternalDevices
 
-- name: Extract device paths from initial scan
-  set_fact:
-    initialDevices: "{{ initialExternalDevices.stdout_lines | select('match', '/dev') | list }}"
+##############################################################################
+# Detect newly attached device and set installDevice fact
+# Uses block-scoped vars to compute intermediate values without global pollution
+##############################################################################
+- name: Detect and set installation device
+  block:
+    - name: Determine install device
+      set_fact:
+        installDevice: "{{ _newDevices[0] | regex_replace('^(/dev/disk\\d+).*$', '\\1') }}"
+      when: _newDevices | length > 0
 
-- name: Extract device paths from current scan
-  set_fact:
-    currentDevices: "{{ currentExternalDevices.stdout_lines | select('match', '/dev') | list }}"
-
-- name: Find newly attached devices
-  set_fact:
-    newDevices: "{{ currentDevices | difference(initialDevices) }}"
-
-- name: Determine install device
-  set_fact:
-    installDevice: "{{ newDevices[0] | regex_replace('^(/dev/disk\\d+).*$', '\\1') }}"
-  when: newDevices | length > 0
-
-- name: Display device detection result
-  debug:
-    msg: >-
-      {{ '[DEBUG] *** new attached device found [' + installDevice + ']'
-           if installDevice is defined else
-         '[DEBUG] *** no new attached device found!!!' }}
-  when: debugFlag is defined
+    - name: Display device detection result
+      debug:
+        msg: >-
+          {{ '[DEBUG] *** new attached device found [' + installDevice + ']'
+               if installDevice is defined else
+             '[DEBUG] *** no new attached device found!!!' }}
+      when: debugFlag is defined
+  vars:
+    _initialDevices: "{{ _initialExternalDevices.stdout_lines | select('match', '/dev') | list }}"
+    _currentDevices: "{{ _currentExternalDevices.stdout_lines | select('match', '/dev') | list }}"
+    _newDevices: "{{ _currentDevices | difference(_initialDevices) }}"

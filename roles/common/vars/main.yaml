@@ -1,0 +1,34 @@
+##############################################################################
+# Common variables inherited by all roles via role dependencies
+#
+# This role is included as a dependency in roles' meta/main.yaml files.
+# Variables here are loaded during role execution (not at playbook start),
+# ensuring playbook_dir and other runtime variables are available.
+#
+# Copyright 2025 Douglas WF Acheson (dwfa@dwfa.ca)
+# Licensed under Apache License 2.0. See LICENSE.md for details.
+#
+# Version: 1.0
+# Date: October 18, 2025
+##############################################################################
+
+---                                            # identifies a YAML config file
+
+# Directory paths (relative to playbook)
+taskDir: "{{ playbook_dir }}/../tasks"
+dataDir: "{{ playbook_dir }}/../data"
+
+# Credential loading from private data repository
+# If no user is defined, look for a default.yaml file
+userCredsPath: "{{ dataDir }}/credentials/{{ user | default('default') }}.yaml"
+userCreds: "{{ lookup('file', userCredsPath) | from_yaml }}"
+
+# SSH connection configuration
+ansible_user: "{{ userCreds['userData']['uid'] }}"
+ansible_ssh_pass: "{{ userCreds['userData']['pwd'] }}"
+ansible_ssh_private_key_file: "{{ dataDir }}/keys/ssh.key"
+ansible_ssh_common_args: "-o UserKnownHostsFile={{ dataDir }}/.ssh/knownHosts"
+
+# Privilege escalation configuration
+ansible_become: "{{ becomeFlag | default('true') }}"
+ansible_become_password: "{{ userCreds['userData']['sudoPWD'] }}"

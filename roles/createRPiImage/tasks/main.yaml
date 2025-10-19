@@ -1,0 +1,71 @@
+##############################################################################
+# Ansible role to write RPi OS image to device
+#
+# USAGE:
+#   Writes a Raspberry Pi OS image to a block device (USB drive, SD card, etc.).
+#   This role can be used standalone with explicit parameters or integrated with
+#   prerequisite roles that set facts automatically.
+#
+# REQUIRED VARIABLES:
+#   - defaultDevicePath: Target device path (e.g., /dev/disk4, /dev/sdb)
+#       Set explicitly when calling role, OR provided via installDevice fact
+#       from getInstallDevice role (defined in defaults/main.yaml)
+#   - defaultImageFilePath: Full path to image file (compressed or uncompressed)
+#       Set explicitly when calling role, OR provided via imagePath fact
+#       from updateRPiImage role (defined in defaults/main.yaml)
+#   - taskDir: Path to tasks directory (auto-set in vars/main.yaml)
+#   - debugFlag: (optional) Enable debug output
+#
+# WORKFLOW:
+#   1. Validate required parameters (defaultDevicePath and defaultImageFilePath)
+#   2. Write image to device using writeImage.yaml task
+#   3. (Future) Copy initialization files to boot partition
+#
+# EXAMPLE:
+#   # Option 1: Standalone with explicit parameters
+#   - hosts: localhost
+#     roles:
+#       - role: createRPiImage
+#         vars:
+#           defaultDevicePath: "/dev/disk4"
+#           defaultImageFilePath: "/path/to/image.img"
+#
+#   # Option 2: Integrated with prerequisite roles (uses facts)
+#   - hosts: localhost
+#     roles:
+#       - role: getInstallDevice        # Sets installDevice fact
+#       - role: updateRPiImage          # Sets imagePath fact
+#       - role: createRPiImage          # Uses facts via defaults
+#
+# NOTES:
+#   - Requires sudo/root permissions for device write access
+#   - User will be prompted to confirm destructive operation
+#   - Validation fails fast with helpful messages if parameters missing
+#   - Microservices design: works standalone or integrated
+#
+# Copyright 2025 Douglas WF Acheson (dwfa@dwfa.ca)
+# Licensed under Apache License 2.0. See LICENSE.md for details.
+#
+# Version: 1.5
+# Date: October 18, 2025
+##############################################################################
+---                                            # identifies a YAML config file
+
+##############################################################################
+# Write RPi image to device
+##############################################################################
+- name: include task to write RPi Image to device
+  include_tasks:
+    file: "{{ taskDir }}/fileSystem/writeImage.yaml"
+  vars:
+    useDevicePath: "{{ defaultDevicePath }}"
+    useImagePath: "{{ defaultImageFilePath }}"
+
+##############################################################################
+# step 5. copy init files to boot partition
+##############################################################################
+# - name: incude task to copy init files to boot partition
+#   include_tasks:
+#     file: "{{ taskDir }}/rpi/copyRPiInitFiles.yaml"
+#   vars:
+#     drive:    "/dev/{{targetDrive}}1"

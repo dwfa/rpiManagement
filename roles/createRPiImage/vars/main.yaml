@@ -1,0 +1,17 @@
+##############################################################################
+# Ansible role variables for createRPiImage role
+#
+# Note: Global variables (taskDir, dataDir, ansible_* connection settings)
+#       are inherited from common role via role dependency (see meta/main.yaml)
+#
+# Copyright 2025 Douglas WF Acheson (dwfa@dwfa.ca)
+# Licensed under Apache License 2.0. See LICENSE.md for details.
+#
+# Version: 1.4
+# Date: October 17, 2025
+##############################################################################
+
+---                                            # identifies a YAML config file
+
+# No role-specific variables needed - inherits from group_vars/all.yaml
+# Role parameters defined in defaults/main.yaml

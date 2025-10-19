@@ -72,6 +72,10 @@ This project is licensed under the Apache License 2.0 - see [LICENSE.md](LICENSE
 Email: dwfa@dwfa.ca
 Copyright 2025 Douglas WF Acheson
 
+## Notice
+
+Claude code is used to generate comments, automate git actions, commit messages and other small tasks that are time consuming.
+
 ---
 
 Licensed under the Apache License, Version 2.0. See LICENSE.md for full license text.

@@ -1,0 +1,134 @@
+##############################################################################
+# Ansible task to write disk image to device
+#
+# USAGE:
+#   Writes a compressed or uncompressed Raspberry Pi OS image to a block device
+#   (USB drive, SD card, etc.). Supports gzip (.gz), xz (.xz), and raw (.img)
+#   image formats. Uses dd for writing with progress reporting.
+#
+# REQUIRED VARIABLES:
+#   - useImagePath: Full path to the image file (compressed or uncompressed)
+#   - useDevicePath: Target device path (e.g., /dev/disk4, /dev/sdb)
+#   - debugFlag: (optional) Enable debug output
+#
+# OUTPUT VARIABLES:
+#   None - This task does not set any global facts
+#
+# WORKFLOW:
+#   1. Extract file extension from imagePath
+#   2. Determine decompression utility based on format
+#   3. Fail if unsupported format
+#   4. Set dd status flag (progress for local, none for remote)
+#   5. Prompt user to confirm destructive operation
+#   6. Decompress (if needed) and write to devicePath:
+#      - .gz: Use gzip -cd | dd
+#      - .xz: Use xzcat | dd
+#      - .img: Use cat | dd
+#   7. Show progress during write operation (local only)
+#
+# EXAMPLE:
+#   - name: Write RPi OS image to device
+#     include_tasks:
+#       file: "{{ taskDir }}/fileSystem/writeImage.yaml"
+#     vars:
+#       useImagePath: "/path/to/image.xz"
+#       useDevicePath: "/dev/disk4"
+#
+# NOTES:
+#   - Requires sudo/root permissions for dd device access
+#   - DESTRUCTIVE OPERATION: Completely overwrites target device
+#   - Uses 4M block size for performance
+#   - Shows progress with status=progress (GNU dd)
+#   - Image writing can take several minutes depending on size
+#
+# Copyright 2025 Douglas WF Acheson (dwfa@dwfa.ca)
+# Licensed under Apache License 2.0. See LICENSE.md for details.
+#
+# Version: 1.7
+# Date: October 18, 2025
+##############################################################################
+---                                            # identifies a YAML config file
+
+#############################################################################
+# Validate required parameters
+##############################################################################
+- name: Validate required parameters
+  block:
+    - name: validate useDevicePath is provided
+      fail:
+        msg: "[ERROR] *** useDevicePath is required for writeImage task but not provided"
+      when: useDevicePath is not defined or useDevicePath == ''
+
+    - name: validate useImagePath is provided
+      fail:
+        msg: "[ERROR] *** useImagePath is required for writeImage task but not provided"
+      when: useImagePath is not defined or useImagePath == ''
+
+#############################################################################
+# Prepare write command
+##############################################################################
+- name: Prepare write command
+  block:
+    - name: set decompression utility based on image format
+      set_fact:
+        _decompressUtil: >-
+          {{ 'gzip -cd'
+               if _imageExt == '.gz' else
+             'xzcat'
+               if _imageExt == '.xz' else
+             'cat'
+               if _imageExt == '.img' else
+             'unsupported' }}
+
+    - name: fail for unsupported file extension
+      fail:
+        msg:
+          - "[ERROR] *** Unsupported image format: [{{ _imageExt }}]."
+          - "[ERROR] *** Supported formats: .gz, .xz, .img"
+      when:
+        - _decompressUtil == 'unsupported'
+
+    - name: debug message for decompression utility
+      debug:
+        msg: "[DEBUG] *** decompression utility: [{{ _decompressUtil }}]"
+      when:
+        - debugFlag is defined
+
+    - name: set dd status flag for local connections
+      set_fact:
+        _ddStatus: "{{ 'status=progress' if ansible_connection == 'local' else '' }}"
+  vars:
+    _imageExt: "{{ useImagePath | basename | splitext | last }}"
+
+#############################################################################
+# Write image to device
+##############################################################################
+- name: Write image to device
+  block:
+    - name: confirm write operation
+      include_tasks:
+        file: "{{ taskDir }}/misc/waitForInput.yaml"
+      vars:
+        waitMsg: "WARNING: About to write [{{ useImagePath }}] to [{{ useDevicePath }}]. This will DESTROY all data on the device. Press Enter to continue or Ctrl+C then 'A' to abort..."
+
+    - name: write image to device
+      ansible.builtin.shell:
+        cmd: "{{ _decompressUtil }} {{ useImagePath }} | dd bs=4M of={{ useDevicePath }} {{ _ddStatus }}"
+      register: _writeResult
+
+    - name: debug message for write image to device
+      debug:
+        msg:
+          - "[DEBUG] *** wrote image [{{ useImagePath }}] to device [{{ useDevicePath }}]..."
+          - "[DEBUG] *** result is: [{{ _writeResult }}]"
+      when:
+        - debugFlag is defined
+
+##############################################################################
+# Cleanup temporary facts (file-scoped set_fact variables)
+##############################################################################
+- name: Cleanup temporary facts
+  set_fact:
+    _decompressUtil: null
+    _ddStatus: null
+    _writeResult: null

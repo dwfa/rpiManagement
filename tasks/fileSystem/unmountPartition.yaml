@@ -1,0 +1,85 @@
+##############################################################################
+# Ansible task to unmount a partition from a specified mount point
+#
+# USAGE:
+#   Generic partition unmounting task that unmounts the specified mount point.
+#   Handles unmount errors appropriately.
+#
+# REQUIRED VARIABLES:
+#   - mountPoint: Directory path to unmount (e.g., /mnt/boot)
+#   - debugFlag: (optional) Enable debug output
+#
+# WORKFLOW:
+#   1. Validate platform is supported (macOS or Linux)
+#   2. Unmount the mount point using platform-specific command
+#   3. Display unmount status (debug mode only)
+#   4. Cleanup temporary variables
+#
+# EXAMPLE:
+#   - name: Unmount boot partition
+#     include_tasks:
+#       file: "{{ taskDir }}/fileSystem/unmountPartition.yaml"
+#     vars:
+#       mountPoint: "/mnt/boot"
+#
+# NOTES:
+#   - Requires sudo/root permissions for unmount operations
+#   - Supported platforms: macOS (Darwin) and Linux only
+#   - Platform-specific unmount commands:
+#     - macOS: diskutil unmount
+#     - Linux: umount
+#   - Fails if unmount operation returns non-zero exit code
+#   - Does not remove the mount point directory after unmounting
+#   - Ensure no processes are using files in the mount point before unmounting
+#
+# Copyright 2025 Douglas WF Acheson (dwfa@dwfa.ca)
+# Licensed under Apache License 2.0. See LICENSE.md for details.
+#
+# Version: 3.0
+# Date: October 19, 2025
+##############################################################################
+---                                            # identifies a YAML config file
+
+##############################################################################
+# Validate required parameters and platform
+##############################################################################
+- name: Validate required parameters
+  block:
+    - name: Validate mountPoint is provided
+      fail:
+        msg: "[ERROR] *** mountPoint is required for unmountPartition task but not provided"
+      when: mountPoint is not defined or mountPoint == ''
+
+    - name: Validate platform is supported
+      fail:
+        msg: "[ERROR] *** Unsupported platform [{{ ansible_system }}]. Only Darwin (macOS) and Linux are supported."
+      when: ansible_system not in ['Darwin', 'Linux']
+
+##############################################################################
+# Unmount partition (platform-specific)
+##############################################################################
+- name: Unmount partition (macOS)
+  ansible.builtin.command:
+    cmd: "diskutil unmount {{ mountPoint }}"
+  register: _unmountResult
+  failed_when: _unmountResult.rc not in [0]
+  when: ansible_system == 'Darwin'
+
+- name: Unmount partition (Linux)
+  ansible.builtin.command:
+    cmd: "umount {{ mountPoint }}"
+  register: _unmountResult
+  failed_when: _unmountResult.rc not in [0]
+  when: ansible_system == 'Linux'
+
+- name: Display unmount status
+  debug:
+    msg: "[DEBUG] *** Unmounted partition from [{{ mountPoint }}]"
+  when: debugFlag is defined
+
+##############################################################################
+# Cleanup temporary facts (play-scoped register variables)
+##############################################################################
+- name: Cleanup temporary facts
+  set_fact:
+    _unmountResult: null

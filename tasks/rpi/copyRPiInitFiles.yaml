@@ -1,0 +1,108 @@
+##############################################################################
+# Ansible task to copy RPi initialization files to boot partition
+#
+# USAGE:
+#   Copies Raspberry Pi initialization files (ssh, userconf.txt, etc.) to the
+#   boot partition of a freshly imaged SD card or USB drive. Handles mounting
+#   and unmounting the boot partition automatically.
+#
+# REQUIRED VARIABLES:
+#   - installDevice: Target device path (e.g., /dev/disk4, /dev/sdb)
+#   - dataDir: Path to data directory containing rpi/metadata.yaml
+#   - debugFlag: (optional) Enable debug output
+#
+# WORKFLOW:
+#   1. Load init file configuration from data/rpi/metadata.yaml
+#   2. Calculate boot partition path from installDevice (Unix-style)
+#   3. Mount boot partition using fileSystem/mountPartition.yaml
+#   4. Copy init files from data/rpi/ to boot partition
+#   5. Unmount boot partition using fileSystem/unmountPartition.yaml
+#   6. Cleanup temporary variables
+#
+# EXAMPLE:
+#   - name: Copy init files to RPi boot partition
+#     include_tasks:
+#       file: "{{ taskDir }}/rpi/copyRPiInitFiles.yaml"
+#     vars:
+#       installDevice: "/dev/disk4"
+#
+# NOTES:
+#   - Requires sudo/root permissions for mount/unmount operations
+#   - Init files are defined in data/rpi/metadata.yaml
+#   - Typical files: ssh (enable SSH), userconf.txt (user credentials)
+#   - Boot partition calculated as Unix-style (device + '1')
+#   - Platform-specific conversion handled by mountPartition.yaml
+#   - Mount point /mnt/boot is created if it doesn't exist
+#
+# Copyright 2025 Douglas WF Acheson (dwfa@dwfa.ca)
+# Licensed under Apache License 2.0. See LICENSE.md for details.
+#
+# Version: 3.1
+# Date: October 19, 2025
+##############################################################################
+---                                            # identifies a YAML config file
+
+##############################################################################
+# Load init file configuration from metadata
+##############################################################################
+- name: Load required data
+  include_vars:
+    file: "{{ dataDir }}/rpi/metadata.yaml"
+
+##############################################################################
+# Calculate boot partition path (Unix-style, normalized by mount task)
+##############################################################################
+- name: Calculate boot partition path
+  set_fact:
+    _bootPartitionPath: "{{ installDevice }}1"
+
+- name: Display boot partition path
+  debug:
+    msg: "[DEBUG] *** Boot partition path: [{{ _bootPartitionPath }}]"
+  when: debugFlag is defined
+
+##############################################################################
+# Mount boot partition
+##############################################################################
+- name: Mount boot partition
+  include_tasks:
+    file: "{{ taskDir }}/fileSystem/mountPartition.yaml"
+  vars:
+    partitionPath: "{{ _bootPartitionPath }}"
+    mountPoint: "/mnt/boot"
+
+##############################################################################
+# Copy init files to boot partition
+##############################################################################
+- name: Copy init files to boot partition
+  ansible.builtin.copy:
+    dest: "/mnt/boot/{{ initFiles[item].file }}"
+    src: "{{ dataDir }}/rpi/{{ initFiles[item].file }}"
+    mode: 0644
+  with_items: "{{ initFiles.keys() | list }}"
+  register: _cifResult
+
+- name: Display copy status
+  debug:
+    msg: >-
+      {{ '[DEBUG] *** Copied [' + (_cifResult.results | length | string) + '] init files to boot partition'
+           if _cifResult is succeeded else
+         '[DEBUG] *** Failed to copy init files' }}
+  when: debugFlag is defined
+
+##############################################################################
+# Unmount boot partition
+##############################################################################
+- name: Unmount boot partition
+  include_tasks:
+    file: "{{ taskDir }}/fileSystem/unmountPartition.yaml"
+  vars:
+    mountPoint: "/mnt/boot"
+
+##############################################################################
+# Cleanup temporary facts (file-scoped and register variables)
+##############################################################################
+- name: Cleanup temporary facts
+  set_fact:
+    _bootPartitionPath: null
+    _cifResult: null

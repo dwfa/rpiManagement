@@ -15,7 +15,7 @@
 #
 # WORKFLOW:
 #   1. Write image to device using writeImage.yaml task
-#   2. (Future) Copy initialization files to boot partition
+#   2. Copy initialization files to boot partition
 #
 # EXAMPLE:
 #   - hosts: localhost
@@ -33,8 +33,8 @@
 # Copyright 2025 Douglas WF Acheson (dwfa@dwfa.ca)
 # Licensed under Apache License 2.0. See LICENSE.md for details.
 #
-# Version: 1.6
-# Date: October 18, 2025
+# Version: 2.1
+# Date: October 19, 2025
 ##############################################################################
 ---                                            # identifies a YAML config file
 
@@ -49,10 +49,10 @@
     useImagePath: "{{ imagePath }}"
 
 ##############################################################################
-# step 5. copy init files to boot partition
+# Copy init files to boot partition
 ##############################################################################
-# - name: incude task to copy init files to boot partition
-#   include_tasks:
-#     file: "{{ taskDir }}/rpi/copyRPiInitFiles.yaml"
-#   vars:
-#     drive:    "/dev/{{targetDrive}}1"
+- name: Include task to copy init files to boot partition
+  include_tasks:
+    file: "{{ taskDir }}/rpi/copyRPiInitFiles.yaml"
+  vars:
+    installDevice: "{{ installDevice }}"

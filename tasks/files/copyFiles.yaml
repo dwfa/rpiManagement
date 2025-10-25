@@ -1,57 +1,58 @@
 ##############################################################################
-# Ansible task to copy RPi initialization files from source to destination
+# Ansible task to copy files from source to destination based on metadata
 #
 # USAGE:
-#   Generic task to copy Raspberry Pi initialization files (ssh, userconf.txt, etc.)
-#   from a source directory to a destination directory. Files to copy are defined
-#   in metadata.yaml. Caller is responsible for mounting/unmounting if needed.
+#   Generic task to copy files from a source directory to a destination directory.
+#   Files to copy are defined in a metadata YAML file with an 'initFiles' structure.
+#   Caller is responsible for mounting/unmounting if needed.
 #
 # REQUIRED VARIABLES:
-#   - sourceDir: Source directory path containing init files and metadata.yaml
+#   - sourceDir: Source directory path containing files to copy
 #   - destDir: Destination directory path where files should be copied
-#   - dataDir: Path to data directory (for metadata.yaml loading)
+#   - metadataFile: Path to metadata YAML file defining files to copy
 #   - debugFlag: (optional) Enable debug output
 #
 # WORKFLOW:
-#   1. Load init file configuration from sourceDir/metadata.yaml
-#   2. Copy each init file from sourceDir to destDir
+#   1. Load file configuration from metadataFile
+#   2. Copy each file from sourceDir to destDir
 #   3. Display copy status (debug mode only)
 #   4. Cleanup temporary variables
 #
 # EXAMPLE:
-#   - name: Copy init files to mounted boot partition
+#   - name: Copy RPi init files to mounted boot partition
 #     include_tasks:
-#       file: "{{ taskDir }}/rpi/copyRPiInitFiles.yaml"
+#       file: "{{ taskDir }}/files/copyFiles.yaml"
 #     vars:
 #       sourceDir: "{{ dataDir }}/rpi"
 #       destDir: "/Volumes/boot"
+#       metadataFile: "{{ dataDir }}/rpi/metadata.yaml"
 #
 # NOTES:
-#   - Init files are defined in metadata.yaml (in sourceDir or dataDir/rpi/)
-#   - Typical files: ssh (enable SSH), userconf.txt (user credentials)
+#   - Metadata file must contain 'initFiles' dictionary with file definitions
+#   - Example metadata structure: initFiles.item_1.file: "filename"
 #   - Caller must ensure destDir is accessible (mounted if needed)
 #   - Requires write permissions to destDir
-#   - Generic: can copy from any source to any destination
+#   - Generic: can copy from any source to any destination with any metadata
 #
 # Copyright 2025 Douglas WF Acheson (dwfa@dwfa.ca)
 # Licensed under Apache License 2.0. See LICENSE.md for details.
 #
-# Version: 4.0
+# Version: 4.1
 # Date: October 25, 2025
 ##############################################################################
 ---                                            # identifies a YAML config file
 
 ##############################################################################
-# Load init file configuration from metadata
+# Load file configuration from metadata
 ##############################################################################
-- name: Load required data
+- name: Load file configuration from metadata
   include_vars:
-    file: "{{ dataDir }}/rpi/metadata.yaml"
+    file: "{{ metadataFile }}"
 
 ##############################################################################
-# Copy init files from source to destination
+# Copy files from source to destination
 ##############################################################################
-- name: Copy init files from source to destination
+- name: Copy files from source to destination
   ansible.builtin.copy:
     dest: "{{ destDir }}/{{ initFiles[item].file }}"
     src: "{{ sourceDir }}/{{ initFiles[item].file }}"
@@ -62,9 +63,9 @@
 - name: Display copy status
   debug:
     msg: >-
-      {{ '[DEBUG] *** Copied [' + (_cifResult.results | length | string) + '] init files from [' + sourceDir + '] to [' + destDir + ']'
+      {{ '[DEBUG] *** Copied [' + (_cifResult.results | length | string) + '] files from [' + sourceDir + '] to [' + destDir + ']'
            if _cifResult is succeeded else
-         '[DEBUG] *** Failed to copy init files' }}
+         '[DEBUG] *** Failed to copy files' }}
   when: debugFlag is defined
 
 ##############################################################################

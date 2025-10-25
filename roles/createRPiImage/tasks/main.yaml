@@ -71,10 +71,11 @@
 ##############################################################################
 - name: Copy init files to boot partition
   include_tasks:
-    file: "{{ taskDir }}/rpi/copyRPiInitFiles.yaml"
+    file: "{{ taskDir }}/files/copyFiles.yaml"
   vars:
     sourceDir: "{{ dataDir }}/rpi"
     destDir: "{{ bootMountPoint }}"
+    metadataFile: "{{ dataDir }}/rpi/metadata.yaml"
 
 ##############################################################################
 # Unmount boot partition

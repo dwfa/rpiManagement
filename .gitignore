@@ -9,6 +9,10 @@ data/
 
 # Project documentation (symlinked from data/)
 CLAUDE.md
+BACKLOG.md
+
+# Personal development notes (local only)
+NOTES.md
 
 # Actual inventory file (moved to data/)
 inventory.yaml

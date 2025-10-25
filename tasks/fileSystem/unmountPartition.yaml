@@ -2,41 +2,71 @@
 # Ansible task to unmount a partition from a specified mount point
 #
 # USAGE:
-#   Generic partition unmounting task that unmounts the specified mount point.
-#   Handles unmount errors appropriately.
+#   Generic partition unmounting task that unmounts the specified mount point
+#   or device. Fully idempotent - succeeds if target is already unmounted.
+#   Intelligently handles unmount errors by distinguishing between "not mounted"
+#   (success) and real errors (busy, permission denied, etc.).
 #
 # REQUIRED VARIABLES:
-#   - mountPoint: Directory path to unmount (e.g., /mnt/boot)
+#   - mountPoint: Target to unmount. Accepts TWO formats:
+#                 1. Directory path (traditional mount point): /mnt/boot, /Volumes/BOOT
+#                 2. Device path (partition identifier): /dev/disk4s1, /dev/sdb1
 #   - debugFlag: (optional) Enable debug output
+#   - forceUnmount: (optional) Force unmount even if busy (default: false)
 #
 # WORKFLOW:
 #   1. Validate platform is supported (macOS or Linux)
-#   2. Unmount the mount point using platform-specific command
-#   3. Display unmount status (debug mode only)
-#   4. Cleanup temporary variables
+#   2. Attempt to unmount target using platform-specific command
+#   3. If unmount fails, check stderr to determine cause:
+#      - "not mounted" → Success (desired state already achieved)
+#      - Other error → Fail with error message
+#   4. If forceUnmount requested and regular unmount failed, attempt force unmount
+#   5. Display unmount status (debug mode only)
+#   6. Cleanup temporary variables
 #
 # EXAMPLE:
+#   # Unmount by mount point path
 #   - name: Unmount boot partition
 #     include_tasks:
 #       file: "{{ taskDir }}/fileSystem/unmountPartition.yaml"
 #     vars:
 #       mountPoint: "/mnt/boot"
 #
+#   # Unmount by device path
+#   - name: Unmount device
+#     include_tasks:
+#       file: "{{ taskDir }}/fileSystem/unmountPartition.yaml"
+#     vars:
+#       mountPoint: "/dev/disk4s1"
+#
+#   # Force unmount busy partition
+#   - name: Force unmount busy partition
+#     include_tasks:
+#       file: "{{ taskDir }}/fileSystem/unmountPartition.yaml"
+#     vars:
+#       mountPoint: "/mnt/boot"
+#       forceUnmount: true
+#
 # NOTES:
 #   - Requires sudo/root permissions for unmount operations
 #   - Supported platforms: macOS (Darwin) and Linux only
 #   - Platform-specific unmount commands:
-#     - macOS: diskutil unmount
-#     - Linux: umount
-#   - Fails if unmount operation returns non-zero exit code
+#     - macOS: diskutil unmount [force]
+#     - Linux: umount [-f]
+#   - Idempotent behavior: Does NOT fail if target is already unmounted
+#   - Error handling: Parses stderr to distinguish "not mounted" from real errors
+#   - Real errors that cause failure: device busy (without force), permission denied,
+#     invalid device path, I/O errors
+#   - Force unmount may cause data loss if files are being written
 #   - Does not remove the mount point directory after unmounting
-#   - Ensure no processes are using files in the mount point before unmounting
+#   - Dual-mode operation allows use with both mount points and device paths
+#   - Called by mountPartition.yaml for cleanup and remounting operations
 #
 # Copyright 2025 Douglas WF Acheson (dwfa@dwfa.ca)
 # Licensed under Apache License 2.0. See LICENSE.md for details.
 #
-# Version: 3.0
-# Date: October 19, 2025
+# Version: 4.0
+# Date: October 24, 2025
 ##############################################################################
 ---                                            # identifies a YAML config file
 
@@ -62,19 +92,62 @@
   ansible.builtin.command:
     cmd: "diskutil unmount {{ mountPoint }}"
   register: _unmountResult
-  failed_when: _unmountResult.rc not in [0]
+  failed_when: false
+  changed_when: _unmountResult.rc == 0
   when: ansible_system == 'Darwin'
 
 - name: Unmount partition (Linux)
   ansible.builtin.command:
     cmd: "umount {{ mountPoint }}"
   register: _unmountResult
-  failed_when: _unmountResult.rc not in [0]
+  failed_when: false
+  changed_when: _unmountResult.rc == 0
   when: ansible_system == 'Linux'
+
+##############################################################################
+# Handle unmount errors (distinguish "not mounted" from real errors)
+##############################################################################
+- name: Check for real unmount errors
+  fail:
+    msg: "[ERROR] *** Failed to unmount [{{ mountPoint }}]: {{ _unmountResult.stderr | default(_unmountResult.stdout) }}"
+  when:
+    - _unmountResult.rc != 0
+    - "'not mounted' not in (_unmountResult.stderr | default('') | lower)"
+    - "'not currently mounted' not in (_unmountResult.stderr | default('') | lower)"
+    - forceUnmount is not defined or not forceUnmount
+
+##############################################################################
+# Force unmount if requested and regular unmount failed
+##############################################################################
+- name: Force unmount partition (macOS)
+  ansible.builtin.command:
+    cmd: "diskutil unmount force {{ mountPoint }}"
+  register: _forceUnmountResult
+  failed_when: _forceUnmountResult.rc != 0
+  when:
+    - ansible_system == 'Darwin'
+    - forceUnmount is defined and forceUnmount
+    - _unmountResult.rc != 0
+    - "'not mounted' not in (_unmountResult.stderr | default('') | lower)"
+    - "'not currently mounted' not in (_unmountResult.stderr | default('') | lower)"
+
+- name: Force unmount partition (Linux)
+  ansible.builtin.command:
+    cmd: "umount -f {{ mountPoint }}"
+  register: _forceUnmountResult
+  failed_when: _forceUnmountResult.rc != 0
+  when:
+    - ansible_system == 'Linux'
+    - forceUnmount is defined and forceUnmount
+    - _unmountResult.rc != 0
+    - "'not mounted' not in (_unmountResult.stderr | default('') | lower)"
 
 - name: Display unmount status
   debug:
-    msg: "[DEBUG] *** Unmounted partition from [{{ mountPoint }}]"
+    msg: >-
+      {{ '[DEBUG] *** Unmounted [' + mountPoint + '] (was mounted: [true])'
+           if _unmountResult.rc == 0 else
+         '[DEBUG] *** Target [' + mountPoint + '] was already unmounted (was mounted: [false])' }}
   when: debugFlag is defined
 
 ##############################################################################
@@ -83,3 +156,4 @@
 - name: Cleanup temporary facts
   set_fact:
     _unmountResult: null
+    _forceUnmountResult: null

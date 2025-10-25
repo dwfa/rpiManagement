@@ -15,7 +15,11 @@
 #
 # WORKFLOW:
 #   1. Write image to device using writeImage.yaml task
-#   2. Copy initialization files to boot partition
+#   2. Calculate boot partition path (device + '1')
+#   3. Mount boot partition to bootMountPoint
+#   4. Copy initialization files to boot partition
+#   5. Unmount boot partition
+#   6. Cleanup temporary variables
 #
 # EXAMPLE:
 #   - hosts: localhost
@@ -33,8 +37,8 @@
 # Copyright 2025 Douglas WF Acheson (dwfa@dwfa.ca)
 # Licensed under Apache License 2.0. See LICENSE.md for details.
 #
-# Version: 2.1
-# Date: October 19, 2025
+# Version: 3.0
+# Date: October 25, 2025
 ##############################################################################
 ---                                            # identifies a YAML config file
 
@@ -49,10 +53,38 @@
     useImagePath: "{{ imagePath }}"
 
 ##############################################################################
+# Mount boot partition for init file copying
+##############################################################################
+- name: Calculate boot partition path
+  set_fact:
+    _bootPartitionPath: "{{ installDevice }}1"
+
+- name: Mount boot partition
+  include_tasks:
+    file: "{{ taskDir }}/fileSystem/mountPartition.yaml"
+  vars:
+    partitionPath: "{{ _bootPartitionPath }}"
+    mountPoint: "{{ bootMountPoint }}"
+
+##############################################################################
 # Copy init files to boot partition
 ##############################################################################
-- name: Include task to copy init files to boot partition
+- name: Copy init files to boot partition
   include_tasks:
     file: "{{ taskDir }}/rpi/copyRPiInitFiles.yaml"
   vars:
-    installDevice: "{{ installDevice }}"
+    sourceDir: "{{ dataDir }}/rpi"
+    destDir: "{{ bootMountPoint }}"
+
+##############################################################################
+# Unmount boot partition
+##############################################################################
+- name: Unmount boot partition
+  include_tasks:
+    file: "{{ taskDir }}/fileSystem/unmountPartition.yaml"
+  vars:
+    mountPoint: "{{ bootMountPoint }}"
+
+- name: Cleanup temporary facts
+  set_fact:
+    _bootPartitionPath: null

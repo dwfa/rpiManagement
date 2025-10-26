@@ -37,7 +37,7 @@
 # Copyright 2025 Douglas WF Acheson (dwfa@dwfa.ca)
 # Licensed under Apache License 2.0. See LICENSE.md for details.
 #
-# Version: 3.0
+# Version: 3.4
 # Date: October 25, 2025
 ##############################################################################
 ---                                            # identifies a YAML config file
@@ -49,21 +49,17 @@
   include_tasks:
     file: "{{ taskDir }}/fileSystem/writeImage.yaml"
   vars:
-    useDevicePath: "{{ installDevice }}"
+    useDevice: "{{ installDevice }}"
     useImagePath: "{{ imagePath }}"
 
 ##############################################################################
 # Mount boot partition for init file copying
 ##############################################################################
-- name: Calculate boot partition path
-  set_fact:
-    _bootPartitionPath: "{{ installDevice }}1"
-
 - name: Mount boot partition
   include_tasks:
     file: "{{ taskDir }}/fileSystem/mountPartition.yaml"
   vars:
-    partitionPath: "{{ _bootPartitionPath }}"
+    partitionDevice: "{{ _bootPartitionDevice }}"
     mountPoint: "{{ bootMountPoint }}"
 
 ##############################################################################
@@ -73,9 +69,7 @@
   include_tasks:
     file: "{{ taskDir }}/files/copyFiles.yaml"
   vars:
-    sourceDir: "{{ dataDir }}/rpi"
-    destDir: "{{ bootMountPoint }}"
-    metadataFile: "{{ dataDir }}/rpi/metadata.yaml"
+    metadataPath: "{{ dataDir }}/rpi/metadata.yaml"
 
 ##############################################################################
 # Unmount boot partition
@@ -85,7 +79,3 @@
     file: "{{ taskDir }}/fileSystem/unmountPartition.yaml"
   vars:
     mountPoint: "{{ bootMountPoint }}"
-
-- name: Cleanup temporary facts
-  set_fact:
-    _bootPartitionPath: null

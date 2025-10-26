@@ -7,8 +7,8 @@
 #   appropriately.
 #
 # REQUIRED VARIABLES:
-#   - partitionPath: Device path to partition in Unix-style format (e.g., /dev/disk41, /dev/sdb1)
-#                    Automatically converted to macOS format (/dev/disk4s1) if needed
+#   - partitionDevice: Device path to partition in Unix-style format (e.g., /dev/disk41, /dev/sdb1)
+#                      Automatically converted to macOS format (/dev/disk4s1) if needed
 #   - mountPoint: Directory path where partition should be mounted (e.g., /mnt/boot)
 #   - debugFlag: (optional) Enable debug output
 #
@@ -27,7 +27,7 @@
 #     include_tasks:
 #       file: "{{ taskDir }}/fileSystem/mountPartition.yaml"
 #     vars:
-#       partitionPath: "/dev/disk41"  # Unix-style (auto-converted to /dev/disk4s1 on macOS)
+#       partitionDevice: "/dev/disk41"  # Unix-style (auto-converted to /dev/disk4s1 on macOS)
 #       mountPoint: "/mnt/boot"
 #
 # NOTES:
@@ -50,8 +50,8 @@
 # Copyright 2025 Douglas WF Acheson (dwfa@dwfa.ca)
 # Licensed under Apache License 2.0. See LICENSE.md for details.
 #
-# Version: 5.0
-# Date: October 19, 2025
+# Version: 5.2
+# Date: October 25, 2025
 ##############################################################################
 ---                                            # identifies a YAML config file
 
@@ -60,10 +60,10 @@
 ##############################################################################
 - name: Validate required parameters
   block:
-    - name: Validate partitionPath is provided
+    - name: Validate partitionDevice is provided
       fail:
-        msg: "[ERROR] *** partitionPath is required for mountPartition task but not provided"
-      when: partitionPath is not defined or partitionPath == ''
+        msg: "[ERROR] *** partitionDevice is required for mountPartition task but not provided"
+      when: partitionDevice is not defined or partitionDevice == ''
 
     - name: Validate mountPoint is provided
       fail:
@@ -80,8 +80,8 @@
 ##############################################################################
 - name: Normalize partition path for platform
   set_fact:
-    _normalizedPartitionPath: "{{ partitionPath if ansible_system != 'Darwin' else
-                                 (partitionPath | regex_replace('^(/dev/disk\\d+)(\\d+)$', '\\1s\\2')) }}"
+    _normalizedPartitionPath: "{{ partitionDevice if ansible_system != 'Darwin' else
+                                 (partitionDevice | regex_replace('^(/dev/disk\\d+)(\\d+)$', '\\1s\\2')) }}"
 
 ##############################################################################
 # Create mount point directory

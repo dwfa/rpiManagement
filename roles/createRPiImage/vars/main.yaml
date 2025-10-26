@@ -4,15 +4,28 @@
 # Note: Global variables (taskDir, dataDir, ansible_* connection settings)
 #       are inherited from common role via role dependency (see meta/main.yaml)
 #
+# REQUIRED INPUT VARIABLES:
+#   - installDevice: Target device path (e.g., /dev/disk4, /dev/sdb)
+#       Must be set by getInstallDevice role before calling this role
+#
 # Copyright 2025 Douglas WF Acheson (dwfa@dwfa.ca)
 # Licensed under Apache License 2.0. See LICENSE.md for details.
 #
-# Version: 1.5
+# Version: 1.6
 # Date: October 25, 2025
 ##############################################################################
 
 ---                                            # identifies a YAML config file
 
+##############################################################################
 # Platform-specific mount point for boot partition
 # macOS uses /Volumes/, Linux uses /mnt/
+##############################################################################
 bootMountPoint: "{{ '/Volumes/boot' if ansible_system == 'Darwin' else '/mnt/boot' }}"
+
+##############################################################################
+# Boot partition device path
+# Default: {{ installDevice }}1 (first partition of install device)
+# Override: Pass bootPartitionDevice variable when calling role
+##############################################################################
+_bootPartitionDevice: "{{ bootPartitionDevice | default(installDevice + '1') }}"

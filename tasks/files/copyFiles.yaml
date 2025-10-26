@@ -4,32 +4,41 @@
 # USAGE:
 #   Generic task to copy files from a source directory to a destination directory.
 #   Files to copy are defined in a metadata YAML file with an 'initFiles' structure.
+#   Source and destination can be overridden or use defaults from metadata.
 #   Caller is responsible for mounting/unmounting if needed.
 #
 # REQUIRED VARIABLES:
-#   - sourceDir: Source directory path containing files to copy
-#   - destDir: Destination directory path where files should be copied
-#   - metadataFile: Path to metadata YAML file defining files to copy
-#   - debugFlag: (optional) Enable debug output
+#   - metadataPath: Path to metadata YAML file defining files to copy
+#
+# OPTIONAL VARIABLES:
+#   - sourceDir: Override source directory (metadata default: _srcDir)
+#   - destDir: Override destination directory (metadata default: _destDir)
+#   - debugFlag: Enable debug output
 #
 # WORKFLOW:
-#   1. Load file configuration from metadataFile
-#   2. Copy each file from sourceDir to destDir
+#   1. Load file configuration from metadataFile (_srcDir, _destDir, initFiles)
+#   2. Copy each file from _srcDir to _destDir (using passed overrides if provided)
 #   3. Display copy status (debug mode only)
 #   4. Cleanup temporary variables
 #
 # EXAMPLE:
-#   - name: Copy RPi init files to mounted boot partition
+#   - name: Copy RPi init files using metadata defaults
 #     include_tasks:
 #       file: "{{ taskDir }}/files/copyFiles.yaml"
 #     vars:
-#       sourceDir: "{{ dataDir }}/rpi"
-#       destDir: "/Volumes/boot"
-#       metadataFile: "{{ dataDir }}/rpi/metadata.yaml"
+#       metadataPath: "{{ dataDir }}/rpi/metadata.yaml"
+#
+#   - name: Copy RPi init files with override
+#     include_tasks:
+#       file: "{{ taskDir }}/files/copyFiles.yaml"
+#     vars:
+#       metadataPath: "{{ dataDir }}/rpi/metadata.yaml"
+#       destDir: "/custom/destination"
 #
 # NOTES:
-#   - Metadata file must contain 'initFiles' dictionary with file definitions
-#   - Example metadata structure: initFiles.item_1.file: "filename"
+#   - Metadata file must contain 'initFiles' dictionary and optionally _srcDir/_destDir
+#   - Metadata defines: _srcDir (with sourceDir override), _destDir (with destDir override)
+#   - Example metadata: _srcDir: "{{ sourceDir | default(dataDir + '/rpi') }}"
 #   - Caller must ensure destDir is accessible (mounted if needed)
 #   - Requires write permissions to destDir
 #   - Generic: can copy from any source to any destination with any metadata
@@ -37,7 +46,7 @@
 # Copyright 2025 Douglas WF Acheson (dwfa@dwfa.ca)
 # Licensed under Apache License 2.0. See LICENSE.md for details.
 #
-# Version: 4.1
+# Version: 4.3
 # Date: October 25, 2025
 ##############################################################################
 ---                                            # identifies a YAML config file
@@ -47,15 +56,15 @@
 ##############################################################################
 - name: Load file configuration from metadata
   include_vars:
-    file: "{{ metadataFile }}"
+    file: "{{ metadataPath }}"
 
 ##############################################################################
 # Copy files from source to destination
 ##############################################################################
 - name: Copy files from source to destination
   ansible.builtin.copy:
-    dest: "{{ destDir }}/{{ initFiles[item].file }}"
-    src: "{{ sourceDir }}/{{ initFiles[item].file }}"
+    dest: "{{ _destDir }}/{{ initFiles[item].file }}"
+    src: "{{ _srcDir }}/{{ initFiles[item].file }}"
     mode: 0644
   with_items: "{{ initFiles.keys() | list }}"
   register: _cifResult
@@ -63,14 +72,16 @@
 - name: Display copy status
   debug:
     msg: >-
-      {{ '[DEBUG] *** Copied [' + (_cifResult.results | length | string) + '] files from [' + sourceDir + '] to [' + destDir + ']'
+      {{ '[DEBUG] *** Copied [' + (_cifResult.results | length | string) + '] files from [' + _srcDir + '] to [' + _destDir + ']'
            if _cifResult is succeeded else
          '[DEBUG] *** Failed to copy files' }}
   when: debugFlag is defined
 
 ##############################################################################
-# Cleanup temporary facts (register variables)
+# Cleanup temporary facts (loaded and register variables)
 ##############################################################################
 - name: Cleanup temporary facts
   set_fact:
     _cifResult: null
+    _srcDir: null
+    _destDir: null

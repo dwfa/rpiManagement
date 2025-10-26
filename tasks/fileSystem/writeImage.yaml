@@ -8,7 +8,7 @@
 #
 # REQUIRED VARIABLES:
 #   - useImagePath: Full path to the image file (compressed or uncompressed)
-#   - useDevicePath: Target device path (e.g., /dev/disk4, /dev/sdb)
+#   - useDevice: Target device path (e.g., /dev/disk4, /dev/sdb)
 #   - debugFlag: (optional) Enable debug output
 #
 # OUTPUT VARIABLES:
@@ -32,7 +32,7 @@
 #       file: "{{ taskDir }}/fileSystem/writeImage.yaml"
 #     vars:
 #       useImagePath: "/path/to/image.xz"
-#       useDevicePath: "/dev/disk4"
+#       useDevice: "/dev/disk4"
 #
 # NOTES:
 #   - Requires sudo/root permissions for dd device access
@@ -44,8 +44,8 @@
 # Copyright 2025 Douglas WF Acheson (dwfa@dwfa.ca)
 # Licensed under Apache License 2.0. See LICENSE.md for details.
 #
-# Version: 1.7
-# Date: October 18, 2025
+# Version: 1.8
+# Date: October 25, 2025
 ##############################################################################
 ---                                            # identifies a YAML config file
 
@@ -54,10 +54,10 @@
 ##############################################################################
 - name: Validate required parameters
   block:
-    - name: validate useDevicePath is provided
+    - name: validate useDevice is provided
       fail:
-        msg: "[ERROR] *** useDevicePath is required for writeImage task but not provided"
-      when: useDevicePath is not defined or useDevicePath == ''
+        msg: "[ERROR] *** useDevice is required for writeImage task but not provided"
+      when: useDevice is not defined or useDevice == ''
 
     - name: validate useImagePath is provided
       fail:
@@ -109,17 +109,17 @@
       include_tasks:
         file: "{{ taskDir }}/misc/waitForInput.yaml"
       vars:
-        waitMsg: "WARNING: About to write [{{ useImagePath }}] to [{{ useDevicePath }}]. This will DESTROY all data on the device. Press Enter to continue or Ctrl+C then 'A' to abort..."
+        waitMsg: "WARNING: About to write [{{ useImagePath }}] to [{{ useDevice }}]. This will DESTROY all data on the device. Press Enter to continue or Ctrl+C then 'A' to abort..."
 
     - name: write image to device
       ansible.builtin.shell:
-        cmd: "{{ _decompressUtil }} {{ useImagePath }} | dd bs=4M of={{ useDevicePath }} {{ _ddStatus }}"
+        cmd: "{{ _decompressUtil }} {{ useImagePath }} | dd bs=4M of={{ useDevice }} {{ _ddStatus }}"
       register: _writeResult
 
     - name: debug message for write image to device
       debug:
         msg:
-          - "[DEBUG] *** wrote image [{{ useImagePath }}] to device [{{ useDevicePath }}]..."
+          - "[DEBUG] *** wrote image [{{ useImagePath }}] to device [{{ useDevice }}]..."
           - "[DEBUG] *** result is: [{{ _writeResult }}]"
       when:
         - debugFlag is defined

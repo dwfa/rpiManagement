@@ -9,8 +9,8 @@
 #
 # REQUIRED VARIABLES:
 #   - mountPoint: Target to unmount. Accepts TWO formats:
-#                 1. Directory path (traditional mount point): /mnt/boot, /Volumes/BOOT
-#                 2. Device path (partition identifier): /dev/disk4s1, /dev/sdb1
+#               1. Directory path (traditional mount point): /mnt/boot, /Volumes/BOOT
+#               2. Device path (partition identifier): /dev/disk4s1, /dev/sdb1
 #   - debugFlag: (optional) Enable debug output
 #   - forceUnmount: (optional) Force unmount even if busy (default: false)
 #
@@ -65,8 +65,8 @@
 # Copyright 2025 Douglas WF Acheson (dwfa@dwfa.ca)
 # Licensed under Apache License 2.0. See LICENSE.md for details.
 #
-# Version: 4.0
-# Date: October 24, 2025
+# Version: 4.2
+# Date: October 25, 2025
 ##############################################################################
 ---                                            # identifies a YAML config file
 

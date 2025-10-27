@@ -1,0 +1,159 @@
+##############################################################################
+# Internal helper task to apply a single file modification
+#
+# USAGE:
+#   Called by modifyTextFile.yaml for each modification
+#   Do not call directly
+#
+# REQUIRED VARIABLES (passed via loop):
+#   - _mod: Dict item containing modification configuration
+#   - _indx: Loop index
+#   - filePath: Path to file being modified
+#   - createBackup: Whether to create backup
+#
+# NOTES:
+#   - Internal helper task - called by modifyTextFile.yaml in a loop
+#   - Do not call directly from playbooks or roles
+#
+#   - Backup Strategy and Conditional Logic:
+#     - Creates backup (.bak file) ONLY on first modification to preserve original file
+#     - Uses Jinja2 conditional expression:
+#       backup: "{{ (createBackup | default(true)) if _indx == 0 else false }}"
+#
+#     - How the conditional works:
+#       * Structure: (value_if_true) if (condition) else (value_if_false)
+#       * Condition: _indx == 0 (is this the first modification?)
+#
+#       * IF first modification (_indx == 0):
+#         - Evaluates to: (createBackup | default(true))
+#         - Uses createBackup variable if defined, otherwise defaults to true
+#         - Result: backup = true (creates .bak file)
+#
+#       * ELSE (_indx > 0, second/third/... modification):
+#         - Evaluates to: false
+#         - Result: backup = false (no .bak file created)
+#
+#     - Why this matters:
+#       * Without this logic: Each modification would create a new backup, overwriting
+#         the previous .bak file, losing the original pre-modification state
+#       * With this logic: Only first modification creates backup, preserving the
+#         original file state before ANY modifications were applied
+#
+#     - Example execution with 3 modifications:
+#       1. First mod (index=0):  backup evaluates to true  → file.txt.bak created (ORIGINAL)
+#       2. Second mod (index=1): backup evaluates to false → file.txt.bak unchanged
+#       3. Third mod (index=2):  backup evaluates to false → file.txt.bak unchanged
+#       Result: file.txt.bak contains original content before all modifications
+#
+#   - Idempotency: Uses checkPattern to detect and skip already-applied modifications
+#   - Supported operations: prepend, append, lineinfile, replace
+#
+# Copyright 2025 Douglas WF Acheson (dwfa@dwfa.ca)
+# Licensed under Apache License 2.0. See LICENSE.md for details.
+#
+# Version: 1.1
+# Date: October 26, 2025
+##############################################################################
+---                                            # identifies a YAML config file
+
+##############################################################################
+# Validate operation type
+##############################################################################
+- name: Validate operation type for {{ _mod.key }}
+  ansible.builtin.fail:
+    msg: "[ERROR] *** Invalid operation [{{ _mod.value.operation }}] for [{{ _mod.key }}]"
+  when: _mod.value.operation not in ['prepend', 'append', 'lineinfile', 'replace']
+
+##############################################################################
+# Check if modification already applied (idempotency)
+##############################################################################
+- name: Check if modification already applied
+  ansible.builtin.lineinfile:
+    path: "{{ filePath }}"
+    regexp: "{{ _mod.value.checkPattern }}"
+    state: absent
+  check_mode: true
+  register: _alreadyApplied
+  when: _mod.value.checkPattern is defined
+
+- name: Debug idempotency check
+  debug:
+    msg: "[DEBUG] *** Modification [{{ _mod.key }}] already applied: [{{ _alreadyApplied.found | default(0) > 0 }}]"
+  when:
+    - debugFlag is defined
+    - _mod.value.checkPattern is defined
+
+##############################################################################
+# Apply modification based on operation type
+##############################################################################
+- name: Apply {{ _mod.value.operation }} operation for {{ _mod.key }}
+  block:
+    ##########################################################################
+    # Prepend operation
+    ##########################################################################
+    - name: Prepend parameters to file
+      ansible.builtin.replace:
+        path: "{{ filePath }}"
+        regexp: '^(.*)$'
+        replace: '{{ _mod.value.parameters }} \1'
+        backup: "{{ (createBackup | default(true)) if _indx == 0 else false }}"
+      register: _modResult
+      when: _mod.value.operation == 'prepend'
+
+    ##########################################################################
+    # Append operation
+    ##########################################################################
+    - name: Append parameters to file
+      ansible.builtin.replace:
+        path: "{{ filePath }}"
+        regexp: '^(.*)$'
+        replace: '\1 {{ _mod.value.parameters }}'
+        backup: "{{ (createBackup | default(true)) if _indx == 0 else false }}"
+      register: _modResult
+      when: _mod.value.operation == 'append'
+
+    ##########################################################################
+    # Lineinfile operation
+    ##########################################################################
+    - name: Apply lineinfile modification
+      ansible.builtin.lineinfile:
+        path: "{{ filePath }}"
+        regexp: "{{ _mod.value.regexp }}"
+        line: "{{ _mod.value.line }}"
+        backup: "{{ (createBackup | default(true)) if _indx == 0 else false }}"
+        backrefs: "{{ _mod.value.backrefs | default(false) }}"
+      register: _modResult
+      when: _mod.value.operation == 'lineinfile'
+
+    ##########################################################################
+    # Replace operation
+    ##########################################################################
+    - name: Apply replace modification
+      ansible.builtin.replace:
+        path: "{{ filePath }}"
+        regexp: "{{ _mod.value.regexp }}"
+        replace: "{{ _mod.value.replace }}"
+        backup: "{{ (createBackup | default(true)) if _indx == 0 else false }}"
+      register: _modResult
+      when: _mod.value.operation == 'replace'
+
+  when: _mod.value.checkPattern is not defined or _alreadyApplied.found == 0
+
+##############################################################################
+# Display result
+##############################################################################
+- name: Debug modification result
+  debug:
+    msg: >-
+      {{ '[DEBUG] *** Applied [' + _mod.value.operation + '] for [' + _mod.key + ']: ' + _mod.value.description | default('No description')
+           if _modResult is defined and _modResult is changed else
+         '[DEBUG] *** Skipped [' + _mod.key + '] - already applied' }}
+  when: debugFlag is defined
+
+##############################################################################
+# Cleanup temporary facts
+##############################################################################
+- name: Cleanup temporary facts
+  set_fact:
+    _alreadyApplied: null
+    _modResult: null

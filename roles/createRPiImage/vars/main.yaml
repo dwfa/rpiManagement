@@ -11,8 +11,8 @@
 # Copyright 2025 Douglas WF Acheson (dwfa@dwfa.ca)
 # Licensed under Apache License 2.0. See LICENSE.md for details.
 #
-# Version: 1.6
-# Date: October 25, 2025
+# Version: 1.7
+# Date: October 26, 2025
 ##############################################################################
 
 ---                                            # identifies a YAML config file
@@ -25,7 +25,15 @@ bootMountPoint: "{{ '/Volumes/boot' if ansible_system == 'Darwin' else '/mnt/boo
 
 ##############################################################################
 # Boot partition device path
-# Default: {{ installDevice }}1 (first partition of install device)
+# Default:  {{ installDevice }}1 (first partition of install device)
 # Override: Pass bootPartitionDevice variable when calling role
 ##############################################################################
 _bootPartitionDevice: "{{ bootPartitionDevice | default(installDevice + '1') }}"
+
+##############################################################################
+# File paths for config.txt modification task
+#   _configTxtPath:     Target file on mounted boot partition
+#   _configTxtModsPath: Metadata file defining modifications to apply
+##############################################################################
+_configTxtPath:     "{{ bootMountPoint }}/config.txt"
+_configTxtModsPath: "{{ dataDir }}/rpi/config-txt-mods.yaml"

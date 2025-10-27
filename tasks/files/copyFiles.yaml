@@ -46,8 +46,8 @@
 # Copyright 2025 Douglas WF Acheson (dwfa@dwfa.ca)
 # Licensed under Apache License 2.0. See LICENSE.md for details.
 #
-# Version: 4.3
-# Date: October 25, 2025
+# Version: 4.4
+# Date: October 26, 2025
 ##############################################################################
 ---                                            # identifies a YAML config file
 
@@ -78,10 +78,13 @@
   when: debugFlag is defined
 
 ##############################################################################
-# Cleanup temporary facts (loaded and register variables)
+# Cleanup temporary facts
+# Note: Clean up all variables loaded from metadata file and registered vars
 ##############################################################################
 - name: Cleanup temporary facts
   set_fact:
     _cifResult: null
-    _srcDir: null
     _destDir: null
+    _srcDir: null
+    fileSystems: null
+    initFiles: null

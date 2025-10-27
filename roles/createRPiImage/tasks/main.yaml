@@ -14,12 +14,12 @@
 #   - debugFlag: (optional) Enable debug output
 #
 # WORKFLOW:
-#   1. Write image to device using writeImage.yaml task
-#   2. Calculate boot partition path (device + '1')
-#   3. Mount boot partition to bootMountPoint
+#   1. Unmount all partitions on target device (prevents dd "device busy" errors)
+#   2. Write image to device using writeImage.yaml task
+#   3. Mount boot partition to bootMountPoint (handles auto-mount if needed)
 #   4. Copy initialization files to boot partition
-#   5. Unmount boot partition
-#   6. Cleanup temporary variables
+#   5. Modify config.txt on boot partition
+#   6. Unmount boot partition
 #
 # EXAMPLE:
 #   - hosts: localhost
@@ -37,10 +37,20 @@
 # Copyright 2025 Douglas WF Acheson (dwfa@dwfa.ca)
 # Licensed under Apache License 2.0. See LICENSE.md for details.
 #
-# Version: 3.4
-# Date: October 25, 2025
+# Version: 3.5
+# Date: October 26, 2025
 ##############################################################################
 ---                                            # identifies a YAML config file
+
+##############################################################################
+# Unmount all partitions on target device before writing
+# Note: Idempotent - succeeds gracefully if device not mounted
+##############################################################################
+- name: Unmount all partitions on target device
+  include_tasks:
+    file: "{{ taskDir }}/fileSystem/unmountDevice.yaml"
+  vars:
+    device: "{{ installDevice }}"
 
 ##############################################################################
 # Write RPi image to device
@@ -70,6 +80,16 @@
     file: "{{ taskDir }}/files/copyFiles.yaml"
   vars:
     metadataPath: "{{ dataDir }}/rpi/metadata.yaml"
+
+#############################################################################
+# Update boot/config.txt
+##############################################################################
+- name: Update config.txt
+  include_tasks:
+    file: "{{ taskDir }}/files/modifyFile.yaml"
+  vars:
+    filePath:     "{{ _configTxtPath }}"
+    metadataPath: "{{ _configTxtModsPath }}"
 
 ##############################################################################
 # Unmount boot partition

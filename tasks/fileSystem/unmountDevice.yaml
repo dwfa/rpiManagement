@@ -1,0 +1,80 @@
+##############################################################################
+# Ansible task to unmount all partitions on a device
+#
+# USAGE:
+#   Unmounts all mounted partitions on a specified block device.
+#   Idempotent: succeeds gracefully if device not mounted.
+#   Currently supports macOS only.
+#
+# REQUIRED VARIABLES:
+#   - device: Device path (e.g., /dev/disk4)
+#
+# OPTIONAL VARIABLES:
+#   - debugFlag: Enable debug output
+#
+# WORKFLOW:
+#   1. Validate platform (macOS only for now)
+#   2. Unmount all partitions on device using diskutil unmountDisk
+#   3. Handle errors:
+#      - Success if already unmounted (idempotent)
+#      - Fail only on real errors (busy, permissions, etc.)
+#   4. Display status (debug mode only)
+#   5. Cleanup temporary variables
+#
+# EXAMPLE:
+#   - name: Unmount device before writing image
+#     include_tasks:
+#       file: "{{ taskDir }}/fileSystem/unmountDevice.yaml"
+#     vars:
+#       device: "{{ installDevice }}"
+#
+# NOTES:
+#   - macOS: Uses `diskutil unmountDisk` to unmount all partitions
+#   - Linux: Not yet implemented (see BACKLOG.md)
+#   - Idempotent: Success whether device mounted or not
+#   - Only fails on real errors (busy, permissions, device not found)
+#   - Required before writing images with dd to prevent "device busy" errors
+#
+# Copyright 2025 Douglas WF Acheson (dwfa@dwfa.ca)
+# Licensed under Apache License 2.0. See LICENSE.md for details.
+#
+# Version: 1.0
+# Date: October 26, 2025
+##############################################################################
+---                                            # identifies a YAML config file
+
+##############################################################################
+# Validate platform is supported
+##############################################################################
+- name: Validate platform is supported
+  ansible.builtin.fail:
+    msg: "[ERROR] *** Platform [{{ ansible_system }}] not yet supported for unmountDevice (macOS so far)."
+  when: ansible_system not in ['Darwin']
+
+##############################################################################
+# Unmount all partitions on device (macOS)
+##############################################################################
+- name: Unmount all partitions on device (macOS)
+  ansible.builtin.command:
+    cmd: diskutil unmountDisk {{ device }}
+  register: _unmountResult
+  failed_when:
+    - _unmountResult.rc != 0
+    - "'not mounted' not in _unmountResult.stderr | lower"
+    - "'already unmounted' not in _unmountResult.stderr | lower"
+  changed_when: _unmountResult.rc == 0
+  when: ansible_system == 'Darwin'
+
+- name: Display unmount status
+  debug:
+    msg: "[DEBUG] *** Unmounted all partitions on device [{{ device }}]"
+  when:
+    - debugFlag is defined
+    - _unmountResult is changed
+
+##############################################################################
+# Cleanup temporary facts
+##############################################################################
+- name: Cleanup temporary facts
+  set_fact:
+    _unmountResult: null

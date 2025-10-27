@@ -1,0 +1,122 @@
+##############################################################################
+# Ansible task to modify text files based on metadata configuration
+#
+# USAGE:
+#   Generic task to apply line-based modifications to any text file.
+#   Modifications are defined in a metadata YAML file with a '_modList'
+#   structure. Supports prepend, append, lineinfile, and replace operations.
+#
+# REQUIRED VARIABLES:
+#   - filePath: Path to text file to modify
+#   - metadataPath: Path to metadata YAML file defining modifications
+#
+# OPTIONAL VARIABLES:
+#   - createBackup: Create .bak backup file (default: true)
+#   - debugFlag: Enable debug output
+#
+# WORKFLOW:
+#   1. Validate file exists
+#   2. Load modification configuration from metadataPath
+#   3. Validate metadata structure
+#   4. For each modification:
+#      - Check if already applied (using checkPattern if provided)
+#      - Validate operation type
+#      - Apply modification using appropriate Ansible module
+#   5. Display modification summary (debug mode only)
+#   6. Cleanup temporary variables
+#
+# EXAMPLE:
+#   - name: Modify cmdline.txt on boot partition
+#     include_tasks:
+#       file: "{{ taskDir }}/files/modifyFile.yaml"
+#     vars:
+#       filePath: "{{ bootMountPoint }}/cmdline.txt"
+#       metadataPath: "{{ dataDir }}/rpi/metadata.yaml"
+#
+#   - name: Modify config file post-boot
+#     include_tasks:
+#       file: "{{ taskDir }}/files/modifyFile.yaml"
+#     vars:
+#       filePath: "/boot/config.txt"
+#       metadataPath: "{{ dataDir }}/rpi/metadata.yaml"
+#       createBackup: false
+#
+# NOTES:
+#   - Metadata file must contain '_modList' dictionary
+#   - Supported operations: prepend, append, lineinfile, replace
+#   - Uses Ansible's built-in modules for file safety
+#   - Backup created automatically on first modification (if createBackup true)
+#   - Idempotent: checks if modification already applied via checkPattern
+#   - Operation-specific requirements:
+#     - prepend/append: requires 'parameters' field
+#     - lineinfile: requires 'regexp' and 'line' fields
+#     - replace: requires 'regexp' and 'replace' fields
+#
+# Copyright 2025 Douglas WF Acheson (dwfa@dwfa.ca)
+# Licensed under Apache License 2.0. See LICENSE.md for details.
+#
+# Version: 1.4
+# Date: October 26, 2025
+##############################################################################
+---                                            # identifies a YAML config file
+
+##############################################################################
+# Load and validate file modifications from metadata
+##############################################################################
+- name: Load and validate file modifications
+  block:
+    - name: Load file modifications from metadata
+      include_vars:
+        file: "{{ metadataPath }}"
+
+    - name: Validate metadata contains modifications
+      ansible.builtin.fail:
+        msg: "[ERROR] *** No _modList found in [{{ metadataPath }}]"
+      when: _modList is not defined or _modList | length == 0
+
+    - name: Debug loaded modifications
+      debug:
+        msg: "[DEBUG] *** Loaded [{{ _modList | length }}] modifications from [{{ metadataPath }}]"
+      when: debugFlag is defined
+
+##############################################################################
+# Validate target file exists
+##############################################################################
+- name: Validate target file
+  block:
+    - name: Check if target file exists
+      ansible.builtin.stat:
+        path: "{{ filePath }}"
+      register: _fileCheck
+
+    - name: Fail if file doesn't exist
+      ansible.builtin.fail:
+        msg: "[ERROR] *** File not found: [{{ filePath }}]"
+      when: not _fileCheck.stat.exists
+
+##############################################################################
+# Apply file modifications
+##############################################################################
+- name: Apply modifications to file
+  block:
+    - name: Process each modification
+      include_tasks:
+        file: "{{ taskDir }}/files/helper/applyModification.yaml"
+      loop: "{{ _modList | dict2items }}"
+      loop_control:
+        loop_var: _mod
+        index_var: _indx
+
+    - name: Display modification summary
+      debug:
+        msg: "[DEBUG] *** Completed [{{ _modList | length }}] modifications to [{{ filePath }}]"
+      when: debugFlag is defined
+
+##############################################################################
+# Cleanup temporary facts
+# Note: Clean up all variables loaded from metadata file and registered vars
+##############################################################################
+- name: Cleanup temporary facts
+  set_fact:
+    _fileCheck: null
+    _modList: null

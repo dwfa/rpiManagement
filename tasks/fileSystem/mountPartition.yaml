@@ -146,15 +146,15 @@
 - name: Mount partition (macOS)
   ansible.builtin.command:
     cmd: "diskutil mount -mountPoint {{ mountPoint }} {{ _normalizedPartitionPath }}"
-  register: _mountResult
-  failed_when: _mountResult.rc not in [0]
+  register: _mountPartitionResult
+  failed_when: _mountPartitionResult.rc not in [0]
   when: ansible_system == 'Darwin'
 
 - name: Mount partition (Linux)
   ansible.builtin.command:
     cmd: "mount {{ _normalizedPartitionPath }} {{ mountPoint }}"
-  register: _mountResult
-  failed_when: _mountResult.rc not in [0]
+  register: _mountPartitionResult
+  failed_when: _mountPartitionResult.rc not in [0]
   when: ansible_system == 'Linux'
 
 - name: Display mount status
@@ -170,4 +170,4 @@
     _normalizedPartitionPath: null
     _partitionMountCheck: null
     _mountPointCheck: null
-    _mountResult: null
+    _mountPartitionResult: null

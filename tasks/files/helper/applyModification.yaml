@@ -94,7 +94,7 @@
     - name: Prepend parameters to file
       ansible.builtin.replace:
         path: "{{ filePath }}"
-        regexp: '^(.*)$'
+        regexp: '^(.+)$'
         replace: '{{ _mod.value.parameters }} \1'
         backup: "{{ (createBackup | default(true)) if _indx == 0 else false }}"
       register: _modResult
@@ -106,7 +106,7 @@
     - name: Append parameters to file
       ansible.builtin.replace:
         path: "{{ filePath }}"
-        regexp: '^(.*)$'
+        regexp: '^(.+)$'
         replace: '\1 {{ _mod.value.parameters }}'
         backup: "{{ (createBackup | default(true)) if _indx == 0 else false }}"
       register: _modResult

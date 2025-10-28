@@ -57,12 +57,12 @@
 - name: Unmount all partitions on device (macOS)
   ansible.builtin.command:
     cmd: diskutil unmountDisk {{ device }}
-  register: _unmountResult
+  register: _unmountDeviceResult
   failed_when:
-    - _unmountResult.rc != 0
-    - "'not mounted' not in _unmountResult.stderr | lower"
-    - "'already unmounted' not in _unmountResult.stderr | lower"
-  changed_when: _unmountResult.rc == 0
+    - _unmountDeviceResult.rc != 0
+    - "'not mounted' not in _unmountDeviceResult.stderr | lower"
+    - "'already unmounted' not in _unmountDeviceResult.stderr | lower"
+  changed_when: _unmountDeviceResult.rc == 0
   when: ansible_system == 'Darwin'
 
 - name: Display unmount status
@@ -70,11 +70,11 @@
     msg: "[DEBUG] *** Unmounted all partitions on device [{{ device }}]"
   when:
     - debugFlag is defined
-    - _unmountResult is changed
+    - _unmountDeviceResult is changed
 
 ##############################################################################
 # Cleanup temporary facts
 ##############################################################################
 - name: Cleanup temporary facts
   set_fact:
-    _unmountResult: null
+    _unmountDeviceResult: null

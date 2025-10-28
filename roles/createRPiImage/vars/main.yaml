@@ -11,8 +11,8 @@
 # Copyright 2025 Douglas WF Acheson (dwfa@dwfa.ca)
 # Licensed under Apache License 2.0. See LICENSE.md for details.
 #
-# Version: 1.7
-# Date: October 26, 2025
+# Version: 1.8
+# Date: October 27, 2025
 ##############################################################################
 
 ---                                            # identifies a YAML config file
@@ -31,9 +31,9 @@ bootMountPoint: "{{ '/Volumes/boot' if ansible_system == 'Darwin' else '/mnt/boo
 _bootPartitionDevice: "{{ bootPartitionDevice | default(installDevice + '1') }}"
 
 ##############################################################################
-# File paths for config.txt modification task
-#   _configTxtPath:     Target file on mounted boot partition
-#   _configTxtModsPath: Metadata file defining modifications to apply
+# File paths for cmdline.txt modification task
+#   _cmdlineTxtPath:     Target file on mounted boot partition
+#   _cmdlineTxtModsPath: Metadata file defining modifications to apply
 ##############################################################################
-_configTxtPath:     "{{ bootMountPoint }}/config.txt"
-_configTxtModsPath: "{{ dataDir }}/rpi/config-txt-mods.yaml"
+_cmdlineTxtPath:     "{{ bootMountPoint }}/cmdline.txt"
+_cmdlineTxtModsPath: "{{ dataDir }}/rpi/cmdline-txt-mods.yaml"

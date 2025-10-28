@@ -18,7 +18,7 @@
 #   2. Write image to device using writeImage.yaml task
 #   3. Mount boot partition to bootMountPoint (handles auto-mount if needed)
 #   4. Copy initialization files to boot partition
-#   5. Modify config.txt on boot partition
+#   5. Modify cmdline.txt on boot partition (kernel boot parameters)
 #   6. Unmount boot partition
 #
 # EXAMPLE:
@@ -37,8 +37,8 @@
 # Copyright 2025 Douglas WF Acheson (dwfa@dwfa.ca)
 # Licensed under Apache License 2.0. See LICENSE.md for details.
 #
-# Version: 3.5
-# Date: October 26, 2025
+# Version: 3.6
+# Date: October 27, 2025
 ##############################################################################
 ---                                            # identifies a YAML config file
 
@@ -82,14 +82,14 @@
     metadataPath: "{{ dataDir }}/rpi/metadata.yaml"
 
 #############################################################################
-# Update boot/config.txt
+# Update boot/cmdline.txt
 ##############################################################################
-- name: Update config.txt
+- name: Update cmdline.txt
   include_tasks:
     file: "{{ taskDir }}/files/modifyFile.yaml"
   vars:
-    filePath:     "{{ _configTxtPath }}"
-    metadataPath: "{{ _configTxtModsPath }}"
+    filePath:     "{{ _cmdlineTxtPath }}"
+    metadataPath: "{{ _cmdlineTxtModsPath }}"
 
 ##############################################################################
 # Unmount boot partition

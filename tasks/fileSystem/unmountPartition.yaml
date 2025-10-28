@@ -91,17 +91,17 @@
 - name: Unmount partition (macOS)
   ansible.builtin.command:
     cmd: "diskutil unmount {{ mountPoint }}"
-  register: _unmountResult
+  register: _unmountPartitionResult
   failed_when: false
-  changed_when: _unmountResult.rc == 0
+  changed_when: _unmountPartitionResult.rc == 0
   when: ansible_system == 'Darwin'
 
 - name: Unmount partition (Linux)
   ansible.builtin.command:
     cmd: "umount {{ mountPoint }}"
-  register: _unmountResult
+  register: _unmountPartitionResult
   failed_when: false
-  changed_when: _unmountResult.rc == 0
+  changed_when: _unmountPartitionResult.rc == 0
   when: ansible_system == 'Linux'
 
 ##############################################################################
@@ -109,11 +109,14 @@
 ##############################################################################
 - name: Check for real unmount errors
   fail:
-    msg: "[ERROR] *** Failed to unmount [{{ mountPoint }}]: {{ _unmountResult.stderr | default(_unmountResult.stdout) }}"
+    msg: "[ERROR] *** Failed to unmount [{{ mountPoint }}]: {{ _unmountPartitionResult.stderr | default(_unmountPartitionResult.stdout) }}"
   when:
-    - _unmountResult.rc != 0
-    - "'not mounted' not in (_unmountResult.stderr | default('') | lower)"
-    - "'not currently mounted' not in (_unmountResult.stderr | default('') | lower)"
+    - _unmountPartitionResult is defined
+    - _unmountPartitionResult is not none
+    - _unmountPartitionResult.rc is defined
+    - _unmountPartitionResult.rc != 0
+    - "'not mounted' not in (_unmountPartitionResult.stderr | default('') | lower)"
+    - "'not currently mounted' not in (_unmountPartitionResult.stderr | default('') | lower)"
     - forceUnmount is not defined or not forceUnmount
 
 ##############################################################################
@@ -122,38 +125,48 @@
 - name: Force unmount partition (macOS)
   ansible.builtin.command:
     cmd: "diskutil unmount force {{ mountPoint }}"
-  register: _forceUnmountResult
-  failed_when: _forceUnmountResult.rc != 0
+  register: _forceUnmountPartitionResult
+  failed_when: _forceUnmountPartitionResult.rc != 0
   when:
     - ansible_system == 'Darwin'
     - forceUnmount is defined and forceUnmount
-    - _unmountResult.rc != 0
-    - "'not mounted' not in (_unmountResult.stderr | default('') | lower)"
-    - "'not currently mounted' not in (_unmountResult.stderr | default('') | lower)"
+    - _unmountPartitionResult is defined
+    - _unmountPartitionResult is not none
+    - _unmountPartitionResult.rc is defined
+    - _unmountPartitionResult.rc != 0
+    - "'not mounted' not in (_unmountPartitionResult.stderr | default('') | lower)"
+    - "'not currently mounted' not in (_unmountPartitionResult.stderr | default('') | lower)"
 
 - name: Force unmount partition (Linux)
   ansible.builtin.command:
     cmd: "umount -f {{ mountPoint }}"
-  register: _forceUnmountResult
-  failed_when: _forceUnmountResult.rc != 0
+  register: _forceUnmountPartitionResult
+  failed_when: _forceUnmountPartitionResult.rc != 0
   when:
     - ansible_system == 'Linux'
     - forceUnmount is defined and forceUnmount
-    - _unmountResult.rc != 0
-    - "'not mounted' not in (_unmountResult.stderr | default('') | lower)"
+    - _unmountPartitionResult is defined
+    - _unmountPartitionResult is not none
+    - _unmountPartitionResult.rc is defined
+    - _unmountPartitionResult.rc != 0
+    - "'not mounted' not in (_unmountPartitionResult.stderr | default('') | lower)"
 
 - name: Display unmount status
   debug:
     msg: >-
       {{ '[DEBUG] *** Unmounted [' + mountPoint + '] (was mounted: [true])'
-           if _unmountResult.rc == 0 else
+           if _unmountPartitionResult.rc == 0 else
          '[DEBUG] *** Target [' + mountPoint + '] was already unmounted (was mounted: [false])' }}
-  when: debugFlag is defined
+  when:
+    - debugFlag is defined
+    - _unmountPartitionResult is defined
+    - _unmountPartitionResult is not none
+    - _unmountPartitionResult.rc is defined
 
 ##############################################################################
 # Cleanup temporary facts (play-scoped register variables)
 ##############################################################################
 - name: Cleanup temporary facts
   set_fact:
-    _unmountResult: null
-    _forceUnmountResult: null
+    _unmountPartitionResult: null
+    _forceUnmountPartitionResult: null

@@ -1,0 +1,38 @@
+# Raspberry Pi User Configuration for First Boot
+#
+# FORMAT: username:encrypted_password
+#
+# This file is read by Raspberry Pi OS on first boot to create the initial user.
+# The password must be encrypted using SHA-512 hashing.
+#
+# STEPS TO CREATE YOUR USER:
+#
+# 1. Choose your username (e.g., "pi", "admin", your name)
+#
+# 2. Generate encrypted password using ONE of these methods:
+#
+#    Method A - Using openssl (available on macOS/Linux):
+#      openssl passwd -6
+#      (You'll be prompted to enter your password twice)
+#
+#    Method B - Using mkpasswd (if installed):
+#      mkpasswd -m sha-512
+#      (You'll be prompted to enter your password twice)
+#
+# 3. Replace the TODO line below with:
+#    username:encrypted_password_hash
+#
+# 4. Remove all comment lines (lines starting with #)
+#
+# EXAMPLE (do not use this actual hash!):
+#   pi:$6$rounds=5000$randomsalt$longhashstring...
+#
+# IMPORTANT:
+#   - No spaces around the colon
+#   - Hash starts with $6$ for SHA-512
+#   - Keep this file secure (contains password hash)
+#
+# External Documentation:
+#   https://www.raspberrypi.com/documentation/computers/configuration.html#the-userconf-file
+
+TODO_USERNAME:TODO_ENCRYPTED_PASSWORD

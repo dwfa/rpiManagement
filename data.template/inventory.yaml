@@ -1,0 +1,135 @@
+##############################################################################
+# Ansible inventory file
+#
+# USAGE:
+#   Defines hosts and groups for Ansible playbooks. This file is referenced
+#   in ansible.cfg as the primary inventory source.
+#
+# STRUCTURE:
+#   all:
+#     hosts:       Dictionary of individual hosts
+#     children:    Dictionary of host groups
+#
+# HOST DEFINITION:
+#   hostname:
+#     ansible_host: IP address or FQDN
+#     ansible_user: SSH username (optional, overrides common role default)
+#     ansible_port: SSH port (optional, default 22)
+#     <custom_vars>: Any additional host-specific variables
+#
+# GROUP DEFINITION:
+#   group_name:
+#     hosts:       Dictionary of hosts in this group
+#     vars:        Group-level variables (optional)
+#
+# CUSTOMIZATION:
+#   1. Replace TODO entries with your actual hosts
+#   2. Define host groups based on role/function
+#   3. Set host-specific variables as needed
+#   4. Organize by network topology if using multiple subnets
+#
+# EXAMPLES:
+#   See commented examples below for common patterns
+#
+# Copyright 2025 Douglas WF Acheson (dwfa@dwfa.ca)
+# Licensed under Apache License 2.0. See LICENSE.md for details.
+#
+# Version: 1.0
+# Date: October 28, 2025
+##############################################################################
+---
+
+all:
+  hosts:
+    # Local control machine (where Ansible runs)
+    localhost:
+      ansible_connection: local
+
+    # TODO: Add your Raspberry Pi hosts here
+    # Example:
+    # rpi-01:
+    #   ansible_host: 192.168.1.100
+    # rpi-02:
+    #   ansible_host: 192.168.1.101
+
+  children:
+    # TODO: Define host groups based on function
+    # Example groups:
+
+    # DNS servers
+    # dns:
+    #   hosts:
+    #     rpi-dns:
+    #       ansible_host: 192.168.2.17
+
+    # Web servers
+    # webservers:
+    #   hosts:
+    #     rpi-web-01:
+    #       ansible_host: 192.168.2.20
+    #     rpi-web-02:
+    #       ansible_host: 192.168.2.21
+
+    # Database servers
+    # databases:
+    #   hosts:
+    #     rpi-db:
+    #       ansible_host: 192.168.2.30
+
+    # Development/testing hosts
+    # dev:
+    #   hosts:
+    #     rpi-dev:
+    #       ansible_host: 192.168.128.35
+
+    # Installer network (for initial imaging)
+    # installer:
+    #   hosts:
+    #     rpi-installer:
+    #       ansible_host: 192.168.129.1
+
+##############################################################################
+# Advanced Examples
+##############################################################################
+
+# Multiple network topology example:
+# all:
+#   children:
+#     production:
+#       hosts:
+#         rpi-prod-01:
+#           ansible_host: 192.168.2.10
+#       vars:
+#         environment: production
+#
+#     staging:
+#       hosts:
+#         rpi-stage-01:
+#           ansible_host: 192.168.128.10
+#       vars:
+#         environment: staging
+#
+#     development:
+#       hosts:
+#         rpi-dev-01:
+#           ansible_host: 192.168.129.10
+#       vars:
+#         environment: development
+
+# Host with custom SSH settings:
+# special-host:
+#   ansible_host: 192.168.1.50
+#   ansible_port: 2222
+#   ansible_user: admin
+#   ansible_ssh_private_key_file: "{{ dataDir }}/keys/special.key"
+
+# Group with common variables:
+# web_cluster:
+#   hosts:
+#     web-01:
+#       ansible_host: 192.168.2.20
+#     web-02:
+#       ansible_host: 192.168.2.21
+#   vars:
+#     nginx_port: 8080
+#     app_environment: production

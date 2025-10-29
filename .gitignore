@@ -14,8 +14,10 @@ BACKLOG.md
 # Personal development notes (local only)
 NOTES.md
 
-# Actual inventory file (moved to data/)
-inventory.yaml
+# Actual inventory file (in data/ directory)
+# Note: data.template/inventory.yaml is the template and should be tracked
+/inventory.yaml
+data/inventory.yaml
 
 # Test and development files (not for public release)
 test.sh

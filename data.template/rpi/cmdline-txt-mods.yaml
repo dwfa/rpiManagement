@@ -1,0 +1,63 @@
+##############################################################################
+# Text file modifications for RPi kernel command line
+#
+# USAGE:
+#   Defines text file modifications to apply to /boot/cmdline.txt
+#   (Linux kernel boot parameters) via tasks/files/modifyFile.yaml
+#
+# STRUCTURE:
+#   _modList: Dictionary of modifications to apply
+#   Each modification entry contains:
+#     - checkPattern: Regex to check if modification already applied (idempotency)
+#     - description: Human-readable description of what the modification does
+#     - operation: Type of modification (prepend, append, lineinfile, replace)
+#     - parameters: Content to add (for prepend/append operations)
+#     - regexp: Pattern to match (for lineinfile/replace operations)
+#     - line: Line to insert (for lineinfile operation)
+#     - replace: Replacement text (for replace operation)
+#
+# OPERATIONS:
+#   - prepend: Add content to beginning of every line
+#   - append: Add content to end of every line
+#   - lineinfile: Ensure a line exists matching regexp, insert/replace with line
+#   - replace: Replace text matching regexp with replace value
+#
+# NOTES:
+#   - Applied during image creation (mounted boot partition) or post-boot
+#   - Uses checkPattern for idempotency (skips if already applied)
+#   - Backup created on first modification per file (if createBackup enabled)
+#   - Keys are ordered alphabetically within each modification
+#   - Quotes aligned vertically for readability
+#
+# CUSTOMIZATION:
+#   - Comment out videoConsole example if not needed
+#   - Add your own kernel boot parameters as needed
+#   - Test modifications carefully (invalid cmdline.txt can prevent boot)
+#
+# Copyright 2025 Douglas WF Acheson (dwfa@dwfa.ca)
+# Licensed under Apache License 2.0. See LICENSE.md for details.
+#
+# Version: 1.0
+# Date: October 28, 2025
+##############################################################################
+---                                            # identifies a YAML config file
+
+##############################################################################
+# Kernel command-line modifications for cmdline.txt
+##############################################################################
+_modList:
+  # Example: Console video resolution for dual HDMI output
+  # Uncomment and customize if you need specific video settings
+  # videoConsole:
+  #   checkPattern: '.*video=HDMI-A-[12]:1920x1080.*'
+  #   description:  "Console video resolution for dual HDMI output at 1920x1080"
+  #   operation:    "append"
+  #   parameters:   "video=HDMI-A-1:1920x1080M@60e video=HDMI-A-2:1920x1080M@60e"
+
+  # TODO: Add your kernel boot parameters here
+  # Example - Enable serial console:
+  # serialConsole:
+  #   checkPattern: '.*console=serial0,115200.*'
+  #   description:  "Enable serial console output"
+  #   operation:    "append"
+  #   parameters:   "console=serial0,115200"

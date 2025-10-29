@@ -13,4 +13,4 @@
 
 ---                                            # identifies a YAML config file
 
-# No role-specific variables needed - inherits from group_vars/all.yaml
+# No role-specific variables needed - inherits from common role

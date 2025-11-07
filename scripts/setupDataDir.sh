@@ -164,7 +164,7 @@ printf "%b" "${GREEN_COLOUR}[INFO] *** Setting permissions on sensitive files${N
 
 sensitiveFiles=(
   "data/credentials/default.yaml"
-  "data/keys/ssh.key"
+  "data/.ssh/ssh_key"
 )
 
 for file in "${sensitiveFiles[@]}"; do
@@ -199,8 +199,8 @@ fi
 printf "%b" "${YELLOW_COLOUR}Next Steps:${NORMAL_COLOUR}\n"
 printf "\n"
 printf "1. Add SSH private key:\n"
-printf "   cp ~/.ssh/your_key data/keys/ssh.key\n"
-printf "   chmod 600 data/keys/ssh.key\n"
+printf "   cp ~/.ssh/your_key data/.ssh/ssh_key\n"
+printf "   chmod 600 data/.ssh/ssh_key\n"
 printf "\n"
 printf "2. Create encrypted credentials (interactive):\n"
 printf "   ./scripts/setupCredentials.sh\n"

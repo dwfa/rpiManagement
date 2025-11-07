@@ -26,7 +26,7 @@ userCreds: "{{ lookup('file', userCredsPath) | from_yaml }}"
 # SSH connection configuration
 ansible_user: "{{ userCreds['userData']['uid'] }}"
 ansible_ssh_pass: "{{ userCreds['userData']['pwd'] }}"
-ansible_ssh_private_key_file: "{{ dataDir }}/keys/ssh.key"
+ansible_ssh_private_key_file: "{{ dataDir }}/.ssh/ssh_key"
 ansible_ssh_common_args: "-o UserKnownHostsFile={{ dataDir }}/.ssh/knownHosts"
 
 # Privilege escalation configuration

@@ -1,4 +1,6 @@
 {
+  "MD032": true,
+  "MD036": true,
   "MD033": {
     "allowed_elements": ["username", "password", "sudo_password"]
   }

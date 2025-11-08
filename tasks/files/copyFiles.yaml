@@ -3,7 +3,7 @@
 #
 # USAGE:
 #   Generic task to copy files from a source directory to a destination directory.
-#   Files to copy are defined in a metadata YAML file with an 'initFiles' structure.
+#   Files to copy are defined in a metadata YAML file with an '_initFiles' structure.
 #   Source and destination can be overridden or use defaults from metadata.
 #   Caller is responsible for mounting/unmounting if needed.
 #
@@ -16,7 +16,7 @@
 #   - debugFlag: Enable debug output
 #
 # WORKFLOW:
-#   1. Load file configuration from metadataFile (_srcDir, _destDir, initFiles)
+#   1. Load file configuration from metadataFile (_srcDir, _destDir, _initFiles)
 #   2. Copy each file from _srcDir to _destDir (using passed overrides if provided)
 #   3. Display copy status (debug mode only)
 #   4. Cleanup temporary variables
@@ -36,7 +36,7 @@
 #       destDir: "/custom/destination"
 #
 # NOTES:
-#   - Metadata file must contain 'initFiles' dictionary and optionally _srcDir/_destDir
+#   - Metadata file must contain '_initFiles' dictionary and optionally _srcDir/_destDir
 #   - Metadata defines: _srcDir (with sourceDir override), _destDir (with destDir override)
 #   - Example metadata: _srcDir: "{{ sourceDir | default(dataDir + '/rpi') }}"
 #   - Caller must ensure destDir is accessible (mounted if needed)
@@ -63,10 +63,10 @@
 ##############################################################################
 - name: Copy files from source to destination
   ansible.builtin.copy:
-    dest: "{{ _destDir }}/{{ initFiles[item].file }}"
-    src: "{{ _srcDir }}/{{ initFiles[item].file }}"
+    dest: "{{ _destDir }}/{{ _initFiles[item].file }}"
+    src: "{{ _srcDir }}/{{ _initFiles[item].file }}"
     mode: 0644
-  with_items: "{{ initFiles.keys() | list }}"
+  with_items: "{{ _initFiles.keys() | list }}"
   register: _cifResult
 
 - name: Display copy status
@@ -86,5 +86,5 @@
     _cifResult: null
     _destDir: null
     _srcDir: null
-    fileSystems: null
-    initFiles: null
+    _fileSystems: null
+    _initFiles: null

@@ -21,7 +21,7 @@ This directory contains configuration files and initialization files that are co
 **metadata.yaml**
 - Defines which initialization files to copy to the boot partition
 - Specifies source and destination directories
-- Configure the `initFiles` section to control which files are copied
+- Configure the `_initFiles` section to control which files are copied
 - See file comments for detailed structure
 
 **cmdline-txt-mods.yaml**
@@ -47,7 +47,7 @@ This directory contains configuration files and initialization files that are co
 
 1. **Review metadata.yaml**
    - Verify which files should be copied to boot partition
-   - Add or remove files from `initFiles` section as needed
+   - Add or remove files from `_initFiles` section as needed
 
 2. **Customize cmdline-txt-mods.yaml**
    - Review video console settings (or comment out if not needed)

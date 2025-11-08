@@ -8,7 +8,7 @@
 # STRUCTURE:
 #   _srcDir: Source directory for init files (typically {{ dataDir }}/rpi)
 #   _destDir: Destination directory (typically {{ bootMountPoint }})
-#   initFiles: Dictionary of files to copy
+#   _initFiles: Dictionary of files to copy
 #     Each entry:
 #       key: Logical name for the file
 #       src: Source filename (relative to _srcDir)
@@ -16,7 +16,7 @@
 #
 # CUSTOMIZATION:
 #   1. Verify _srcDir and _destDir paths are correct
-#   2. Add/remove entries in initFiles section
+#   2. Add/remove entries in _initFiles section
 #   3. Ensure source files exist in data/rpi/ directory
 #
 # Copyright 2025 Douglas WF Acheson (dwfa@dwfa.ca)
@@ -36,7 +36,7 @@ _destDir: "{{ bootMountPoint }}"
 ##############################################################################
 # Initialization files to copy to boot partition
 ##############################################################################
-initFiles:
+_initFiles:
   # Enable SSH on first boot
   ssh:
     src:  "ssh"

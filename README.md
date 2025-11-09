@@ -12,25 +12,37 @@
 
 # Ansible RPi Management Framework
 
-A comprehensive Ansible automation framework for managing Raspberry Pi devices, with specialized support for Unix based systems, starting with MacOS. This project automates the complete lifecycle of RPi deployment from OS image preparation to application and network configuration.
+A comprehensive Ansible automation framework for managing Raspberry Pi
+devices, with specialized support for Unix based systems, starting with MacOS.
+This project automates the complete lifecycle of RPi deployment from OS image
+preparation to application and network configuration.
 
 ## Features
 
-- **Automated RPi OS Image Management**: Download, verify, and manage Raspberry Pi OS images with checksum validation
+- **Automated RPi OS Image Management**: Download, verify, and manage Raspberry
+  Pi OS images with checksum validation
 - **Device Imaging**: Interactive detection and automated image writing workflows
-- **Custom Ansible Modules**: Specialized modules for filesystem operations, drive detection, and BIND DNS configuration
-- **Two-Repository Architecture**: Separates public automation code from private credentials and network data
-- **Network Automation**: BIND DNS configuration generation and static IP management
-- **Flexible Deployment**: Shell script wrappers for common operations with debug/check modes
+- **Custom Ansible Modules**: Specialized modules for filesystem operations,
+  drive detection, and BIND DNS configuration
+- **Two-Repository Architecture**: Separates public automation code from
+  private credentials and network data
+- **Network Automation**: BIND DNS configuration generation and static IP
+  management
+- **Flexible Deployment**: Shell script wrappers for common operations with
+  debug/check modes
 
 ## Architecture
 
 This project uses a **two-repository architecture** for security and flexibility:
 
-- **Public Repository** (this repo): Contains all Ansible roles, playbooks, custom modules, and shell script wrappers
-- **Private Data Repository**: Your separate git repository containing credentials, SSH keys, network configurations, and inventory files
+- **Public Repository** (this repo): Contains all Ansible roles, playbooks,
+  custom modules, and shell script wrappers
+- **Private Data Repository**: Your separate git repository containing
+  credentials, SSH keys, network configurations, and inventory files
 
-The `data/` directory is excluded from this repository and must be created separately by each user. This design ensures that:
+The `data/` directory is excluded from this repository and must be created
+separately by each user. This design ensures that:
+
 - Automation code can be shared publicly
 - Sensitive data (credentials, network topology, SSH keys) remains private
 - Multiple users can use the same codebase with their own configurations
@@ -45,6 +57,7 @@ The `data/` directory is excluded from this repository and must be created separ
 ## Quick Start
 
 1. **Clone this repository:**
+
    ```bash
    git clone https://github.com/YOUR_USERNAME/ansible-rpi-management.git
    cd ansible-rpi-management
@@ -64,7 +77,8 @@ The `data/` directory is excluded from this repository and must be created separ
 
 ## License
 
-This project is licensed under the Apache License 2.0 - see [LICENSE.md](LICENSE.md) for details.
+This project is licensed under the Apache License 2.0 - see
+[LICENSE.md](LICENSE.md) for details.
 
 ## Author
 
@@ -74,8 +88,10 @@ Copyright 2025 Douglas WF Acheson
 
 ## Notice
 
-Claude code is used to generate comments, automate git actions, commit messages and other small tasks that are time consuming.
+Claude code is used to generate comments, automate git actions, commit
+messages and other small tasks that are time consuming.
 
 ---
 
-Licensed under the Apache License, Version 2.0. See LICENSE.md for full license text.
+Licensed under the Apache License, Version 2.0. See LICENSE.md for full
+license text.

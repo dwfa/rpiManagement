@@ -1,65 +1,54 @@
 <!--
 ##############################################################################
-# Raspberry Pi Boot Partition Configuration
+# Raspberry Pi Initial Boot Configuration
+#
+# This directory contains configuration files copied to the RPi boot
+# partition during image creation.
 #
 # Copyright 2025 Douglas WF Acheson (dwfa@dwfa.ca)
 # Licensed under Apache License 2.0. See LICENSE.md for details.
 #
-# Version: 1.0
-# Date: October 28, 2025
+# Version: 2.1
+# Date: January 06, 2025
 ##############################################################################
 -->
 
-# Raspberry Pi Boot Configuration Files
+# Files in This Directory
 
-This directory contains configuration files and initialization files that are copied to the RPi boot partition during image creation.
+## Configuration Files
 
-## Files in This Directory
+### metadata.yaml
 
-### Configuration Files (Used by Ansible)
-
-**metadata.yaml**
-- Defines which initialization files to copy to the boot partition
-- Specifies source and destination directories
+- Defines which initialization files to copy to boot partition
 - Configure the `_initFiles` section to control which files are copied
-- See file comments for detailed structure
+- See file comments for structure
 
-**cmdline-txt-mods.yaml**
-- Defines modifications to apply to `/boot/cmdline.txt` (kernel boot parameters)
-- Contains kernel command-line arguments like video resolution settings
+### cmdline-txt-mods.yaml
+
+- Defines modifications to `/boot/cmdline.txt` (kernel boot parameters)
 - Uses regex patterns for idempotent modifications
 - See file comments for available operations
 
-### Initialization Files (Copied to Boot Partition)
+## Initialization Files
 
-**ssh**
-- Empty file that enables SSH on first boot
-- Raspberry Pi OS checks for this file and enables SSH service if present
-- **Action required:** Leave as-is (empty file)
+### ssh
 
-**userconf.txt**
+- Empty file that enables SSH service on first boot
+- Leave as-is (empty file)
+
+### userconf.txt
+
 - Contains encrypted user credentials for first boot
 - Format: `username:encrypted_password`
-- **Action required:** Customize with your username and encrypted password
 - See instructions in the template file for password encryption
 
 ## Customization Steps
 
-1. **Review metadata.yaml**
-   - Verify which files should be copied to boot partition
-   - Add or remove files from `_initFiles` section as needed
-
-2. **Customize cmdline-txt-mods.yaml**
-   - Review video console settings (or comment out if not needed)
-   - Add any additional kernel boot parameters
-
-3. **Create userconf.txt**
-   - Replace TODO markers with your username
-   - Generate encrypted password using `openssl passwd -6`
-   - Format: `username:encrypted_password_hash`
+1. **Configure metadata.yaml** → Review `_initFiles` section
+2. **Customize userconf.txt** → Replace TODO with your username and encrypted password
+3. **Customize cmdline-txt-mods.yaml** → Review video console settings
 
 ## External Documentation
 
-- **Raspberry Pi First Boot Configuration:** https://www.raspberrypi.com/documentation/computers/configuration.html
-- **Kernel Command Line (cmdline.txt):** https://www.raspberrypi.com/documentation/computers/config_txt.html#kernel-command-line-cmdline-txt
-- **Password Encryption:** Run `openssl passwd -6` or `mkpasswd -m sha-512`
+- [RPi First Boot Configuration](https://www.raspberrypi.com/documentation/computers/configuration.html)
+- [Kernel Command Line](https://www.raspberrypi.com/documentation/computers/config_txt.html#kernel-command-line-cmdline-txt)

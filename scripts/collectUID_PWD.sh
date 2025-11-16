@@ -13,15 +13,18 @@
 #   5. No default available → prompts again until value provided
 #
 # ENVIRONMENT VARIABLES (optional):
-#   - ANSIBLE_DEFAULT_UID: Default user ID (e.g., export ANSIBLE_DEFAULT_UID=pi)
-#   - ANSIBLE_DEFAULT_PWD: Default password (e.g., export ANSIBLE_DEFAULT_PWD=raspberry)
+#   - ANSIBLE_DEFAULT_UID: Default user ID
+#     (e.g., export ANSIBLE_DEFAULT_UID=pi)
+#   - ANSIBLE_DEFAULT_PWD: Default password
+#     (e.g., export ANSIBLE_DEFAULT_PWD=raspberry)
 #
 # OUTPUT VARIABLES (set by this script):
 #   - sudoUID: User ID for sudo operations
 #   - sudoPWD: Password for sudo operations
 #
 # EXAMPLE:
-#   # Option 1: Set environment variables in shell profile (~/.bashrc, ~/.zshrc):
+#   # Option 1: Set environment variables in shell profile
+#   #           (~/.bashrc, ~/.zshrc):
 #   export ANSIBLE_DEFAULT_UID=pi
 #   export ANSIBLE_DEFAULT_PWD=raspberry
 #
@@ -61,7 +64,9 @@ source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/colours.sh"
 defaultUID="${sudoUID:-${ANSIBLE_DEFAULT_UID:-no default}}"
 
 # Prompt showing the default
-printf "%b" "${GREEN_COLOUR}\tEnter the ${PINK_COLOUR}'uid'${GREEN_COLOUR} for sudo user (defaulting to [${defaultUID}]): ${NORMAL_COLOUR}"
+printf "%b" \
+       "${GREEN_COLOUR}\tEnter the ${PINK_COLOUR}'uid'${GREEN_COLOUR} for " \
+       "sudo user (defaulting to [${defaultUID}]): ${NORMAL_COLOUR}"
 read inputUID
 
 # If user typed something, use it; otherwise use the default
@@ -69,7 +74,9 @@ sudoUID="${inputUID:-${defaultUID}}"
 
 # If "no default" or empty, loop until we get a real value
 while [ -z "$sudoUID" ] || [ "$sudoUID" = "no default" ]; do
-    printf "%b" "${GREEN_COLOUR}\tUID required. Please enter uid: ${NORMAL_COLOUR}"
+    printf "%b" \
+           "${GREEN_COLOUR}\tUID required. Please enter uid: " \
+           "${NORMAL_COLOUR}"
     read sudoUID
 done
 
@@ -85,7 +92,9 @@ defaultMsg="${defaultPWD:+default available}"
 defaultMsg="${defaultMsg:-no default}"
 
 # Prompt showing IF default exists (not the actual value)
-printf "%b" "${GREEN_COLOUR}\tEnter the ${PINK_COLOUR}'${sudoUID}'${GREEN_COLOUR} sudo PWD (${defaultMsg}): ${NORMAL_COLOUR}"
+printf "%b" \
+       "${GREEN_COLOUR}\tEnter the ${PINK_COLOUR}'${sudoUID}'${GREEN_COLOUR} " \
+       "sudo PWD (${defaultMsg}): ${NORMAL_COLOUR}"
 read -s inputPWD
 echo
 
@@ -94,7 +103,9 @@ sudoPWD="${inputPWD:-${defaultPWD}}"
 
 # If empty, loop until we get a real value
 while [ -z "$sudoPWD" ]; do
-    printf "%b" "${GREEN_COLOUR}\tPassword required. Please enter password: ${NORMAL_COLOUR}"
+    printf "%b" \
+           "${GREEN_COLOUR}\tPassword required. Please enter password: " \
+           "${NORMAL_COLOUR}"
     read -s sudoPWD
     echo
 done

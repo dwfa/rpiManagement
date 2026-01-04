@@ -1,0 +1,60 @@
+##############################################################################
+# Load credentials from vault-encrypted file
+#
+# USAGE:
+#   This role loads credentials from a vault-encrypted YAML file and sets
+#   all connection facts. Must run on localhost with connection: local
+#   before any plays that need SSH connection to remote hosts.
+#
+# REQUIRED VARIABLES:
+#   - playbook_dir: Ansible built-in (auto-available)
+#   - dataDir: From common role (directory path)
+#
+# OPTIONAL VARIABLES:
+#   - user: Credential file to use (default: 'default')
+#   - becomeFlag: Enable/disable privilege escalation (default: 'true')
+#
+# OUTPUT FACTS (accessible via hostvars['localhost']):
+#   - userData: Dictionary containing uid, pwd, sudoPWD
+#   - sshKeyFile: Path to SSH private key
+#   - sshUser: SSH username
+#   - sshPass: SSH password
+#   - becomeEnabled: Privilege escalation flag
+#   - becomePass: Sudo password
+#
+# EXAMPLE:
+#   # Play 1: Load credentials locally
+#   - hosts: localhost
+#     connection: local
+#     gather_facts: false
+#     roles:
+#       - common
+#       - loadCredentials
+#
+#   # Play 2: Use credentials on remote hosts
+#   - hosts: "{{ nodes }}"
+#     vars:
+#       ansible_ssh_private_key_file: "{{ hostvars['localhost']['sshKeyFile'] }}"
+#       ansible_user: "{{ hostvars['localhost']['sshUser'] }}"
+#
+# NOTES:
+#   - Must run with connection: local (no SSH needed)
+#   - Vault decryption happens automatically via include_vars
+#   - All connection facts accessible via hostvars['localhost']
+#   - Depends on common role for dataDir variable
+#
+# Copyright 2025 Douglas WF Acheson (dwfa@dwfa.ca)
+# Licensed under Apache License 2.0. See LICENSE.md for details.
+#
+# Version: 1.0
+# Date: January 02, 2026
+##############################################################################
+
+---                                            # identifies a YAML config file
+
+##############################################################################
+# Load credentials (vault decoded in task context)
+##############################################################################
+- name: Load credentials
+  ansible.builtin.include_vars:
+    file: "{{ dataDir }}/credentials/{{ user | default('default') }}.yaml"

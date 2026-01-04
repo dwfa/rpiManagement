@@ -37,8 +37,8 @@ This directory holds all SSH-related files for Ansible automation.
 
 2. Copy private key to this directory:
    ```bash
-   cp ~/.ssh/ansible_rpi data/.ssh/ssh_key
-   chmod 600 data/.ssh/ssh_key
+   cp ~/.ssh/ansible_rpi data/ssh/ssh_key
+   chmod 600 data/ssh/ssh_key
    ```
 
 3. The knownHosts file will be created automatically on first Ansible connection.

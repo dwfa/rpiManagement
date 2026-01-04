@@ -1,0 +1,22 @@
+##############################################################################
+# Password authentication override
+#
+# USAGE:
+#   Load via vars_files AFTER connectionBase.yaml when SSH key does not exist.
+#   Adds ansible_ssh_pass to enable password authentication.
+#
+# PREREQUISITES:
+#   - connectionBase.yaml must be loaded first
+#   - sshpass must be installed on control node
+#
+# Copyright 2025 Douglas WF Acheson (dwfa@dwfa.ca)
+# Licensed under Apache License 2.0. See LICENSE.md for details.
+#
+# Version: 1.1
+# Date: December 23, 2025
+##############################################################################
+
+---                                            # identifies a YAML config file
+
+# Password authentication (requires sshpass)
+ansible_ssh_pass: "{{ userData.pwd }}"

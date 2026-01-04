@@ -19,14 +19,14 @@ host-specific data for the Ansible RPi Management Framework.
 
 Separates sensitive configuration from public automation code:
 
-- **Main repository** (rpiMgmnt): Public automation code (version controlled)
+- **Main repository** (rpiMgmt): Public automation code (version controlled)
 - **Data directory** (data/): Private credentials and configuration
 
 ## Directory Structure
 
 | Directory/File | Purpose | Documentation |
 |----------------|---------|---------------|
-| **.ssh/** | SSH keys and known hosts | [.ssh/README.md](.ssh/README.md) |
+| **ssh/** | SSH keys and known hosts | [ssh/README.md](ssh/README.md) |
 | **credentials/** | Encrypted user credential files | [credentials/README.md](credentials/README.md) |
 | **images/** | Raspberry Pi OS image storage | [images/README.md](images/README.md) |
 | **rpi/** | Boot partition initialization files | [rpi/README.md](rpi/README.md) |
@@ -55,7 +55,7 @@ If using git, consider adding a private remote repository
 
 This directory contains sensitive information (credentials, SSH keys,
 network configuration). It is excluded from the main repository via
-`.gitignore` and should **never** be committed to the public rpiMgmnt
+`.gitignore` and should **never** be committed to the public rpiMgmt
 repository.
 
 If you choose to use git for version control of your `data/`

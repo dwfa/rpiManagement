@@ -1,0 +1,40 @@
+##############################################################################
+# Base connection variables for remote host plays
+#
+# USAGE:
+#   Load via vars_files in Play 2 after loadCredentials role runs in Play 1.
+#   SSH key auth is used if key exists, otherwise load connectionPWD.yaml
+#   to enable password auth.
+#
+# PREREQUISITES:
+#   - Play 1 must run loadCredentials role on localhost
+#   - userData fact must exist in hostvars.local
+#
+# EXAMPLE:
+#   vars_files:
+#     - "{{ playbook_dir }}/vars/connectionBase.yaml"
+#     - "{{ ... connectionPWD.yaml if no SSH key else omit }}"
+#
+# Copyright 2025 Douglas WF Acheson (dwfa@dwfa.ca)
+# Licensed under Apache License 2.0. See LICENSE.md for details.
+#
+# Version: 1.0
+# Date: January 02, 2026
+##############################################################################
+
+---                                            # identifies a YAML config file
+
+# Alias for cleaner references (indirection via hostvars)
+userData: "{{ hostvars.local.userData }}"
+
+# SSH key path
+_sshKeyPath: "{{ playbook_dir }}/../data/ssh/ssh_key"
+
+# SSH connection configuration
+ansible_ssh_common_args:      "-o UserKnownHostsFile={{ playbook_dir }}/../data/ssh/knownHosts"
+ansible_ssh_private_key_file: "{{ _sshKeyPath if ((lookup('fileglob', _sshKeyPath) | length) > 0) else omit }}"
+ansible_user:                 "{{ userData.uid }}"
+
+# Privilege escalation configuration
+ansible_become:          "{{ becomeFlag | default('true') }}"
+ansible_become_password: "{{ userData.sudoPWD }}"

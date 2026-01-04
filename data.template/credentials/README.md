@@ -65,4 +65,4 @@ These files contain sensitive information:
 - Never commit to git (ensure in `.gitignore`)
 - Set restrictive permissions: `chmod 600 *.yaml`
 - Consider using Ansible Vault for encryption
-- For SSH key authentication, see `../.ssh/README.md`
+- For SSH key authentication, see `../ssh/README.md`

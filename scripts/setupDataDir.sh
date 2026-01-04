@@ -184,7 +184,7 @@ printf "\n%b\n" \
 
 sensitiveFiles=(
   "data/credentials/default.yaml"
-  "data/.ssh/ssh_key"
+  "data/ssh/ssh_key"
 )
 
 for file in "${sensitiveFiles[@]}"; do
@@ -223,8 +223,8 @@ printf "%b\n" "${YELLOW_COLOUR}Next Steps:${NORMAL_COLOUR}"
 
 cat <<'EOF'
 1. Add SSH private key:
-   cp ~/.ssh/your_key data/.ssh/ssh_key
-   chmod 600 data/.ssh/ssh_key
+   cp ~/.ssh/your_key data/ssh/ssh_key
+   chmod 600 data/ssh/ssh_key
 
 2. Create encrypted credentials (interactive):
    ./scripts/setupCredentials.sh

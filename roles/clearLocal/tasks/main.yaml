@@ -10,8 +10,8 @@
 #   - debugFlag: (optional) Enable debug output
 #
 # ACTIONS:
-#   1. Ensures data/.ssh directory exists
-#   2. Removes data/.ssh/knownHosts file
+#   1. Ensures data/ssh directory exists
+#   2. Removes data/ssh/knownHosts file
 #
 # NOTES:
 #   - Next SSH connection will prompt for host key verification
@@ -28,11 +28,11 @@
 
 # - name: clear ssh known hosts files
 - name: make sure directory exists
-  local_action: file path="{{ dataDir }}/.ssh" state="directory"
+  local_action: file path="{{ dataDir }}/ssh" state="directory"
   register: cdResponse
 
 - name: clear ssh known hosts files
-  local_action: file path="{{ dataDir }}/.ssh/knownHosts" state="absent"
+  local_action: file path="{{ dataDir }}/ssh/knownHosts" state="absent"
   register: rfResponse
 
 - name: debug message for clearing local data

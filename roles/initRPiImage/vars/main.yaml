@@ -1,0 +1,25 @@
+##############################################################################
+# Ansible role variables for initRPiImage role
+#
+# REQUIRED INPUT FACTS:
+#   - bootMountPoint: Mount path for boot partition (set by createRPiImage role)
+#
+# Note: These variables reference bootMountPoint which must exist when this
+#       role starts. The createRPiImage role sets this fact before this role
+#       is called.
+#
+# Copyright 2025 Douglas WF Acheson (dwfa@dwfa.ca)
+# Licensed under Apache License 2.0. See LICENSE.md for details.
+#
+# Version: 1.0
+# Date: January 04, 2026
+##############################################################################
+---
+
+##############################################################################
+# File paths for cmdline.txt modification task
+#   _cmdlineTxtPath:     Target file on mounted boot partition
+#   _cmdlineTxtModsPath: Metadata file defining modifications to apply
+##############################################################################
+_cmdlineTxtPath:     "{{ bootMountPoint }}/cmdline.txt"
+_cmdlineTxtModsPath: "{{ dataDir }}/rpi/cmdline-txt-mods.yaml"

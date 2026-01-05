@@ -11,29 +11,16 @@
 # Copyright 2025 Douglas WF Acheson (dwfa@dwfa.ca)
 # Licensed under Apache License 2.0. See LICENSE.md for details.
 #
-# Version: 1.8
-# Date: October 27, 2025
+# Version: 2.0
+# Date: January 04, 2026
 ##############################################################################
 
 ---                                            # identifies a YAML config file
 
 ##############################################################################
-# Platform-specific mount point for boot partition
-# macOS uses /Volumes/, Linux uses /mnt/
-##############################################################################
-bootMountPoint: "{{ '/Volumes/boot' if ansible_system == 'Darwin' else '/mnt/boot' }}"
-
-##############################################################################
 # Boot partition device path
-# Default:  {{ installDevice }}1 (first partition of install device)
+# macOS: /dev/disk6 → /dev/disk6s1 (partition slice)
+# Linux: /dev/sdb → /dev/sdb1 (partition number)
 # Override: Pass bootPartitionDevice variable when calling role
 ##############################################################################
-_bootPartitionDevice: "{{ bootPartitionDevice | default(installDevice + '1') }}"
-
-##############################################################################
-# File paths for cmdline.txt modification task
-#   _cmdlineTxtPath:     Target file on mounted boot partition
-#   _cmdlineTxtModsPath: Metadata file defining modifications to apply
-##############################################################################
-_cmdlineTxtPath:     "{{ bootMountPoint }}/cmdline.txt"
-_cmdlineTxtModsPath: "{{ dataDir }}/rpi/cmdline-txt-mods.yaml"
+_bootPartitionDevice: "{{ bootPartitionDevice | default(installDevice + ('s1' if ansible_system == 'Darwin' else '1')) }}"

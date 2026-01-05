@@ -4,6 +4,7 @@
 # USAGE:
 #   Writes a Raspberry Pi OS image to a block device (USB drive, SD card, etc.).
 #   Requires prerequisite roles to set facts for device and image paths.
+#   Sets bootMountPoint fact for use by initRPiImage role.
 #
 # REQUIRED VARIABLES:
 #   - installDevice: Target device path (e.g., /dev/disk4, /dev/sdb)
@@ -13,32 +14,38 @@
 #   - taskDir: Path to tasks directory (inherited from common role)
 #   - debugFlag: (optional) Enable debug output
 #
+# OUTPUT FACTS:
+#   - bootMountPoint: Mount path for boot partition (for initRPiImage role)
+#       macOS: Detected dynamically (e.g., /Volumes/bootfs)
+#       Linux: /mnt/boot
+#
 # WORKFLOW:
 #   1. Unmount all partitions on target device (prevents dd "device busy" errors)
 #   2. Write image to device using writeImage.yaml task
-#   3. Mount boot partition to bootMountPoint (handles auto-mount if needed)
-#   4. Copy initialization files to boot partition
-#   5. Modify cmdline.txt on boot partition (kernel boot parameters)
-#   6. Unmount boot partition
+#   3. Wait for boot partition mount (macOS auto-mounts, Linux requires mount)
+#   4. Detect boot partition mount point dynamically (supports boot/bootfs labels)
+#   5. Mount boot partition (Linux only - macOS auto-mounts)
 #
 # EXAMPLE:
 #   - hosts: localhost
 #     roles:
 #       - role: getInstallDevice        # Sets installDevice fact
 #       - role: updateRPiImage          # Sets imagePath fact
-#       - role: createRPiImage          # Uses facts from prerequisite roles
+#       - role: createRPiImage          # Writes image, sets bootMountPoint
+#       - role: initRPiImage            # Uses bootMountPoint to init boot
 #
 # NOTES:
 #   - Requires sudo/root permissions for device write access
 #   - User will be prompted to confirm destructive operation
 #   - Validation performed in writeImage.yaml task
 #   - Must run getInstallDevice and updateRPiImage roles first
+#   - initRPiImage role should follow to initialize boot partition
 #
 # Copyright 2025 Douglas WF Acheson (dwfa@dwfa.ca)
 # Licensed under Apache License 2.0. See LICENSE.md for details.
 #
-# Version: 3.6
-# Date: October 27, 2025
+# Version: 4.0
+# Date: January 04, 2026
 ##############################################################################
 ---                                            # identifies a YAML config file
 
@@ -63,7 +70,33 @@
     useImagePath: "{{ imagePath }}"
 
 ##############################################################################
-# Mount boot partition for init file copying
+# Wait for macOS to auto-mount boot partition after dd
+# Note: RPi OS Bookworm uses 'bootfs' label, older images use 'boot'
+##############################################################################
+- name: Wait for boot partition to mount
+  ansible.builtin.pause:
+    prompt: "Waiting for macOS to mount boot partition. Press Enter when ready"
+  when: ansible_system == 'Darwin'
+
+- name: Get boot partition mount point (macOS)
+  ansible.builtin.shell: |
+    diskutil info {{ _bootPartitionDevice }} | grep "Mount Point" | awk -F': +' '{print $2}'
+  register: _bootMountPointResult
+  changed_when: false
+  when: ansible_system == 'Darwin'
+
+- name: Set boot mount point fact (macOS)
+  ansible.builtin.set_fact:
+    bootMountPoint: "{{ _bootMountPointResult.stdout }}"
+  when: ansible_system == 'Darwin'
+
+- name: Set boot mount point fact (Linux)
+  ansible.builtin.set_fact:
+    bootMountPoint: "/mnt/boot"
+  when: ansible_system == 'Linux'
+
+##############################################################################
+# Mount boot partition for init file copying (Linux only - macOS auto-mounts)
 ##############################################################################
 - name: Mount boot partition
   include_tasks:
@@ -71,31 +104,11 @@
   vars:
     partitionDevice: "{{ _bootPartitionDevice }}"
     mountPoint: "{{ bootMountPoint }}"
+  when: ansible_system == 'Linux'
 
 ##############################################################################
-# Copy init files to boot partition
+# Cleanup temporary facts
 ##############################################################################
-- name: Copy init files to boot partition
-  include_tasks:
-    file: "{{ taskDir }}/files/copyFiles.yaml"
-  vars:
-    metadataPath: "{{ dataDir }}/rpi/metadata.yaml"
-
-#############################################################################
-# Update boot/cmdline.txt
-##############################################################################
-- name: Update cmdline.txt
-  include_tasks:
-    file: "{{ taskDir }}/files/modifyFile.yaml"
-  vars:
-    filePath:     "{{ _cmdlineTxtPath }}"
-    metadataPath: "{{ _cmdlineTxtModsPath }}"
-
-##############################################################################
-# Unmount boot partition
-##############################################################################
-- name: Unmount boot partition
-  include_tasks:
-    file: "{{ taskDir }}/fileSystem/unmountPartition.yaml"
-  vars:
-    mountPoint: "{{ bootMountPoint }}"
+- name: Cleanup temporary facts
+  ansible.builtin.set_fact:
+    _bootMountPointResult: null

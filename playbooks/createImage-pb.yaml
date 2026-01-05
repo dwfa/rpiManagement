@@ -1,0 +1,58 @@
+##############################################################################
+# Create Raspberry Pi image
+#
+# USAGE:
+#   Runs locally to create RPi OS images on removable media (SD cards, USB).
+#   Detects available drives, downloads/updates OS image, and writes to disk.
+#
+# EXAMPLE:
+#   ./createImage.sh
+#   # or directly:
+#   ansible-playbook playbooks/createImage-pb.yaml
+#
+# WORKFLOW:
+#   1. getInstallDevice: Detect single available external drive
+#   2. updateRPiImage: Download/update RPi OS image if needed
+#   3. createRPiImage: Write image to disk, detect boot mount point
+#   4. initRPiImage: Copy init files and configure boot partition
+#
+# Copyright 2025 Douglas WF Acheson (dwfa@dwfa.ca)
+# Licensed under Apache License 2.0. See LICENSE.md for details.
+#
+# Version: 1.1
+# Date: January 04, 2026
+##############################################################################
+
+---                                            # identifies a YAML config file
+##############################################################################
+# Play 1: Load credentials locally (vault decoding works in task context)
+##############################################################################
+- name: Load credentials
+  hosts:        localhost
+  connection:   local
+  gather_facts: false
+
+  roles:
+    - loadCredentials
+
+##############################################################################
+# Play 2: Execute on target hosts
+##############################################################################
+- name: Create RPi Image
+  hosts:        localhost
+  connection:   local
+  become:       false
+  gather_facts: true
+
+# Load connection vars in two parts:
+#   1. connectionBase.yaml - always loaded, SSH key used if exists
+#   2. connectionPWD.yaml  - only loaded when SSH key missing
+  vars_files:
+    - "{{ playbook_dir }}/vars/connectionBase.yaml"
+    - "{{ playbook_dir }}/vars/connectionPWD.yaml if ((lookup('fileglob', (playbook_dir ~ '/../data/ssh/ssh_key')) | length) == 0) else omit }}"
+
+  roles:
+    - role: getInstallDevice
+    - role: updateRPiImage
+    - role: createRPiImage
+    - role: initRPiImage

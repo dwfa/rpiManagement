@@ -1,5 +1,5 @@
 ##############################################################################
-# .gitignore for Ansible rpiMgmnt project
+# .gitignore for Ansible rpiMgmt project
 #
 # Excludes private data, temporary files, and system-specific files
 ##############################################################################
@@ -13,6 +13,7 @@ BACKLOG.md
 
 # Personal development notes (local only)
 NOTES.md
+plan.md
 
 # Actual inventory file (in data/ directory)
 # Note: data.template/inventory.yaml is the template and should be tracked
@@ -31,6 +32,9 @@ writeDiskPartitions.sh
 
 # Custom modules (not ready for public release)
 library/
+
+# External project templates (not part of this project)
+linux-scripts/
 
 # Ansible temporary and cache files
 *.retry

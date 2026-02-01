@@ -1,0 +1,73 @@
+##############################################################################
+# Linux implementation for device detection
+#
+# This is the Linux-specific implementation called by getInstallDevice role.
+# See roles/getInstallDevice/tasks/main.yaml for role documentation.
+#
+# IMPLEMENTATION:
+#   Uses lsblk -J to compare device lists before/after attachment
+#   Sets installDevice fact with detected device path (/dev/sdX)
+#
+# Copyright 2025 Douglas WF Acheson (dwfa@dwfa.ca)
+# Licensed under Apache License 2.0. See LICENSE.md for details.
+#
+# Version: 1.0
+# Date: January 27, 2026
+##############################################################################
+---                                            # identifies a YAML config file
+
+##############################################################################
+# Validate platform compatibility
+##############################################################################
+- name: Fail if not running on Linux
+  fail:
+    msg: "[ERROR] *** This task requires Linux but running on [{{ ansible_system }}]"
+  when: ansible_system != 'Linux'
+
+##############################################################################
+# Capture the states of block devices initial and after prompt
+##############################################################################
+- name: Get set of initial block devices
+  ansible.builtin.shell:
+    cmd: lsblk -d -J -o NAME,TYPE
+  register: _initialBlockDevices
+
+- name: Ask and wait for new device to be attached
+  include_tasks:
+    file: "{{ taskDir }}/misc/waitForInput.yaml"
+  vars:
+    waitMsg: "Attach external device & press enter to continue ..."
+
+- name: Get current block devices
+  ansible.builtin.shell:
+    cmd: lsblk -d -J -o NAME,TYPE
+  register: _currentBlockDevices
+
+##############################################################################
+# Detect newly attached device and set installDevice fact
+# Uses block-scoped vars to compute intermediate values without global pollution
+##############################################################################
+- name: Detect and set installation device
+  block:
+    - name: Determine install device
+      set_fact:
+        installDevice: "/dev/{{ _newDevices[0] }}"
+      when: _newDevices | length > 0
+
+    - name: Display device detection result
+      debug:
+        msg: >-
+          {{ '[DEBUG] *** new attached device found [' + installDevice + ']'
+               if installDevice is defined else
+             '[DEBUG] *** no new attached device found!!!' }}
+      when: debugFlag is defined
+  vars:
+    _initialDevices: >-
+      {{ (_initialBlockDevices.stdout | from_json).blockdevices
+         | selectattr('type', 'equalto', 'disk')
+         | map(attribute='name') | list }}
+    _currentDevices: >-
+      {{ (_currentBlockDevices.stdout | from_json).blockdevices
+         | selectattr('type', 'equalto', 'disk')
+         | map(attribute='name') | list }}
+    _newDevices: "{{ _currentDevices | difference(_initialDevices) }}"

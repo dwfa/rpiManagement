@@ -4,7 +4,7 @@
 # USAGE:
 #   Unmounts all mounted partitions on a specified block device.
 #   Idempotent: succeeds gracefully if device not mounted.
-#   Currently supports macOS only.
+#   Supports macOS and Linux.
 #
 # REQUIRED VARIABLES:
 #   - device: Device path (e.g., /dev/disk4)
@@ -13,8 +13,10 @@
 #   - debugFlag: Enable debug output
 #
 # WORKFLOW:
-#   1. Validate platform (macOS only for now)
-#   2. Unmount all partitions on device using diskutil unmountDisk
+#   1. Validate platform (macOS or Linux)
+#   2. Unmount all partitions on device:
+#      - macOS: diskutil unmountDisk (single command)
+#      - Linux: lsblk to find mounted partitions, loop unmount each
 #   3. Handle errors:
 #      - Success if already unmounted (idempotent)
 #      - Fail only on real errors (busy, permissions, etc.)
@@ -30,7 +32,7 @@
 #
 # NOTES:
 #   - macOS: Uses `diskutil unmountDisk` to unmount all partitions
-#   - Linux: Not yet implemented (see BACKLOG.md)
+#   - Linux: Uses `lsblk -J` to find partitions, loops with unmountPartition.yaml
 #   - Idempotent: Success whether device mounted or not
 #   - Only fails on real errors (busy, permissions, device not found)
 #   - Required before writing images with dd to prevent "device busy" errors
@@ -38,8 +40,8 @@
 # Copyright 2025 Douglas WF Acheson (dwfa@dwfa.ca)
 # Licensed under Apache License 2.0. See LICENSE.md for details.
 #
-# Version: 1.0
-# Date: October 26, 2025
+# Version: 2.0
+# Date: January 27, 2026
 ##############################################################################
 ---                                            # identifies a YAML config file
 
@@ -48,8 +50,8 @@
 ##############################################################################
 - name: Validate platform is supported
   ansible.builtin.fail:
-    msg: "[ERROR] *** Platform [{{ ansible_system }}] not yet supported for unmountDevice (macOS so far)."
-  when: ansible_system not in ['Darwin']
+    msg: "[ERROR] *** Platform [{{ ansible_system }}] not supported for unmountDevice."
+  when: ansible_system not in ['Darwin', 'Linux']
 
 ##############################################################################
 # Unmount all partitions on device (macOS)
@@ -65,16 +67,61 @@
   changed_when: _unmountDeviceResult.rc == 0
   when: ansible_system == 'Darwin'
 
-- name: Display unmount status
+- name: Display unmount status (macOS)
   debug:
     msg: "[DEBUG] *** Unmounted all partitions on device [{{ device }}]"
   when:
     - debugFlag is defined
+    - ansible_system == 'Darwin'
     - _unmountDeviceResult is changed
+
+##############################################################################
+# Unmount all partitions on device (Linux)
+# Note: Linux lacks a single "unmount all" command like diskutil unmountDisk
+# Strategy: Query mounted partitions via lsblk, loop and unmount each
+##############################################################################
+- name: Get mounted partitions on device (Linux)
+  ansible.builtin.shell:
+    cmd: lsblk -J -o NAME,MOUNTPOINT {{ device }}
+  register: _lsblkResult
+  changed_when: false
+  when: ansible_system == 'Linux'
+
+- name: Extract mounted partitions list (Linux)
+  set_fact:
+    _mountedPartitions: >-
+      {{ (_lsblkResult.stdout | from_json).blockdevices[0].children | default([])
+         | selectattr('mountpoint', 'ne', none) | list }}
+  when: ansible_system == 'Linux'
+
+- name: Unmount each mounted partition (Linux)
+  include_tasks:
+    file: "{{ taskDir }}/fileSystem/unmountPartition.yaml"
+  vars:
+    mountPoint: "/dev/{{ item.name }}"
+  loop: "{{ _mountedPartitions }}"
+  loop_control:
+    label: "/dev/{{ item.name }}"
+  when:
+    - ansible_system == 'Linux'
+    - _mountedPartitions | length > 0
+
+- name: Display unmount status (Linux)
+  debug:
+    msg: >-
+      {{ '[DEBUG] *** Unmounted [' + (_mountedPartitions | length | string) +
+         '] partitions on device [' + device + ']'
+           if _mountedPartitions | length > 0 else
+         '[DEBUG] *** No mounted partitions found on device [' + device + ']' }}
+  when:
+    - debugFlag is defined
+    - ansible_system == 'Linux'
 
 ##############################################################################
 # Cleanup temporary facts
 ##############################################################################
 - name: Cleanup temporary facts
   set_fact:
+    _lsblkResult: null
+    _mountedPartitions: null
     _unmountDeviceResult: null

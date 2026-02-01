@@ -8,7 +8,7 @@
 #
 # PREREQUISITES:
 #   - Play 1 must run loadCredentials role on localhost
-#   - userData fact must exist in hostvars.local
+#   - userData fact must exist in hostvars['localhost']
 #
 # EXAMPLE:
 #   vars_files:
@@ -18,14 +18,14 @@
 # Copyright 2025 Douglas WF Acheson (dwfa@dwfa.ca)
 # Licensed under Apache License 2.0. See LICENSE.md for details.
 #
-# Version: 1.0
-# Date: January 02, 2026
+# Version: 1.1
+# Date: January 27, 2026
 ##############################################################################
 
 ---                                            # identifies a YAML config file
 
 # Alias for cleaner references (indirection via hostvars)
-userData: "{{ hostvars.local.userData }}"
+userData: "{{ hostvars['localhost'].userData }}"
 
 # SSH key path
 _sshKeyPath: "{{ playbook_dir }}/../data/ssh/ssh_key"

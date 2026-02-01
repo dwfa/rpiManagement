@@ -15,7 +15,7 @@
 #
 # PLATFORM SUPPORT:
 #   - macOS (Darwin): Implemented using diskutil
-#   - Linux: Future expansion planned (lsblk)
+#   - Linux: Implemented using lsblk
 #   - Other Unix: Future expansion as needed
 #
 # WORKFLOW:
@@ -37,12 +37,17 @@
 # Copyright 2025 Douglas WF Acheson (dwfa@dwfa.ca)
 # Licensed under Apache License 2.0. See LICENSE.md for details.
 #
-# Version: 1.2
-# Date: October 16, 2025
+# Version: 1.3
+# Date: January 27, 2026
 ##############################################################################
 ---                                            # identifies a YAML config file
 
-- name: Include task to do the work
+- name: Include macOS device detection
   include_tasks:
     file: "{{ taskDir }}/macOS/getInstallDevice.yaml"
   when: ansible_system == "Darwin"
+
+- name: Include Linux device detection
+  include_tasks:
+    file: "{{ taskDir }}/Linux/getInstallDevice.yaml"
+  when: ansible_system == "Linux"

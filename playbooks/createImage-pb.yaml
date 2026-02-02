@@ -2,46 +2,52 @@
 # Create Raspberry Pi image
 #
 # USAGE:
-#   Runs locally to create RPi OS images on removable media (SD cards, USB).
-#   Detects available drives, downloads/updates OS image, and writes to disk.
+#   Creates RPi OS images on removable media (SD cards, USB drives).
+#   Supports both local (macOS) and remote (Linux) target hosts.
 #
 # EXAMPLE:
-#   ./createImage.sh
+#   ./createImage.sh                                    # localhost (macOS)
+#   ./createImage.sh -n installer                       # remote Linux host
 #   # or directly:
-#   ansible-playbook playbooks/createImage-pb.yaml
+#   ansible-playbook --extra-vars "nodes=localhost" playbooks/createImage-pb.yaml
+#   ansible-playbook --extra-vars "nodes=installer" playbooks/createImage-pb.yaml
 #
 # WORKFLOW:
-#   1. getInstallDevice: Detect single available external drive
-#   2. updateRPiImage: Download/update RPi OS image if needed
-#   3. createRPiImage: Write image to disk, detect boot mount point
-#   4. initRPiImage: Copy init files and configure boot partition
+#   Play 1 (localhost):
+#     1. loadCredentials: Load vault-encrypted credentials
+#     2. updateRPiImage: Download/update RPi OS image to data/images/
+#   Play 2 (target host):
+#     3. getInstallDevice: Detect single available external drive
+#     4. createRPiImage: Copy image to target (if remote), write to disk
+#     5. initRPiImage: Copy init files and configure boot partition
 #
 # Copyright 2025 Douglas WF Acheson (dwfa@dwfa.ca)
 # Licensed under Apache License 2.0. See LICENSE.md for details.
 #
-# Version: 1.1
-# Date: January 04, 2026
+# Version: 2.0
+# Date: February 01, 2026
 ##############################################################################
 
 ---                                            # identifies a YAML config file
 ##############################################################################
-# Play 1: Load credentials locally (vault decoding works in task context)
+# Play 1: Load credentials and manage image locally
+# Note: updateRPiImage must run on localhost where data/ directory exists
 ##############################################################################
-- name: Load credentials
+- name: Prepare local resources
   hosts:        localhost
   connection:   local
   gather_facts: false
 
   roles:
     - loadCredentials
+    - updateRPiImage
 
 ##############################################################################
 # Play 2: Execute on target hosts
 ##############################################################################
 - name: Create RPi Image
-  hosts:        localhost
-  connection:   local
-  become:       false
+  hosts:        "{{ nodes }}"
+  become:       true
   gather_facts: true
 
 # Load connection vars in two parts:
@@ -53,6 +59,5 @@
 
   roles:
     - role: getInstallDevice
-    - role: updateRPiImage
     - role: createRPiImage
     - role: initRPiImage

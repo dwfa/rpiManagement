@@ -11,7 +11,7 @@
 # Copyright 2025 Douglas WF Acheson (dwfa@dwfa.ca)
 # Licensed under Apache License 2.0. See LICENSE.md for details.
 #
-# Version: 1.0
+# Version: 1.1
 # Date: January 27, 2026
 ##############################################################################
 ---                                            # identifies a YAML config file
@@ -49,10 +49,17 @@
 ##############################################################################
 - name: Detect and set installation device
   block:
+    - name: Fail if multiple new devices detected
+      fail:
+        msg: >-
+          [ERROR] *** Multiple new devices detected: [{{ _newDevices | join(', ') }}].
+          Please attach only ONE device at a time.
+      when: _newDevices | length > 1
+
     - name: Determine install device
       set_fact:
         installDevice: "/dev/{{ _newDevices[0] }}"
-      when: _newDevices | length > 0
+      when: _newDevices | length == 1
 
     - name: Display device detection result
       debug:

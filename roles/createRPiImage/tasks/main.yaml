@@ -9,8 +9,7 @@
 # REQUIRED VARIABLES:
 #   - installDevice: Target device path (e.g., /dev/disk4, /dev/sdb)
 #       Must be set by getInstallDevice role before calling this role
-#   - imagePath: Full path to image file (compressed or uncompressed)
-#       Must be set by updateRPiImage role before calling this role
+#   - dataDir: Path to data directory (inherited from common role)
 #   - taskDir: Path to tasks directory (inherited from common role)
 #   - debugFlag: (optional) Enable debug output
 #
@@ -20,17 +19,19 @@
 #       Linux: /mnt/boot
 #
 # WORKFLOW:
-#   1. Unmount all partitions on target device (prevents dd "device busy" errors)
-#   2. Write image to device using writeImage.yaml task
-#   3. Wait for boot partition mount (macOS auto-mounts, Linux requires mount)
-#   4. Detect boot partition mount point dynamically (supports boot/bootfs labels)
-#   5. Mount boot partition (Linux only - macOS auto-mounts)
+#   1. Set _imagePath based on local/remote execution context
+#   2. Copy image from localhost to /tmp (remote targets only)
+#   3. Unmount all partitions on target device (prevents dd "device busy" errors)
+#   4. Write image to device using writeImage.yaml task
+#   5. Wait for boot partition mount (macOS auto-mounts, Linux requires mount)
+#   6. Detect boot partition mount point dynamically (supports boot/bootfs labels)
+#   7. Mount boot partition (Linux only - macOS auto-mounts)
 #
 # EXAMPLE:
 #   - hosts: localhost
 #     roles:
 #       - role: getInstallDevice        # Sets installDevice fact
-#       - role: updateRPiImage          # Sets imagePath fact
+#       - role: updateRPiImage          # Sets imagePath fact (on localhost)
 #       - role: createRPiImage          # Writes image, sets bootMountPoint
 #       - role: initRPiImage            # Uses bootMountPoint to init boot
 #
@@ -40,14 +41,41 @@
 #   - Validation performed in writeImage.yaml task
 #   - Must run getInstallDevice and updateRPiImage roles first
 #   - initRPiImage role should follow to initialize boot partition
+#   - For remote targets, image copied to /tmp then deleted after write
 #
 # Copyright 2025 Douglas WF Acheson (dwfa@dwfa.ca)
 # Licensed under Apache License 2.0. See LICENSE.md for details.
 #
-# Version: 4.0
-# Date: January 04, 2026
+# Version: 4.2
+# Date: February 02, 2026
 ##############################################################################
 ---                                            # identifies a YAML config file
+
+##############################################################################
+# Set image path based on execution context
+# Note: Image filename is always currentRPiImage.img
+#       - localhost: {{ dataDir }}/images/currentRPiImage.img
+#       - remote: /tmp/currentRPiImage.img (copied from localhost)
+##############################################################################
+- name: Set image path (localhost)
+  ansible.builtin.set_fact:
+    _imagePath: "{{ dataDir }}/images/currentRPiImage.img"
+  when: inventory_hostname == 'localhost'
+
+- name: Set image path (remote)
+  ansible.builtin.set_fact:
+    _imagePath: "/tmp/currentRPiImage.img"
+  when: inventory_hostname != 'localhost'
+
+##############################################################################
+# Copy image from controller to remote target (remote targets only)
+##############################################################################
+- name: Copy image to remote host
+  ansible.builtin.copy:
+    src: "{{ dataDir }}/images/currentRPiImage.img"
+    dest: "{{ _imagePath }}"
+    mode: '0644'
+  when: inventory_hostname != 'localhost'
 
 ##############################################################################
 # Unmount all partitions on target device before writing
@@ -67,7 +95,7 @@
     file: "{{ taskDir }}/fileSystem/writeImage.yaml"
   vars:
     useDevice: "{{ installDevice }}"
-    useImagePath: "{{ imagePath }}"
+    useImagePath: "{{ _imagePath }}"
 
 ##############################################################################
 # Wait for macOS to auto-mount boot partition after dd
@@ -112,3 +140,4 @@
 - name: Cleanup temporary facts
   ansible.builtin.set_fact:
     _bootMountPointResult: null
+    _imagePath: null

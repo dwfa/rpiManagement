@@ -45,7 +45,7 @@
 #   - Metadata file must contain '_modList' dictionary
 #   - Supported operations: prepend, append, lineinfile, replace
 #   - Uses Ansible's built-in modules for file safety
-#   - Backup created automatically on first modification (if createBackup true)
+#   - Backup uses FAT32-compatible timestamp (YYYYMMDD-HHMMSS.bak)
 #   - Idempotent: checks if modification already applied via checkPattern
 #   - Operation-specific requirements:
 #     - prepend/append: requires 'parameters' field
@@ -55,8 +55,8 @@
 # Copyright 2025 Douglas WF Acheson (dwfa@dwfa.ca)
 # Licensed under Apache License 2.0. See LICENSE.md for details.
 #
-# Version: 1.4
-# Date: October 26, 2025
+# Version: 1.5
+# Date: February 02, 2026
 ##############################################################################
 ---                                            # identifies a YAML config file
 
@@ -93,6 +93,14 @@
       ansible.builtin.fail:
         msg: "[ERROR] *** File not found: [{{ filePath }}]"
       when: not _fileCheck.stat.exists
+
+##############################################################################
+# Create backup before modifications (FAT32-compatible timestamp)
+##############################################################################
+- name: Create backup before modifications
+  include_tasks:
+    file: "{{ taskDir }}/files/backupFile.yaml"
+  when: createBackup | default(true)
 
 ##############################################################################
 # Apply file modifications

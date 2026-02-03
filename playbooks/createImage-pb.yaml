@@ -27,8 +27,8 @@
 # Version: 2.0
 # Date: February 01, 2026
 ##############################################################################
-
 ---                                            # identifies a YAML config file
+
 ##############################################################################
 # Play 1: Load credentials and manage image locally
 # Note: updateRPiImage must run on localhost where data/ directory exists

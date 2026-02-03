@@ -1,0 +1,70 @@
+##############################################################################
+# Ansible task to create a backup of a file with FAT32-compatible timestamp
+#
+# USAGE:
+#   Creates a backup copy of a file using a timestamp format that works on
+#   FAT32 filesystems (no colons in filename). Uses compact format: YYYYMMDD-HHMMSS
+#
+# REQUIRED VARIABLES:
+#   - filePath: Path to file to backup
+#
+# OPTIONAL VARIABLES:
+#   - backupDir: Directory for backup (default: same as source file)
+#   - debugFlag: Enable debug output
+#
+# EXAMPLE:
+#   - name: Backup cmdline.txt before modification
+#     include_tasks:
+#       file: "{{ taskDir }}/files/backupFile.yaml"
+#     vars:
+#       filePath: "/mnt/boot/cmdline.txt"
+#
+#   - name: Backup to specific directory
+#     include_tasks:
+#       file: "{{ taskDir }}/files/backupFile.yaml"
+#     vars:
+#       filePath: "/mnt/boot/cmdline.txt"
+#       backupDir: "/tmp/backups"
+#
+# NOTES:
+#   - Timestamp format: YYYYMMDD-HHMMSS (FAT32-compatible, no colons)
+#   - Backup filename: <original>.YYYYMMDD-HHMMSS.bak
+#   - Example: cmdline.txt → cmdline.txt.20260202-192510.bak
+#   - Requires read permission on source file
+#   - Requires write permission on backup directory
+#
+# Copyright 2025 Douglas WF Acheson (dwfa@dwfa.ca)
+# Licensed under Apache License 2.0. See LICENSE.md for details.
+#
+# Version: 1.0
+# Date: February 02, 2026
+##############################################################################
+---                                            # identifies a YAML config file
+
+##############################################################################
+# Validate required parameters
+##############################################################################
+- name: Validate filePath is provided
+  ansible.builtin.fail:
+    msg: "[ERROR] *** filePath is required for backupFile task but not provided"
+  when: filePath is not defined or filePath == ''
+
+##############################################################################
+# Create backup with FAT32-compatible timestamp
+##############################################################################
+- name: Create backup with timestamp
+  block:
+    - name: Create backup copy
+      ansible.builtin.copy:
+        src: "{{ filePath }}"
+        dest: "{{ _backupDir }}/{{ filePath | basename }}.{{ _timestamp }}.bak"
+        remote_src: true
+        mode: preserve
+
+    - name: Debug backup created
+      debug:
+        msg: "[DEBUG] *** Created backup: [{{ _backupDir }}/{{ filePath | basename }}.{{ _timestamp }}.bak]"
+      when: debugFlag is defined
+  vars:
+    _timestamp: "{{ ansible_date_time.year }}{{ ansible_date_time.month }}{{ ansible_date_time.day }}-{{ ansible_date_time.hour }}{{ ansible_date_time.minute }}{{ ansible_date_time.second }}"
+    _backupDir: "{{ backupDir | default(filePath | dirname) }}"

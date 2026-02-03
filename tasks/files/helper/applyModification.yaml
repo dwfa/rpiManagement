@@ -9,50 +9,20 @@
 #   - _mod: Dict item containing modification configuration
 #   - _indx: Loop index
 #   - filePath: Path to file being modified
-#   - createBackup: Whether to create backup
 #
 # NOTES:
-#   - Internal helper task - called by modifyTextFile.yaml in a loop
+#   - Internal helper task - called by modifyFile.yaml in a loop
 #   - Do not call directly from playbooks or roles
-#
-#   - Backup Strategy and Conditional Logic:
-#     - Creates backup (.bak file) ONLY on first modification to preserve original file
-#     - Uses Jinja2 conditional expression:
-#       backup: "{{ (createBackup | default(true)) if _indx == 0 else false }}"
-#
-#     - How the conditional works:
-#       * Structure: (value_if_true) if (condition) else (value_if_false)
-#       * Condition: _indx == 0 (is this the first modification?)
-#
-#       * IF first modification (_indx == 0):
-#         - Evaluates to: (createBackup | default(true))
-#         - Uses createBackup variable if defined, otherwise defaults to true
-#         - Result: backup = true (creates .bak file)
-#
-#       * ELSE (_indx > 0, second/third/... modification):
-#         - Evaluates to: false
-#         - Result: backup = false (no .bak file created)
-#
-#     - Why this matters:
-#       * Without this logic: Each modification would create a new backup, overwriting
-#         the previous .bak file, losing the original pre-modification state
-#       * With this logic: Only first modification creates backup, preserving the
-#         original file state before ANY modifications were applied
-#
-#     - Example execution with 3 modifications:
-#       1. First mod (index=0):  backup evaluates to true  → file.txt.bak created (ORIGINAL)
-#       2. Second mod (index=1): backup evaluates to false → file.txt.bak unchanged
-#       3. Third mod (index=2):  backup evaluates to false → file.txt.bak unchanged
-#       Result: file.txt.bak contains original content before all modifications
-#
+#   - Backup handled by modifyFile.yaml using backupFile.yaml task
+#     (FAT32-compatible timestamp format, created before modifications loop)
 #   - Idempotency: Uses checkPattern to detect and skip already-applied modifications
 #   - Supported operations: prepend, append, lineinfile, replace
 #
 # Copyright 2025 Douglas WF Acheson (dwfa@dwfa.ca)
 # Licensed under Apache License 2.0. See LICENSE.md for details.
 #
-# Version: 1.1
-# Date: October 26, 2025
+# Version: 1.2
+# Date: February 02, 2026
 ##############################################################################
 ---                                            # identifies a YAML config file
 
@@ -96,7 +66,7 @@
         path: "{{ filePath }}"
         regexp: '^(.+)$'
         replace: '{{ _mod.value.parameters }} \1'
-        backup: "{{ (createBackup | default(true)) if _indx == 0 else false }}"
+        backup: false
       register: _modResult
       when: _mod.value.operation == 'prepend'
 
@@ -108,7 +78,7 @@
         path: "{{ filePath }}"
         regexp: '^(.+)$'
         replace: '\1 {{ _mod.value.parameters }}'
-        backup: "{{ (createBackup | default(true)) if _indx == 0 else false }}"
+        backup: false
       register: _modResult
       when: _mod.value.operation == 'append'
 
@@ -120,7 +90,7 @@
         path: "{{ filePath }}"
         regexp: "{{ _mod.value.regexp }}"
         line: "{{ _mod.value.line }}"
-        backup: "{{ (createBackup | default(true)) if _indx == 0 else false }}"
+        backup: false
         backrefs: "{{ _mod.value.backrefs | default(false) }}"
       register: _modResult
       when: _mod.value.operation == 'lineinfile'
@@ -133,7 +103,7 @@
         path: "{{ filePath }}"
         regexp: "{{ _mod.value.regexp }}"
         replace: "{{ _mod.value.replace }}"
-        backup: "{{ (createBackup | default(true)) if _indx == 0 else false }}"
+        backup: false
       register: _modResult
       when: _mod.value.operation == 'replace'
 

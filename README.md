@@ -5,8 +5,8 @@
 # Copyright 2025 Douglas WF Acheson (dwfa@dwfa.ca)
 # Licensed under Apache License 2.0. See LICENSE.md for details.
 #
-# Version: 1.0
-# Date: October 16, 2025
+# Version: 2.2
+# Date: February 03, 2026
 ##############################################################################
 -->
 
@@ -22,36 +22,33 @@ preparation to application and network configuration.
 - **Automated RPi OS Image Management**: Download, verify, and manage Raspberry
   Pi OS images with checksum validation
 - **Device Imaging**: Interactive detection and automated image writing workflows
-- **Custom Ansible Modules**: Specialized modules for filesystem operations,
-  drive detection, and BIND DNS configuration
-- **Two-Repository Architecture**: Separates public automation code from
-  private credentials and network data
-- **Network Automation**: BIND DNS configuration generation and static IP
-  management
+- **Custom Ansible Modules**: Specialized modules for filesystem operations and
+  drive detection
+- **Secure Configuration**: Separates automation code from private credentials
+  and network data
 - **Flexible Deployment**: Shell script wrappers for common operations with
   debug/check modes
 
 ## Architecture
 
-This project uses a **two-repository architecture** for security and flexibility:
+This project separates automation code from configuration:
 
-- **Public Repository** (this repo): Contains all Ansible roles, playbooks,
-  custom modules, and shell script wrappers
-- **Private Data Repository**: Your separate git repository containing
-  credentials, SSH keys, network configurations, and inventory files
+- **This directory**: Ansible roles, playbooks, custom modules, and scripts
+- **data/ directory**: Your credentials, SSH keys, inventory, and host configs
 
-The `data/` directory is excluded from this repository and must be created
-separately by each user. This design ensures that:
+The `data/` directory is excluded from version control (via `.gitignore`) and
+created from `data.template/` during setup. This keeps your sensitive
+configuration private.
 
-- Automation code can be shared publicly
-- Sensitive data (credentials, network topology, SSH keys) remains private
-- Multiple users can use the same codebase with their own configurations
+**Optional**: For advanced users who want to version-control their data
+directory separately (e.g., to share automation code publicly while keeping
+credentials private), see [docs/TWO_REPO_ARCHITECTURE.md](docs/TWO_REPO_ARCHITECTURE.md)
 
 ## Prerequisites
 
 - Python 3.x
 - Ansible 2.9 or later
-- Unix based sysem
+- Unix-based system (macOS or Linux)
 - Git
 
 ## Quick Start
@@ -63,17 +60,43 @@ separately by each user. This design ensures that:
    cd ansible-rpi-management
    ```
 
-2. **Create your private data repository** - *More information coming soon*
+2. **Create your data directory from template:**
 
-3. **Set up required data directory structure** - *More information coming soon*
+   ```bash
+   cp -r data.template data
+   ```
 
-4. **What You Can Do:**
-   - Prepare RPi images on writable media (USB drives, SD cards, etc.)
-   - Configure DNS servers
-   - Initialize installer hosts
-   - Manage network configurations
+3. **Set up credentials** (creates encrypted credential file):
 
-   *Examples coming soon*
+   ```bash
+   ./scripts/setupCredentials.sh
+   ```
+
+4. **Configure your inventory** - Edit `data/inventory.yaml` with your hosts:
+
+   ```yaml
+   all:
+     children:
+       rpi:
+         hosts:
+           mypi:
+             ansible_host: 192.168.1.100
+   ```
+
+5. **Run a playbook:**
+
+   ```bash
+   ./createImage.sh      # Write RPi image to target device
+   ```
+
+See [data.template/README.md](data.template/README.md) for detailed
+data directory configuration.
+
+## What You Can Do
+
+- **Create RPi images**: Write OS images to target devices (SD cards, USB
+  drives) with pre-configured settings (SSH enabled, user credentials)
+- **Automate deployment**: Consistent, repeatable RPi setup across your fleet
 
 ## License
 

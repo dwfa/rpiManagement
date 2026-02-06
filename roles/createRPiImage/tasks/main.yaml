@@ -21,11 +21,13 @@
 # WORKFLOW:
 #   1. Set _imagePath based on local/remote execution context
 #   2. Copy image from localhost to /tmp (remote targets only)
-#   3. Unmount all partitions on target device (prevents dd "device busy" errors)
-#   4. Write image to device using writeImage.yaml task
-#   5. Wait for boot partition mount (macOS auto-mounts, Linux requires mount)
-#   6. Detect boot partition mount point dynamically (supports boot/bootfs labels)
-#   7. Mount boot partition (Linux only - macOS auto-mounts)
+#   3. Verify image checksum after copy (remote targets only)
+#   4. Unmount all partitions on target device (prevents dd "device busy" errors)
+#   5. Write image to device using writeImage.yaml task
+#   6. Wait for boot partition mount (macOS auto-mounts, Linux requires mount)
+#   7. Detect boot partition mount point dynamically (supports boot/bootfs labels)
+#   8. Mount boot partition (Linux only - macOS auto-mounts)
+#   9. Cleanup temporary image from /tmp (remote targets only)
 #
 # EXAMPLE:
 #   - hosts: localhost
@@ -41,13 +43,14 @@
 #   - Validation performed in writeImage.yaml task
 #   - Must run getInstallDevice and updateRPiImage roles first
 #   - initRPiImage role should follow to initialize boot partition
-#   - For remote targets, image copied to /tmp then deleted after write
+#   - For remote targets, image copied to /tmp with SHA256 checksum verification,
+#       then deleted after successful write to conserve disk space
 #
 # Copyright 2025 Douglas WF Acheson (dwfa@dwfa.ca)
 # Licensed under Apache License 2.0. See LICENSE.md for details.
 #
-# Version: 4.2
-# Date: February 02, 2026
+# Version: 4.5
+# Date: February 05, 2026
 ##############################################################################
 ---                                            # identifies a YAML config file
 
@@ -68,13 +71,47 @@
   when: inventory_hostname != 'localhost'
 
 ##############################################################################
-# Copy image from controller to remote target (remote targets only)
+# Copy and verify image for remote hosts (remote targets only)
+# Copies image from localhost to /tmp, verifies SHA256 checksum integrity
 ##############################################################################
-- name: Copy image to remote host
-  ansible.builtin.copy:
-    src: "{{ dataDir }}/images/currentRPiImage.img"
-    dest: "{{ _imagePath }}"
-    mode: '0644'
+- name: Copy and verify image for remote hosts
+  block:
+    - name: Calculate source image checksum
+      ansible.builtin.stat:
+        path: "{{ dataDir }}/images/currentRPiImage.img"
+        checksum_algorithm: sha256
+        get_checksum: yes
+      register: _sourceChecksumResult
+      delegate_to: localhost
+
+    - name: Copy image to remote host
+      ansible.builtin.copy:
+        src: "{{ dataDir }}/images/currentRPiImage.img"
+        dest: "{{ _imagePath }}"
+        mode: '0644'
+
+    - name: Calculate destination image checksum
+      ansible.builtin.stat:
+        path: "{{ _imagePath }}"
+        checksum_algorithm: sha256
+        get_checksum: yes
+      register: _destChecksumResult
+
+    - name: Verify image checksum after copy
+      ansible.builtin.fail:
+        msg: >-
+          [ERROR] *** Image checksum mismatch after copy to remote host!
+          Source: [{{ _sourceChecksumResult.stat.checksum }}]
+          Dest:   [{{ _destChecksumResult.stat.checksum }}]
+          The image may be corrupted. Please retry the copy.
+      when: _sourceChecksumResult.stat.checksum != _destChecksumResult.stat.checksum
+
+    - name: Debug checksum verification passed
+      debug:
+        msg: >-
+          [DEBUG] *** Image checksum verified:
+          [{{ _destChecksumResult.stat.checksum }}]
+      when: debugFlag is defined
   when: inventory_hostname != 'localhost'
 
 ##############################################################################
@@ -135,9 +172,21 @@
   when: ansible_system == 'Linux'
 
 ##############################################################################
+# Cleanup temporary image from remote host (remote targets only)
+# Note: Frees ~2GB disk space in /tmp after successful image write
+##############################################################################
+- name: Remove temporary image from remote host
+  ansible.builtin.file:
+    path: "{{ _imagePath }}"
+    state: absent
+  when: inventory_hostname != 'localhost'
+
+##############################################################################
 # Cleanup temporary facts
 ##############################################################################
 - name: Cleanup temporary facts
   ansible.builtin.set_fact:
     _bootMountPointResult: null
+    _destChecksumResult: null
     _imagePath: null
+    _sourceChecksumResult: null

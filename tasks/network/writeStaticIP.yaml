@@ -1,0 +1,128 @@
+##############################################################################
+# Write static IP configuration for imaging workflow
+#
+# USAGE:
+#   Mounts a root partition, writes an NM .nmconnection file for static IP
+#   configuration, then unmounts. Designed for imaging workflows where the
+#   target filesystem needs static IP on first boot.
+#
+# REQUIRED VARIABLES:
+#   - partitionDevice: Root partition device path (e.g., /dev/sdb2)
+#   - staticIPDataPath: Path to static IP data YAML file
+#       (e.g., {{ dataDir }}/network/staticIP/installer.yaml)
+#   - taskDir: Path to shared tasks directory
+#   - dataDir: Path to data directory
+#   - debugFlag: (optional) Enable debug output
+#
+# WORKFLOW:
+#   1. Mount root partition to /mnt/root
+#   2. Load static IP data from staticIPDataPath
+#   3. Generate UUID via generateUUID custom module
+#   4. Write .nmconnection file using eth.conf template
+#   5. Unmount root partition
+#   6. Cleanup temporary facts
+#
+# EXAMPLE:
+#   - name: Configure static IP on root partition
+#     include_tasks:
+#       file: "{{ taskDir }}/network/writeStaticIP.yaml"
+#     vars:
+#       partitionDevice:  "/dev/sdb2"
+#       staticIPDataPath: "{{ dataDir }}/network/staticIP/installer.yaml"
+#
+# NOTES:
+#   - Uses data/network/nm/eth.conf Jinja2 template
+#   - File permissions set to 0600 (NetworkManager requirement)
+#   - Owner/group set to root:root
+#   - UUID generated fresh each time (unique per connection)
+#   - Mount point is internal (/mnt/root)
+#   - Reuses mountPartition.yaml and unmountPartition.yaml tasks
+#
+# Copyright 2025 Douglas WF Acheson (dwfa@dwfa.ca)
+# Licensed under Apache License 2.0. See LICENSE.md for details.
+#
+# Version: 2.2
+# Date: February 21, 2026
+##############################################################################
+---
+
+##############################################################################
+# Set internal paths
+##############################################################################
+- name: Set internal paths
+  set_fact:
+    _nmConnectionDir:  "/mnt/root/etc/NetworkManager/system-connections"
+    _partitionDevice:  "{{ partitionDevice }}"
+    _rootMountPoint:   "/mnt/root"
+
+##############################################################################
+# Mount root partition
+##############################################################################
+- name: Mount root partition
+  include_tasks:
+    file: "{{ taskDir }}/fileSystem/mountPartition.yaml"
+  vars:
+    mountPoint:      "{{ _rootMountPoint }}"
+    partitionDevice: "{{ _partitionDevice }}"
+
+##############################################################################
+# Load static IP data
+##############################################################################
+- name: Load static IP data
+  include_vars:
+    file: "{{ staticIPDataPath }}"
+
+- name: Debug loaded IP data
+  debug:
+    msg: "[DEBUG] *** Static IP: [{{ ipDetails.address }}/{{ ipDetails.netmask }}] gateway [{{ ipDetails.gateway }}]"
+  when: debugFlag is defined
+
+##############################################################################
+# Generate UUID for connection
+##############################################################################
+- name: Generate UUID for NM connection
+  local_action:
+    module: generateUUID
+  register: _uuidResult
+
+##############################################################################
+# Write .nmconnection file using template
+##############################################################################
+- name: Write NM connection file
+  ansible.builtin.template:
+    dest:  "{{ _nmConnectionDir }}/eth0-manual.nmconnection"
+    group: root
+    mode:  '0600'
+    owner: root
+    src:   "{{ dataDir }}/network/nm/eth.conf"
+  vars:
+    autoconnect: "yes"
+    ip4Address:  "address1={{ ipDetails.address }}/{{ ipDetails.netmask }},{{ ipDetails.gateway }}"
+    ip4Dns:      "dns={{ ipDetails.dns }}"
+    method:      "manual"
+    uuid:        "{{ _uuidResult.uuid }}"
+
+- name: Debug NM connection file written
+  debug:
+    msg: "[DEBUG] *** Wrote NM connection file to [{{ _nmConnectionDir }}/eth0-manual.nmconnection]"
+  when: debugFlag is defined
+
+##############################################################################
+# Unmount root partition
+##############################################################################
+- name: Unmount root partition
+  include_tasks:
+    file: "{{ taskDir }}/fileSystem/unmountPartition.yaml"
+  vars:
+    mountPoint: "{{ _rootMountPoint }}"
+
+##############################################################################
+# Cleanup temporary facts
+##############################################################################
+- name: Cleanup temporary facts
+  set_fact:
+    _nmConnectionDir:  null
+    _partitionDevice:  null
+    _rootMountPoint:   null
+    _uuidResult:       null
+    ipDetails:         null

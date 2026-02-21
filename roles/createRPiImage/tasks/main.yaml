@@ -4,7 +4,6 @@
 # USAGE:
 #   Writes a Raspberry Pi OS image to a block device (USB drive, SD card, etc.).
 #   Requires prerequisite roles to set facts for device and image paths.
-#   Sets bootMountPoint fact for use by initRPiImage role.
 #
 # REQUIRED VARIABLES:
 #   - installDevice: Target device path (e.g., /dev/disk4, /dev/sdb)
@@ -13,29 +12,20 @@
 #   - taskDir: Path to tasks directory (inherited from common role)
 #   - debugFlag: (optional) Enable debug output
 #
-# OUTPUT FACTS:
-#   - bootMountPoint: Mount path for boot partition (for initRPiImage role)
-#       macOS: Detected dynamically (e.g., /Volumes/bootfs)
-#       Linux: /mnt/boot
-#
 # WORKFLOW:
 #   1. Set _imagePath based on local/remote execution context
 #   2. Copy image from localhost to /tmp (remote targets only)
-#   3. Verify image checksum after copy (remote targets only)
-#   4. Unmount all partitions on target device (prevents dd "device busy" errors)
-#   5. Write image to device using writeImage.yaml task
-#   6. Wait for boot partition mount (macOS auto-mounts, Linux requires mount)
-#   7. Detect boot partition mount point dynamically (supports boot/bootfs labels)
-#   8. Mount boot partition (Linux only - macOS auto-mounts)
-#   9. Cleanup temporary image from /tmp (remote targets only)
+#   3. Unmount all partitions on target device (prevents dd "device busy" errors)
+#   4. Write image to device using writeImage.yaml task
+#   5. Cleanup temporary image from /tmp (remote targets only)
 #
 # EXAMPLE:
 #   - hosts: localhost
 #     roles:
 #       - role: getInstallDevice        # Sets installDevice fact
 #       - role: updateRPiImage          # Sets imagePath fact (on localhost)
-#       - role: createRPiImage          # Writes image, sets bootMountPoint
-#       - role: initRPiImage            # Uses bootMountPoint to init boot
+#       - role: createRPiImage          # Writes image to device
+#       - role: initRPiImage            # Initializes boot partition
 #
 # NOTES:
 #   - Requires sudo/root permissions for device write access
@@ -49,70 +39,37 @@
 # Copyright 2025 Douglas WF Acheson (dwfa@dwfa.ca)
 # Licensed under Apache License 2.0. See LICENSE.md for details.
 #
-# Version: 4.5
-# Date: February 05, 2026
+# Version: 5.1
+# Date: February 21, 2026
 ##############################################################################
 ---                                            # identifies a YAML config file
 
 ##############################################################################
 # Set image path based on execution context
 # Note: Image filename is always currentRPiImage.img
-#       - localhost: {{ dataDir }}/images/currentRPiImage.img
-#       - remote: /tmp/currentRPiImage.img (copied from localhost)
+#       - local connection: {{ dataDir }}/images/currentRPiImage.img
+#       - remote connection: /tmp/currentRPiImage.img (copied from localhost)
 ##############################################################################
-- name: Set image path (localhost)
+- name: Set image path (local)
   ansible.builtin.set_fact:
     _imagePath: "{{ dataDir }}/images/currentRPiImage.img"
-  when: inventory_hostname == 'localhost'
+  when: ansible_connection == 'local'
 
 - name: Set image path (remote)
   ansible.builtin.set_fact:
     _imagePath: "/tmp/currentRPiImage.img"
-  when: inventory_hostname != 'localhost'
+  when: ansible_connection != 'local'
 
 ##############################################################################
-# Copy and verify image for remote hosts (remote targets only)
-# Copies image from localhost to /tmp, verifies SHA256 checksum integrity
+# Copy image for remote hosts (remote targets only)
+# Note: ansible.builtin.copy verifies integrity via internal checksum
 ##############################################################################
-- name: Copy and verify image for remote hosts
-  block:
-    - name: Calculate source image checksum
-      ansible.builtin.stat:
-        path: "{{ dataDir }}/images/currentRPiImage.img"
-        checksum_algorithm: sha256
-        get_checksum: yes
-      register: _sourceChecksumResult
-      delegate_to: localhost
-
-    - name: Copy image to remote host
-      ansible.builtin.copy:
-        src: "{{ dataDir }}/images/currentRPiImage.img"
-        dest: "{{ _imagePath }}"
-        mode: '0644'
-
-    - name: Calculate destination image checksum
-      ansible.builtin.stat:
-        path: "{{ _imagePath }}"
-        checksum_algorithm: sha256
-        get_checksum: yes
-      register: _destChecksumResult
-
-    - name: Verify image checksum after copy
-      ansible.builtin.fail:
-        msg: >-
-          [ERROR] *** Image checksum mismatch after copy to remote host!
-          Source: [{{ _sourceChecksumResult.stat.checksum }}]
-          Dest:   [{{ _destChecksumResult.stat.checksum }}]
-          The image may be corrupted. Please retry the copy.
-      when: _sourceChecksumResult.stat.checksum != _destChecksumResult.stat.checksum
-
-    - name: Debug checksum verification passed
-      debug:
-        msg: >-
-          [DEBUG] *** Image checksum verified:
-          [{{ _destChecksumResult.stat.checksum }}]
-      when: debugFlag is defined
-  when: inventory_hostname != 'localhost'
+- name: Copy image to remote host
+  ansible.builtin.copy:
+    src:  "{{ dataDir }}/images/currentRPiImage.img"
+    dest: "{{ _imagePath }}"
+    mode: '0644'
+  when: ansible_connection != 'local'
 
 ##############################################################################
 # Unmount all partitions on target device before writing
@@ -131,45 +88,8 @@
   include_tasks:
     file: "{{ taskDir }}/fileSystem/writeImage.yaml"
   vars:
-    useDevice: "{{ installDevice }}"
+    useDevice:    "{{ installDevice }}"
     useImagePath: "{{ _imagePath }}"
-
-##############################################################################
-# Wait for macOS to auto-mount boot partition after dd
-# Note: RPi OS Bookworm uses 'bootfs' label, older images use 'boot'
-##############################################################################
-- name: Wait for boot partition to mount
-  ansible.builtin.pause:
-    prompt: "Waiting for macOS to mount boot partition. Press Enter when ready"
-  when: ansible_system == 'Darwin'
-
-- name: Get boot partition mount point (macOS)
-  ansible.builtin.shell: |
-    diskutil info {{ _bootPartitionDevice }} | grep "Mount Point" | awk -F': +' '{print $2}'
-  register: _bootMountPointResult
-  changed_when: false
-  when: ansible_system == 'Darwin'
-
-- name: Set boot mount point fact (macOS)
-  ansible.builtin.set_fact:
-    bootMountPoint: "{{ _bootMountPointResult.stdout }}"
-  when: ansible_system == 'Darwin'
-
-- name: Set boot mount point fact (Linux)
-  ansible.builtin.set_fact:
-    bootMountPoint: "/mnt/boot"
-  when: ansible_system == 'Linux'
-
-##############################################################################
-# Mount boot partition for init file copying (Linux only - macOS auto-mounts)
-##############################################################################
-- name: Mount boot partition
-  include_tasks:
-    file: "{{ taskDir }}/fileSystem/mountPartition.yaml"
-  vars:
-    partitionDevice: "{{ _bootPartitionDevice }}"
-    mountPoint: "{{ bootMountPoint }}"
-  when: ansible_system == 'Linux'
 
 ##############################################################################
 # Cleanup temporary image from remote host (remote targets only)
@@ -179,14 +99,11 @@
   ansible.builtin.file:
     path: "{{ _imagePath }}"
     state: absent
-  when: inventory_hostname != 'localhost'
+  when: ansible_connection != 'local'
 
 ##############################################################################
 # Cleanup temporary facts
 ##############################################################################
 - name: Cleanup temporary facts
   ansible.builtin.set_fact:
-    _bootMountPointResult: null
-    _destChecksumResult: null
     _imagePath: null
-    _sourceChecksumResult: null

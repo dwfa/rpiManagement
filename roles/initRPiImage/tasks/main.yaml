@@ -1,42 +1,70 @@
 ##############################################################################
-# Ansible role to initialize RPi boot partition
+# Ansible role to initialize freshly written RPi OS image
 #
 # USAGE:
-#   Initializes a freshly written RPi OS image boot partition with config files.
-#   Must be called AFTER createRPiImage role which sets bootMountPoint fact.
+#   Configures a freshly written RPi OS image with initialization files and
+#   network settings. Handles partition mounting internally (encapsulated).
+#   Must be called AFTER createRPiImage role which writes the image to device.
 #
 # REQUIRED FACTS:
-#   - bootMountPoint: Mount path for boot partition (set by createRPiImage role)
+#   - installDevice: Target device path (set by getInstallDevice role)
 #   - taskDir: Path to tasks directory (inherited from common role)
 #   - dataDir: Path to data directory (inherited from common role)
 #   - debugFlag: (optional) Enable debug output
 #
 # WORKFLOW:
-#   1. Copy initialization files (ssh, userconf.txt) to boot partition
-#   2. Modify cmdline.txt with custom boot parameters
-#   3. Unmount boot partition
+#   1. Mount boot partition (handles macOS auto-mount)
+#   2. Copy initialization files (ssh, userconf.txt) to boot
+#   3. Modify cmdline.txt with custom boot parameters
+#   4. Unmount boot partition
+#   5. Configure static IP on root partition (Linux only)
 #
 # EXAMPLE:
 #   - hosts: localhost
 #     roles:
 #       - role: getInstallDevice
 #       - role: updateRPiImage
-#       - role: createRPiImage    # Sets bootMountPoint fact
-#       - role: initRPiImage      # Uses bootMountPoint
+#       - role: createRPiImage
+#       - role: initRPiImage
 #
 # NOTES:
-#   - Requires createRPiImage to run first (sets bootMountPoint fact)
-#   - Boot partition must be mounted before this role runs
+#   - Requires createRPiImage to have written image first
+#   - Boot partition: FAT32, mountable on macOS and Linux
+#   - Root partition: ext4, mountable on Linux only (static IP skipped on macOS)
 #   - Files to copy defined in data/rpi/metadata.yaml
 #   - cmdline.txt modifications defined in data/rpi/cmdline-txt-mods.yaml
 #
 # Copyright 2025 Douglas WF Acheson (dwfa@dwfa.ca)
 # Licensed under Apache License 2.0. See LICENSE.md for details.
 #
-# Version: 1.0
-# Date: January 04, 2026
+# Version: 2.0
+# Date: February 21, 2026
 ##############################################################################
 ---
+
+##############################################################################
+# Mount boot partition
+# macOS: Auto-mounts after dd, unmount first then mount to known path
+# Linux: Mount to /mnt/boot
+##############################################################################
+- name: Wait for macOS to auto-mount boot partition
+  ansible.builtin.pause:
+    prompt: "Waiting for macOS to mount boot partition. Press Enter when ready"
+  when: ansible_system == 'Darwin'
+
+- name: Unmount auto-mounted boot partition (macOS)
+  include_tasks:
+    file: "{{ taskDir }}/fileSystem/unmountPartition.yaml"
+  vars:
+    mountPoint: "{{ _bootPartitionDevice }}"
+  when: ansible_system == 'Darwin'
+
+- name: Mount boot partition
+  include_tasks:
+    file: "{{ taskDir }}/fileSystem/mountPartition.yaml"
+  vars:
+    mountPoint:      "{{ _bootMountPoint }}"
+    partitionDevice: "{{ _bootPartitionDevice }}"
 
 ##############################################################################
 # Copy init files to boot partition
@@ -45,8 +73,8 @@
   include_tasks:
     file: "{{ taskDir }}/files/copyFiles.yaml"
   vars:
+    destDir:      "{{ _bootMountPoint }}"
     metadataPath: "{{ dataDir }}/rpi/metadata.yaml"
-    destDir: "{{ bootMountPoint }}"
 
 ##############################################################################
 # Update boot/cmdline.txt
@@ -65,4 +93,16 @@
   include_tasks:
     file: "{{ taskDir }}/fileSystem/unmountPartition.yaml"
   vars:
-    mountPoint: "{{ bootMountPoint }}"
+    mountPoint: "{{ _bootMountPoint }}"
+
+##############################################################################
+# Configure static IP on root filesystem (Linux only)
+# Skipped on macOS (cannot mount ext4).
+##############################################################################
+- name: Configure static IP on root filesystem
+  include_tasks:
+    file: "{{ taskDir }}/network/writeStaticIP.yaml"
+  vars:
+    partitionDevice:  "{{ _rootPartitionDevice }}"
+    staticIPDataPath: "{{ dataDir }}/network/staticIP/installer.yaml"
+  when: ansible_system != 'Darwin'

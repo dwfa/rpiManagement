@@ -11,16 +11,13 @@
 # Copyright 2025 Douglas WF Acheson (dwfa@dwfa.ca)
 # Licensed under Apache License 2.0. See LICENSE.md for details.
 #
-# Version: 2.0
-# Date: January 04, 2026
+# Version: 2.1
+# Date: February 21, 2026
 ##############################################################################
 
 ---                                            # identifies a YAML config file
 
-##############################################################################
-# Boot partition device path
-# macOS: /dev/disk6 → /dev/disk6s1 (partition slice)
-# Linux: /dev/sdb → /dev/sdb1 (partition number)
-# Override: Pass bootPartitionDevice variable when calling role
-##############################################################################
-_bootPartitionDevice: "{{ bootPartitionDevice | default(installDevice + ('s1' if ansible_system == 'Darwin' else '1')) }}"
+# No role-specific variables needed
+# All required variables (installDevice, dataDir, taskDir) come from:
+#   - getInstallDevice role (installDevice)
+#   - common role dependency (dataDir, taskDir)

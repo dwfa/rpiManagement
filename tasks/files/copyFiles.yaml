@@ -38,6 +38,7 @@
 # NOTES:
 #   - Metadata file must contain '_initFiles' dictionary and optionally _srcDir/_destDir
 #   - Metadata defines: _srcDir (with sourceDir override), _destDir (with destDir override)
+#   - Each _initFiles entry can specify: file (required), mode (optional, default: 0644)
 #   - Example metadata: _srcDir: "{{ sourceDir | default(dataDir + '/rpi') }}"
 #   - Caller must ensure destDir is accessible (mounted if needed)
 #   - Requires write permissions to destDir
@@ -46,8 +47,8 @@
 # Copyright 2025 Douglas WF Acheson (dwfa@dwfa.ca)
 # Licensed under Apache License 2.0. See LICENSE.md for details.
 #
-# Version: 4.4
-# Date: October 26, 2025
+# Version: 4.5
+# Date: February 07, 2026
 ##############################################################################
 ---                                            # identifies a YAML config file
 
@@ -64,8 +65,8 @@
 - name: Copy files from source to destination
   ansible.builtin.copy:
     dest: "{{ _destDir }}/{{ _initFiles[item].file }}"
-    src: "{{ _srcDir }}/{{ _initFiles[item].file }}"
-    mode: 0644
+    mode: "{{ _initFiles[item].mode | default('0644') }}"
+    src:  "{{ _srcDir }}/{{ _initFiles[item].file }}"
   with_items: "{{ _initFiles.keys() | list }}"
   register: _cifResult
 

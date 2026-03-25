@@ -1,0 +1,76 @@
+##############################################################################
+# Ansible task to add SSH public keys for user accounts
+#
+# USAGE:
+#   Installs SSH public keys in users' authorized_keys files. Caller is
+#   responsible for loading SSH key data and passing via vars parameter.
+#
+# REQUIRED VARIABLES:
+#   - sshKeys: List of SSH key configurations
+#       Each item contains: comment, key, uName
+#
+# OPTIONAL VARIABLES:
+#   - debugFlag: Enable debug output
+#
+# WORKFLOW:
+#   1. Validate sshKeys is provided
+#   2. Add each SSH public key to user's authorized_keys
+#   3. Display status (debug mode)
+#   4. Cleanup temporary variables
+#
+# EXAMPLE:
+#   - name: Load SSH key data
+#     include_vars:
+#       file: "{{ dataDir }}/users/userSSHKeys.yaml"
+#
+#   - name: Add SSH keys for users
+#     include_tasks:
+#       file: "{{ taskDir }}/users/addSSHKeys.yaml"
+#     vars:
+#       sshKeys: "{{ sshKeys }}"
+#
+# NOTES:
+#   - Requires ansible.posix collection
+#   - User must exist before adding SSH keys
+#   - Creates ~/.ssh directory if needed
+#   - Idempotent: safe to run multiple times
+#
+# Copyright 2025 Douglas WF Acheson (dwfa@dwfa.ca)
+# Licensed under Apache License 2.0. See LICENSE.md for details.
+#
+# Version: 1.1
+# Date: February 22, 2026
+##############################################################################
+---                                                   # identifies a YAML file
+
+##############################################################################
+# Validate required parameters
+##############################################################################
+- name: Validate sshKeys is provided
+  ansible.builtin.fail:
+    msg: "[ERROR] *** sshKeys is required for addSSHKeys task but not provided"
+  when: sshKeys is not defined or sshKeys | length == 0
+
+##############################################################################
+# Add SSH public keys for user accounts
+##############################################################################
+- name: Add SSH public keys for user accounts
+  ansible.posix.authorized_key:
+    comment: "{{ item.comment }}"
+    key:     "{{ item.key }}"
+    state:   present
+    user:    "{{ item.uName }}"
+  loop: "{{ sshKeys }}"
+  register: _addSSHKeysResult
+
+- name: Debug add SSH keys result
+  ansible.builtin.debug:
+    msg: "[DEBUG] *** Added [{{ sshKeys | length }}] SSH key(s) for user(s): [{{ sshKeys | map(attribute='uName') | unique | join(', ') }}]"
+  when: debugFlag is defined
+
+##############################################################################
+# Cleanup temporary facts
+##############################################################################
+- name: Cleanup temporary facts
+  ansible.builtin.set_fact:
+    _addSSHKeysResult: null

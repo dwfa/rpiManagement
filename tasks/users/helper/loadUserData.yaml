@@ -1,0 +1,40 @@
+##############################################################################
+# Load a single user's data and add to defaultUsersData map
+#
+# USAGE:
+#   Internal helper - called by a localhost play in a loop.
+#   Do NOT call directly from playbooks or roles.
+#   Runs on localhost where vault decryption works at the task level.
+#
+# REQUIRED VARIABLES:
+#   - _userName: Username (subdirectory name from discoverDirs)
+#   - usersDir:  Base directory containing user subdirectories
+#
+# OUTPUT VARIABLES:
+#   - defaultUsersData: Map of username → userData dict (accumulated)
+#
+# Copyright 2025 Douglas WF Acheson (dwfa@dwfa.ca)
+# Licensed under Apache License 2.0. See LICENSE.md for details.
+#
+# Version: 1.0
+# Date: February 28, 2026
+##############################################################################
+---                                                   # identifies a YAML file
+
+- name: "Load user data for [{{ _userName }}]"
+  ansible.builtin.include_vars:
+    file: "{{ usersDir }}/{{ _userName }}/user.yaml"
+    name: _loadedUserData
+
+- name: "Add [{{ _userName }}] to users data map"
+  ansible.builtin.set_fact:
+    defaultUsersData: >-
+      {{ defaultUsersData | default({}) |
+         combine({_userName: _loadedUserData.userData}) }}
+
+##############################################################################
+# Cleanup temporary facts
+##############################################################################
+- name: Cleanup temporary facts
+  ansible.builtin.set_fact:
+    _loadedUserData: null

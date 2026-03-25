@@ -1,0 +1,93 @@
+##############################################################################
+# Ansible task to remove user account(s)
+#
+# USAGE:
+#   Removes user accounts from the system. First terminates any running
+#   processes owned by the user, then removes the account and home directory.
+#
+# REQUIRED VARIABLES:
+#   - users: List of users to remove
+#       Each item contains: uName
+#
+# OPTIONAL VARIABLES:
+#   - debugFlag: Enable debug output
+#
+# WORKFLOW:
+#   1. Validate users is provided
+#   2. Kill all processes owned by each user (ignore_errors: true)
+#   3. Remove user account and home directory
+#   4. Display status (debug mode)
+#   5. Cleanup temporary variables
+#
+# EXAMPLE:
+#   - name: Load user to remove
+#     include_vars:
+#       file: "{{ dataDir }}/users/installer/user.yaml"
+#
+#   - name: Remove installer user
+#     include_tasks:
+#       file: "{{ taskDir }}/users/removeUser.yaml"
+#     vars:
+#       users:
+#         - "{{ userData }}"
+#
+# NOTES:
+#   - Errors from killall are ignored (user may not exist or have no processes)
+#   - User's home directory is removed with the account
+#   - Process termination uses signal 9 (SIGKILL)
+#   - Idempotent: safe to run multiple times
+#
+# Copyright 2025 Douglas WF Acheson (dwfa@dwfa.ca)
+# Licensed under Apache License 2.0. See LICENSE.md for details.
+#
+# Version: 1.1
+# Date: February 22, 2026
+##############################################################################
+---                                                   # identifies a YAML file
+
+##############################################################################
+# Validate required parameters
+##############################################################################
+- name: Validate users is provided
+  ansible.builtin.fail:
+    msg: "[ERROR] *** users is required for removeUser task but not provided"
+  when: users is not defined or users | length == 0
+
+##############################################################################
+# Kill all processes by user before removing
+##############################################################################
+- name: Display process termination info
+  ansible.builtin.debug:
+    msg: "[INFO] *** Killing user processes (errors expected if user has no processes)"
+  when: debugFlag is defined
+
+- name: Kill user processes
+  ansible.builtin.command:
+    cmd: "killall -9 -u {{ item.uName }}"
+  loop: "{{ users }}"
+  ignore_errors: true
+  register: _killProcessesResult
+
+##############################################################################
+# Remove user accounts
+##############################################################################
+- name: Remove user accounts
+  ansible.builtin.user:
+    name:   "{{ item.uName }}"
+    remove: true
+    state:  absent
+  loop: "{{ users }}"
+  register: _removeUserResult
+
+- name: Debug remove user result
+  ansible.builtin.debug:
+    msg: "[DEBUG] *** Removed [{{ users | length }}] user(s): [{{ users | map(attribute='uName') | join(', ') }}]"
+  when: debugFlag is defined
+
+##############################################################################
+# Cleanup temporary facts
+##############################################################################
+- name: Cleanup temporary facts
+  ansible.builtin.set_fact:
+    _killProcessesResult: null
+    _removeUserResult:    null

@@ -1,0 +1,118 @@
+##############################################################################
+# Ansible task to create user account(s)
+#
+# USAGE:
+#   Creates user accounts from a pre-loaded user data map. Supports two
+#   modes depending on how data is provided:
+#
+#   Map mode:       usersData dict passed directly (pre-loaded, vault
+#                   decrypted). Used when caller loads data on localhost.
+#   Directory mode: usersDir path provided. Task discovers directories
+#                   and loads user.yaml files itself (vault must be
+#                   available at task level).
+#
+# REQUIRED VARIABLES (one of):
+#   - usersData: Dictionary of username → userData mappings (map mode)
+#                e.g., { dwfa: { uName: dwfa, uid: 1701, ... }, ... }
+#   - usersDir:  Path to directory containing user subdirectories
+#                (directory mode). Each subdirectory must contain a
+#                user.yaml with a top-level 'userData' key.
+#
+# OPTIONAL VARIABLES:
+#   - debugFlag: Enable debug output
+#
+# WORKFLOW:
+#   1. Validate input (usersData or usersDir)
+#   2. If directory mode: discover users and load data
+#   3. Create each user account via helper
+#   4. Cleanup temporary variables
+#
+# EXAMPLE (map mode - vault pre-loaded on localhost):
+#   - name: Create default users
+#     include_tasks:
+#       file: "{{ taskDir }}/users/createUser.yaml"
+#     vars:
+#       usersData: "{{ hostvars['localhost'].defaultUsersData }}"
+#
+# EXAMPLE (directory mode - vault available at task level):
+#   - name: Create default users
+#     include_tasks:
+#       file: "{{ taskDir }}/users/createUser.yaml"
+#     vars:
+#       usersDir: "{{ dataDir }}/users/default"
+#
+# NOTES:
+#   - Password must be pre-hashed (SHA-512 via mkpasswd -m sha-512)
+#   - Shell defaults to /bin/bash if not specified
+#   - Groups must exist before creating user (run createGroup.yaml first)
+#   - Map mode preferred when user.yaml contains vault-encrypted fields
+#
+# Copyright 2025 Douglas WF Acheson (dwfa@dwfa.ca)
+# Licensed under Apache License 2.0. See LICENSE.md for details.
+#
+# Version: 3.0
+# Date: February 28, 2026
+##############################################################################
+---                                                   # identifies a YAML file
+
+##############################################################################
+# Validate required parameters
+##############################################################################
+- name: Validate input is provided
+  ansible.builtin.fail:
+    msg: >-
+      [ERROR] *** Either usersData (map) or usersDir (path) is required
+      for createUser task but neither was provided
+  when: usersData is not defined and usersDir is not defined
+
+##############################################################################
+# Directory mode: discover and load user data
+##############################################################################
+- name: Directory mode - discover user directories
+  ansible.builtin.include_tasks:
+    file: "{{ taskDir }}/files/discoverDirs.yaml"
+  vars:
+    searchDir: "{{ usersDir }}"
+  when: usersData is not defined and usersDir is defined
+
+- name: Directory mode - load user data
+  ansible.builtin.include_tasks:
+    file: "{{ taskDir }}/users/helper/loadUserData.yaml"
+  loop:         "{{ discoveredDirs }}"
+  loop_control:
+    loop_var: _userName
+  when: usersData is not defined and usersDir is defined and
+        discoveredDirs | length > 0
+
+- name: Directory mode - use loaded data
+  ansible.builtin.set_fact:
+    _usersToCreate: "{{ defaultUsersData }}"
+  when: usersData is not defined and usersDir is defined
+
+##############################################################################
+# Map mode: use pre-loaded data
+##############################################################################
+- name: Map mode - use provided data
+  ansible.builtin.set_fact:
+    _usersToCreate: "{{ usersData }}"
+  when: usersData is defined
+
+##############################################################################
+# Create user accounts
+##############################################################################
+- name: Create user accounts
+  ansible.builtin.include_tasks:
+    file: "{{ taskDir }}/users/helper/createSingleUser.yaml"
+  loop:         "{{ _usersToCreate.keys() | list | sort }}"
+  loop_control:
+    loop_var: _userName
+  when: _usersToCreate is defined and _usersToCreate | length > 0
+
+##############################################################################
+# Cleanup temporary facts (play-scoped set_fact variables)
+##############################################################################
+- name: Cleanup temporary facts
+  ansible.builtin.set_fact:
+    _usersToCreate:    null
+    defaultUsersData:  null
+    discoveredDirs:    null

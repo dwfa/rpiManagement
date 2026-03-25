@@ -136,8 +136,6 @@
     - name: Unmount mount point
       include_tasks:
         file: "{{ taskDir }}/fileSystem/unmountPartition.yaml"
-      vars:
-        mountPoint: "{{ mountPoint }}"
   when: _mountPointCheck.rc == 0
 
 ##############################################################################

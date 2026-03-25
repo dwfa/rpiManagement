@@ -1,0 +1,63 @@
+##############################################################################
+# Write userconf.txt to RPi boot partition from vault-encrypted user.yaml
+#
+# USAGE:
+#   Loads vault-encrypted user credentials from userDataPath and writes
+#   userconf.txt to the boot partition. The file sets the initial username
+#   and SHA-512 hashed password for first boot. Trims trailing newlines
+#   that ansible-vault encrypt_string appends to decrypted values.
+#   Called by initRPiImage role after mounting the boot partition.
+#
+# REQUIRED VARIABLES:
+#   - bootMountPoint: Path to mounted boot partition
+#   - userDataPath:   Path to vault-encrypted user.yaml file containing
+#                     userData dict with uName and pwd fields
+#
+# EXAMPLE:
+#   - name: Generate userconf.txt on boot partition
+#     include_tasks:
+#       file: "{{ taskDir }}/rpi/writeUserConf.yaml"
+#     vars:
+#       bootMountPoint: "{{ _bootMountPoint }}"
+#       userDataPath:   "{{ dataDir }}/users/installer/user.yaml"
+#
+# NOTES:
+#   - Requires Python passlib for password_hash('sha512') filter
+#   - Loads credentials directly from vault file — independent of userData
+#     connection fact so RPi initial user can differ from SSH connection user
+#   - | trim applied to uName and pwd to strip trailing newlines that
+#     ansible-vault encrypt_string may append to decrypted values
+#   - _initialUserData is cleaned up after use to prevent fact pollution
+#
+# Copyright 2026 Douglas WF Acheson (dwfa@dwfa.ca)
+# Licensed under Apache License 2.0. See LICENSE.md for details.
+#
+# Version: 1.0
+# Date: March 23, 2026
+##############################################################################
+---                                                   # identifies a YAML file
+
+##############################################################################
+# Load vault-encrypted user data from userDataPath
+##############################################################################
+- name: Load initial user data
+  ansible.builtin.include_vars:
+    file: "{{ userDataPath }}"
+    name: _initialUserData
+
+##############################################################################
+# Write userconf.txt with username:hashed-password
+##############################################################################
+- name: Generate userconf.txt on boot partition
+  ansible.builtin.copy:
+    content: "{{ _initialUserData.userData.uName | trim }}:\
+              {{ _initialUserData.userData.pwd | default('') | trim | password_hash('sha512') }}\n"
+    dest:    "{{ bootMountPoint }}/userconf.txt"
+    mode:    '0644'
+
+##############################################################################
+# Cleanup temporary facts
+##############################################################################
+- name: Cleanup temporary facts
+  ansible.builtin.set_fact:
+    _initialUserData: null

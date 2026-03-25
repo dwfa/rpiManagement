@@ -50,6 +50,10 @@ credentials private), see [docs/TWO_REPO_ARCHITECTURE.md](docs/TWO_REPO_ARCHITEC
 - Ansible 2.9 or later
 - Unix-based system (macOS or Linux)
 - Git
+- `sshpass` — required for password-based SSH to fresh RPi hosts
+  (before SSH keys are deployed)
+  - macOS: `brew install hudochenkov/sshpass/sshpass`
+  - Linux: install via your package manager (e.g., `apt install sshpass`)
 
 ## Quick Start
 

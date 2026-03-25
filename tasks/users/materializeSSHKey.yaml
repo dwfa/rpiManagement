@@ -1,0 +1,74 @@
+##############################################################################
+# Write SSH key(s) from userData to disk for use by Ansible connection vars
+#
+# USAGE:
+#   Called internally by the prepareRemoteCredentials role after loading
+#   vault-decrypted credentials. Key content from userData.sshKeys is
+#   written to key.prv and key.pub so Ansible connection vars can
+#   reference them. Skips silently if userData has no SSH keys.
+#   Call cleanupLocal role in a final localhost play to remove the files.
+#
+# OPTIONAL VARIABLES:
+#   - sshKeyPath: Directory to write key files
+#                 (default: "{{ dataDir }}/ssh")
+#                 Creates: sshKeyPath/key.prv and sshKeyPath/key.pub
+#
+# PREREQUISITES:
+#   - userData fact must be set (done by prepareRemoteCredentials)
+#   - dataDir must be defined (provided by common role)
+#
+# NOTES:
+#   - MUST run on localhost — fails immediately if inventory_hostname
+#     is not 'localhost' to prevent writing keys to remote hosts
+#   - key.prv written with permissions 0600
+#   - key.pub written with permissions 0644
+#   - Silently skips each file if the corresponding key section is
+#     absent or empty
+#   - Writes the first key found in each section (key_1, key_2, ...)
+#   - userData.sshKeys.private / .public must each be a dict of
+#     key entries with a 'key' field
+#   - The <materializeSSHKey> prefix in error messages is hardcoded —
+#     Ansible has no equivalent of __FILE__ for included task files
+#
+# Copyright 2026 Douglas WF Acheson (dwfa@dwfa.ca)
+# Licensed under Apache License 2.0. See LICENSE.md for details.
+#
+# Version: 1.1
+# Date: March 21, 2026
+##############################################################################
+---                                                   # identifies a YAML file
+
+##############################################################################
+# Guard: must run on localhost only
+##############################################################################
+- name: Fail if not running on localhost
+  ansible.builtin.fail:
+    msg: "[ERROR] *** <materializeSSHKey> must run on localhost — \
+          inventory_hostname is [{{ inventory_hostname }}]"
+  when: inventory_hostname != 'localhost'
+
+##############################################################################
+# Materialize private key
+##############################################################################
+- name: Write private SSH key to disk
+  ansible.builtin.copy:
+    content: "{{ (userData.sshKeys.private.values() | list | first).key }}\n"
+    dest:    "{{ sshKeyPath | default(dataDir ~ '/ssh') }}/key.prv"
+    mode:    '0600'
+  when:
+    - userData.sshKeys is defined
+    - userData.sshKeys.private is defined
+    - userData.sshKeys.private | length > 0
+
+##############################################################################
+# Materialize public key
+##############################################################################
+- name: Write public SSH key to disk
+  ansible.builtin.copy:
+    content: "{{ (userData.sshKeys.public.values() | list | first).key }}\n"
+    dest:    "{{ sshKeyPath | default(dataDir ~ '/ssh') }}/key.pub"
+    mode:    '0644'
+  when:
+    - userData.sshKeys is defined
+    - userData.sshKeys.public is defined
+    - userData.sshKeys.public | length > 0

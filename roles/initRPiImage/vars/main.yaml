@@ -10,8 +10,8 @@
 # Copyright 2025 Douglas WF Acheson (dwfa@dwfa.ca)
 # Licensed under Apache License 2.0. See LICENSE.md for details.
 #
-# Version: 2.0
-# Date: February 21, 2026
+# Version: 2.1
+# Date: March 22, 2026
 ##############################################################################
 ---
 
@@ -24,9 +24,11 @@ _bootPartitionDevice: "{{ installDevice + ('s1' if ansible_system == 'Darwin' el
 _rootPartitionDevice: "{{ installDevice + ('s2' if ansible_system == 'Darwin' else '2') }}"
 
 ##############################################################################
-# Mount point for boot partition (consistent path for both platforms)
+# Mount point for boot partition (platform-specific)
+# macOS: /Volumes/boot — /mnt is read-only (SIP); /Volumes is writable
+# Linux: /mnt/boot  — standard Linux mount directory
 ##############################################################################
-_bootMountPoint: "/mnt/boot"
+_bootMountPoint: "{{ '/Volumes/boot' if ansible_system == 'Darwin' else '/mnt/boot' }}"
 
 ##############################################################################
 # File paths for cmdline.txt modification task

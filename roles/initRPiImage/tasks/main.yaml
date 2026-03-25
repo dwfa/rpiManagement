@@ -10,14 +10,17 @@
 #   - installDevice: Target device path (set by getInstallDevice role)
 #   - taskDir: Path to tasks directory (inherited from common role)
 #   - dataDir: Path to data directory (inherited from common role)
+#   - userDataPath: Path to vault-encrypted user.yaml for RPi initial user
+#                   (passed as role var from playbook)
 #   - debugFlag: (optional) Enable debug output
 #
 # WORKFLOW:
 #   1. Mount boot partition (handles macOS auto-mount)
-#   2. Copy initialization files (ssh, userconf.txt) to boot
-#   3. Modify cmdline.txt with custom boot parameters
-#   4. Unmount boot partition
-#   5. Configure static IP on root partition (Linux only)
+#   2. Copy initialization files (ssh) to boot
+#   3. Generate userconf.txt from userDataPath (loaded by writeUserConf task)
+#   4. Modify cmdline.txt with custom boot parameters
+#   5. Unmount boot partition
+#   6. Configure static IP on root partition (Linux only)
 #
 # EXAMPLE:
 #   - hosts: localhost
@@ -31,14 +34,18 @@
 #   - Requires createRPiImage to have written image first
 #   - Boot partition: FAT32, mountable on macOS and Linux
 #   - Root partition: ext4, mountable on Linux only (static IP skipped on macOS)
-#   - Files to copy defined in data/rpi/metadata.yaml
+#   - Static init files defined in data/rpi/metadata.yaml
+#   - userconf.txt written by tasks/rpi/writeUserConf.yaml — loads
+#     userDataPath independently so RPi initial user can differ from
+#     SSH connection user (userData)
 #   - cmdline.txt modifications defined in data/rpi/cmdline-txt-mods.yaml
+#   - Requires Python passlib for password_hash filter (used in writeUserConf)
 #
 # Copyright 2025 Douglas WF Acheson (dwfa@dwfa.ca)
 # Licensed under Apache License 2.0. See LICENSE.md for details.
 #
-# Version: 2.0
-# Date: February 21, 2026
+# Version: 2.5
+# Date: March 23, 2026
 ##############################################################################
 ---
 
@@ -75,6 +82,15 @@
   vars:
     destDir:      "{{ _bootMountPoint }}"
     metadataPath: "{{ dataDir }}/rpi/metadata.yaml"
+
+##############################################################################
+# Generate initial user in userconf.txt on boot partition
+##############################################################################
+- name: Generate initial user on boot partition
+  include_tasks:
+    file: "{{ taskDir }}/rpi/writeUserConf.yaml"
+  vars:
+    bootMountPoint: "{{ _bootMountPoint }}"
 
 ##############################################################################
 # Update boot/cmdline.txt

@@ -1,0 +1,58 @@
+##############################################################################
+# Ansible task to wait for a host to become available via SSH
+#
+# USAGE:
+#   Pauses playbook execution until the target host responds on SSH port.
+#   Typically used after a reboot or initial boot sequence.
+#
+# REQUIRED VARIABLES:
+#   None (all have defaults)
+#
+# OPTIONAL VARIABLES:
+#   - sshPort: SSH port to check (default: 22)
+#   - waitDelay: Seconds before first check (default: 10)
+#   - waitTimeout: Max seconds to wait (default: 300)
+#   - debugFlag: Enable debug output
+#
+# EXAMPLE:
+#   - name: Wait for RPi to boot
+#     include_tasks:
+#       file: "{{ taskDir }}/system/waitForHost.yaml"
+#     vars:
+#       waitTimeout: 600  # 10 minutes for slow boot
+#
+# NOTES:
+#   - Delegates to localhost (waits from control machine)
+#   - Uses inventory_hostname as target
+#
+# Copyright 2025 Douglas WF Acheson (dwfa@dwfa.ca)
+# Licensed under Apache License 2.0. See LICENSE.md for details.
+#
+# Version: 1.0
+# Date: February 22, 2026
+##############################################################################
+---                                                   # identifies a YAML file
+
+##############################################################################
+# Wait for host SSH to become available
+##############################################################################
+- name: Wait for host SSH to be available
+  ansible.builtin.wait_for:
+    delay:   "{{ waitDelay   | default(10) }}"
+    host:    "{{ inventory_hostname }}"
+    port:    "{{ sshPort     | default(22) }}"
+    timeout: "{{ waitTimeout | default(300) }}"
+  delegate_to: localhost
+  register: _waitForHostResult
+
+- name: Debug wait for host result
+  ansible.builtin.debug:
+    msg: "[DEBUG] *** Host [{{ inventory_hostname }}] available on port [{{ sshPort | default(22) }}]"
+  when: debugFlag is defined
+
+##############################################################################
+# Cleanup temporary facts
+##############################################################################
+- name: Cleanup temporary facts
+  ansible.builtin.set_fact:
+    _waitForHostResult: null

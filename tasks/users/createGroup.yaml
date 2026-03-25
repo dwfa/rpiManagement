@@ -1,0 +1,86 @@
+##############################################################################
+# Ansible task to create group(s)
+#
+# USAGE:
+#   Creates groups before user accounts are created. Loads group data
+#   from the specified file path.
+#
+# REQUIRED VARIABLES:
+#   - groupDataPath: Path to YAML file containing group definitions.
+#                    File must have a top-level 'groups' key as a
+#                    dictionary where key is group name and value
+#                    contains: gid (optional)
+#
+# OPTIONAL VARIABLES:
+#   - debugFlag: Enable debug output
+#
+# EXAMPLE:
+#   - name: Create groups
+#     include_tasks:
+#       file: "{{ taskDir }}/users/createGroup.yaml"
+#     vars:
+#       groupDataPath: "{{ dataDir }}/users/groupData.yaml"
+#
+#   # Data format (groupData.yaml):
+#   # groups:
+#   #   acheson:
+#   #     gid: 1701
+#
+# NOTES:
+#   - Idempotent: safe to run multiple times
+#   - Standard system groups (users, sudo) typically exist on RPi OS
+#
+# Copyright 2025 Douglas WF Acheson (dwfa@dwfa.ca)
+# Licensed under Apache License 2.0. See LICENSE.md for details.
+#
+# Version: 2.0
+# Date: February 24, 2026
+##############################################################################
+---                                                   # identifies a YAML file
+
+##############################################################################
+# Validate required parameters
+##############################################################################
+- name: Validate groupDataPath is provided
+  ansible.builtin.fail:
+    msg: >-
+      [ERROR] *** groupDataPath is required for createGroup task
+      but not provided
+  when: groupDataPath is not defined
+
+##############################################################################
+# Load group data
+##############################################################################
+- name: Load group data
+  ansible.builtin.include_vars:
+    file: "{{ groupDataPath }}"
+
+##############################################################################
+# Create groups
+##############################################################################
+- name: Create groups
+  block:
+    - name: Create group accounts
+      ansible.builtin.group:
+        gid:   "{{ groups[item].gid | default(omit) }}"
+        name:  "{{ item }}"
+        state: present
+      loop: "{{ groups.keys() | list }}"
+      register: _createGroupResult
+
+    - name: Debug create group result
+      ansible.builtin.debug:
+        msg: >-
+          {{ '[DEBUG] *** Created [' +
+             (groups.keys() | list | length | string) +
+             '] group(s): [' +
+             groups.keys() | list | join(', ') + ']' }}
+      when: debugFlag | default(0) | int == 1
+  when: groups is defined and groups | length > 0
+
+##############################################################################
+# Cleanup temporary facts
+##############################################################################
+- name: Cleanup temporary facts
+  ansible.builtin.set_fact:
+    _createGroupResult: null

@@ -1,0 +1,74 @@
+##############################################################################
+# Discover directories within a given directory
+#
+# USAGE:
+#   Scans a directory for immediate child directories and returns their
+#   names as a sorted list. Delegates to localhost so it reads the
+#   controller filesystem even when the play targets remote hosts.
+#
+# REQUIRED VARIABLES:
+#   - searchDir: Path to directory to scan for directories
+#
+# OUTPUT VARIABLES:
+#   - discoveredDirs: List of directory name strings (sorted)
+#
+# EXAMPLE:
+#   - name: Discover default users
+#     include_tasks:
+#       file: "{{ taskDir }}/files/discoverDirs.yaml"
+#     vars:
+#       searchDir: "{{ dataDir }}/users/default"
+#
+#   # Given: data/users/default/dwfa/  data/users/default/jane/
+#   # Result: discoveredDirs: ['dwfa', 'jane']
+#
+# NOTES:
+#   - Only immediate child directories are returned (no recursion)
+#   - Returns empty list if no directories found
+#   - Uses delegate_to: localhost (safe for remote targets)
+#
+# Copyright 2025 Douglas WF Acheson (dwfa@dwfa.ca)
+# Licensed under Apache License 2.0. See LICENSE.md for details.
+#
+# Version: 1.2
+# Date: February 24, 2026
+##############################################################################
+---                                                   # identifies a YAML file
+
+- name: Validate required variables
+  ansible.builtin.fail:
+    msg: "Required variable 'searchDir' is not defined"
+  when: searchDir is not defined
+
+- name: Find directories
+  ansible.builtin.find:
+    paths:     "{{ searchDir }}"
+    file_type: directory
+    recurse:   false
+  delegate_to: localhost
+  become:      false
+  register:    _discoverDirsResult
+
+- name: Build directory list
+  ansible.builtin.set_fact:
+    discoveredDirs: >-
+      {{ _discoverDirsResult.files |
+         map(attribute='path') |
+         map('basename') |
+         sort | list }}
+
+- name: Debug - discovered directories
+  ansible.builtin.debug:
+    msg: >-
+      {{ '[DEBUG] *** Found [' +
+         (discoveredDirs | length | string) +
+         '] directories in [' + searchDir + ']: [' +
+         discoveredDirs | join(', ') + ']' }}
+  when: debugFlag | default(0) | int == 1
+
+##############################################################################
+# Cleanup temporary facts (play-scoped register variables)
+##############################################################################
+- name: Cleanup temporary facts
+  ansible.builtin.set_fact:
+    _discoverDirsResult: null

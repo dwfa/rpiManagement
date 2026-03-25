@@ -1,0 +1,47 @@
+##############################################################################
+# Remove materialized SSH key files from disk
+#
+# USAGE:
+#   Called from a final localhost play after all remote plays have
+#   completed. Removes key.prv and key.pub written by materializeSSHKey
+#   so they do not persist on disk after the playbook run.
+#
+# OPTIONAL VARIABLES:
+#   - sshKeyPath: Directory containing the materialized key files
+#                 (default: "{{ dataDir }}/ssh")
+#                 Removes: sshKeyPath/key.prv and sshKeyPath/key.pub
+#
+# NOTES:
+#   - MUST run on localhost — fails immediately if inventory_hostname
+#     is not 'localhost' to prevent deleting files on remote hosts
+#   - Silently skips each file if it does not exist
+#   - The <cleanupSSHKey> prefix in error messages is hardcoded —
+#     Ansible has no equivalent of __FILE__ for included task files
+#
+# Copyright 2026 Douglas WF Acheson (dwfa@dwfa.ca)
+# Licensed under Apache License 2.0. See LICENSE.md for details.
+#
+# Version: 1.0
+# Date: March 21, 2026
+##############################################################################
+---                                                   # identifies a YAML file
+
+##############################################################################
+# Guard: must run on localhost only
+##############################################################################
+- name: Fail if not running on localhost
+  ansible.builtin.fail:
+    msg: "[ERROR] *** <cleanupSSHKey> must run on localhost — \
+          inventory_hostname is [{{ inventory_hostname }}]"
+  when: inventory_hostname != 'localhost'
+
+##############################################################################
+# Remove materialized key files
+##############################################################################
+- name: Remove materialized SSH key files
+  ansible.builtin.file:
+    path:  "{{ item }}"
+    state: absent
+  loop:
+    - "{{ sshKeyPath | default(dataDir ~ '/ssh') }}/key.prv"
+    - "{{ sshKeyPath | default(dataDir ~ '/ssh') }}/key.pub"

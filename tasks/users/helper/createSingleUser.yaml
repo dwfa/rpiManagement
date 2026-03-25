@@ -1,0 +1,53 @@
+##############################################################################
+# Create a single user account from pre-loaded data
+#
+# USAGE:
+#   Internal helper - called by createUser.yaml in a loop.
+#   Do NOT call directly from playbooks or roles.
+#
+# REQUIRED VARIABLES:
+#   - _userName:      Username key in _usersToCreate map
+#   - _usersToCreate: Map of username → userData dict
+#
+# NOTES:
+#   - User data must be pre-loaded (by caller or parent task)
+#   - Shell defaults to /bin/bash if not specified
+#
+# Copyright 2025 Douglas WF Acheson (dwfa@dwfa.ca)
+# Licensed under Apache License 2.0. See LICENSE.md for details.
+#
+# Version: 2.0
+# Date: February 28, 2026
+##############################################################################
+---                                                   # identifies a YAML file
+
+- name: "Create user account [{{ _userName }}]"
+  ansible.builtin.user:
+    comment:         "{{ _usersToCreate[_userName].name }}"
+    group:           "{{ _usersToCreate[_userName].gName }}"
+    groups:          "{{ _usersToCreate[_userName].gNames }}"
+    name:            "{{ _usersToCreate[_userName].uName }}"
+    password:        "{{ _usersToCreate[_userName].pwd }}"
+    shell:           "{{ _usersToCreate[_userName].shell | default('/bin/bash') }}"
+    state:           present
+    uid:             "{{ _usersToCreate[_userName].uid }}"
+    update_password: always
+  register: _createSingleUserResult
+
+- name: "Debug - created user [{{ _userName }}]"
+  ansible.builtin.debug:
+    msg: >-
+      {{ '[DEBUG] *** Created user [' +
+         _usersToCreate[_userName].uName +
+         '] uid=[' +
+         (_usersToCreate[_userName].uid | string) +
+         '] group=[' +
+         _usersToCreate[_userName].gName + ']' }}
+  when: debugFlag | default(0) | int == 1
+
+##############################################################################
+# Cleanup temporary facts
+##############################################################################
+- name: Cleanup temporary facts
+  ansible.builtin.set_fact:
+    _createSingleUserResult: null

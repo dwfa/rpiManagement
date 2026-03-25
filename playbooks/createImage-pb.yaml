@@ -14,23 +14,26 @@
 #
 # WORKFLOW:
 #   Play 1 (localhost):
-#     1. loadCredentials: Load vault-encrypted credentials
+#     1. prepareRemoteCredentials: Load vault-encrypted credentials and
+#        materialize SSH keys to data/ssh/ (skips if no keys present)
 #     2. updateRPiImage: Download/update RPi OS image to data/images/
 #   Play 2 (target host):
 #     3. getInstallDevice: Detect single available external drive
 #     4. createRPiImage: Copy image to target (if remote), write to disk
 #     5. initRPiImage: Copy init files and configure boot partition
+#   Play 3 (localhost):
+#     6. cleanupLocal: Remove materialized SSH key files from data/ssh/
 #
 # Copyright 2025 Douglas WF Acheson (dwfa@dwfa.ca)
 # Licensed under Apache License 2.0. See LICENSE.md for details.
 #
-# Version: 2.0
-# Date: February 01, 2026
+# Version: 2.4
+# Date: March 22, 2026
 ##############################################################################
 ---                                            # identifies a YAML config file
 
 ##############################################################################
-# Play 1: Load credentials and manage image locally
+# Play 1: Load credentials, materialize SSH keys, manage image locally
 # Note: updateRPiImage must run on localhost where data/ directory exists
 ##############################################################################
 - name: Prepare local resources
@@ -39,7 +42,9 @@
   gather_facts: false
 
   roles:
-    - loadCredentials
+    - role: prepareRemoteCredentials
+      vars:
+        userDataPath: "{{ dataDir }}/users/dwfa/user.yaml"
     - updateRPiImage
 
 ##############################################################################
@@ -50,14 +55,24 @@
   become:       true
   gather_facts: true
 
-# Load connection vars in two parts:
-#   1. connectionBase.yaml - always loaded, SSH key used if exists
-#   2. connectionPWD.yaml  - only loaded when SSH key missing
+# Load remote connection vars (connectionKey.yaml or connectionPWD.yaml)
   vars_files:
-    - "{{ playbook_dir }}/vars/connectionBase.yaml"
-    - "{{ playbook_dir }}/vars/connectionPWD.yaml if ((lookup('fileglob', (playbook_dir ~ '/../data/ssh/ssh_key')) | length) == 0) else omit }}"
+    - "{{ playbook_dir }}/vars/connection{{ hostvars['localhost'].userData.file }}.yaml"
 
   roles:
     - role: getInstallDevice
     - role: createRPiImage
     - role: initRPiImage
+      vars:
+        userDataPath: "{{ dataDir }}/users/installer/user.yaml"
+
+##############################################################################
+# Play 3: Cleanup materialized SSH keys
+##############################################################################
+- name: Cleanup materialized SSH keys
+  hosts:        localhost
+  connection:   local
+  gather_facts: false
+
+  roles:
+    - cleanupLocal

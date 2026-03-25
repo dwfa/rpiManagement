@@ -1,0 +1,121 @@
+##############################################################################
+# Post-install setup for freshly imaged RPi
+#
+# USAGE:
+#   Configures a freshly booted RPi: creates main user, adds SSH keys,
+#   removes installer user.
+#
+# EXAMPLE:
+#   ansible-playbook --extra-vars "nodes=installer" playbooks/postInstall-pb.yaml
+#
+# WORKFLOW:
+#   Play 1 (localhost):
+#     1. Load installer credentials for initial connection
+#     2. Discover and load default users' secret data (vault)
+#   Play 2 (target - as installer):
+#     4. Wait for host to be available
+#     5. Create groups
+#     6. Create default users (from pre-loaded data)
+#   Play 3 (localhost):
+#     7. Load default user credentials for reconnection
+#   Play 4 (target - as main user):
+#     8. Remove installer user
+#
+# NOTES:
+#   - RPi must be freshly imaged with installer user configured
+#   - Static IP 192.168.129.1 expected (set during imaging)
+#   - After completion, RPi has default user and installer is removed
+#
+# Copyright 2025 Douglas WF Acheson (dwfa@dwfa.ca)
+# Licensed under Apache License 2.0. See LICENSE.md for details.
+#
+# Version: 1.1
+# Date: February 28, 2026
+##############################################################################
+---                                                   # identifies a YAML file
+
+##############################################################################
+# Play 1: Load credentials and default users' secret data
+# Note: Vault decryption works on localhost (task-level include_vars)
+##############################################################################
+- name: Load credentials and default users' secret data
+  hosts:        localhost
+  connection:   local
+  gather_facts: false
+
+  roles:
+    - role: loadCredentials
+      vars:
+        userDataPath: "{{ dataDir }}/users/installer/user.yaml"
+
+  tasks:
+    - name: Load default users' secret data
+      include_tasks:
+        file: "{{ taskDir }}/users/loadUserSecrets.yaml"
+      vars:
+        usersDir:    "{{ dataDir }}/users/default"
+
+##############################################################################
+# Play 2: Connect as installer, create default user
+##############################################################################
+- name: Create default users
+  hosts:        "{{ nodes }}"
+  become:       true
+  gather_facts: true
+
+# Load connection vars in two parts:
+#   1. connectionBase.yaml - always loaded, SSH key used if exists
+#   2. connectionPWD.yaml  - only loaded when SSH key missing
+  vars_files:
+    - "{{ playbook_dir }}/vars/connectionBase.yaml"
+    - "{{ playbook_dir }}/vars/connectionPWD.yaml"
+
+  pre_tasks:
+    - name: Wait for host to be available
+      include_tasks:
+        file: "{{ taskDir }}/system/waitForHost.yaml"
+
+  tasks:
+    - name: Create groups
+      include_tasks:
+        file: "{{ taskDir }}/users/createGroup.yaml"
+      vars:
+        groupDataPath: "{{ dataDir }}/users/defaultGroups.yaml"
+
+    - name: Create default users
+      include_tasks:
+        file: "{{ taskDir }}/users/createUser.yaml"
+      vars:
+        usersData: "{{ hostvars['localhost'].defaultUsersData }}"
+
+##############################################################################
+# Play 3: Load main user credentials
+##############################################################################
+- name: Load main user credentials
+  hosts:        localhost
+  connection:   local
+  gather_facts: false
+
+  roles:
+    - role: loadCredentials
+      vars:
+        userDataPath: "{{ dataDir }}/users/default/dwfa/user.yaml"
+
+##############################################################################
+# Play 4: Connect as main user, remove installer
+##############################################################################
+- name: Remove installer user (as main user)
+  hosts:        "{{ nodes }}"
+  become:       true
+  gather_facts: false
+
+  vars_files:
+    - "{{ playbook_dir }}/vars/connectionBase.yaml"
+
+  tasks:
+    - name: Remove installer user
+      include_tasks:
+        file: "{{ taskDir }}/users/removeUser.yaml"
+      vars:
+        users:
+          - uName: installer

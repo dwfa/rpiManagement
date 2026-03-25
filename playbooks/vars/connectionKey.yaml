@@ -1,31 +1,25 @@
 ##############################################################################
-# SSH connection variables — password auth
+# SSH connection variables — key auth
 #
 # USAGE:
-#   Load via vars_files in remote plays when the connecting user has no SSH
-#   keys, or when a play must use password auth regardless of key presence
-#   (e.g. a fresh RPi with no authorized_keys). Selected automatically via
-#   userData.file, or loaded explicitly to force password auth.
+#   Load via vars_files in remote plays when the connecting user has SSH
+#   keys materialized to disk. Selected automatically via userData.file
+#   set by prepareRemoteCredentials, or loaded explicitly.
 #
 # PREREQUISITES:
 #   - Preceding play must run prepareRemoteCredentials role on localhost
 #   - userData fact must exist in hostvars['localhost']
-#   - sshpass must be installed on the control node
+#   - data/ssh/key.prv must exist (written by materializeSSHKey)
 #
 # EXAMPLE:
-#   # Automatic selection:
 #   vars_files:
 #     - "{{ playbook_dir }}/vars/connection\
 #        {{ hostvars['localhost'].userData.file }}.yaml"
 #
-#   # Explicit (force password auth regardless of key presence):
-#   vars_files:
-#     - "{{ playbook_dir }}/vars/connectionPWD.yaml"
-#
 # NOTES:
-#   - Uses playbook_dir (not dataDir) — connection variables are evaluated
-#     before role vars (including dataDir) are loaded
-#   - Requires sshpass on the control node
+#   - Uses playbook_dir (not dataDir) for SSH key path — connection
+#     variables are evaluated before role vars (including dataDir) are
+#     loaded, so playbook_dir magic variable must be used here
 #
 # Copyright 2026 Douglas WF Acheson (dwfa@dwfa.ca)
 # Licensed under Apache License 2.0. See LICENSE.md for details.
@@ -40,9 +34,9 @@
 userData: "{{ hostvars['localhost'].userData }}"
 
 # SSH connection configuration
-ansible_ssh_common_args: "-o UserKnownHostsFile={{ playbook_dir }}/../data/ssh/knownHosts"
-ansible_ssh_pass:        "{{ userData.pwd }}"
-ansible_user:            "{{ userData.uName }}"
+ansible_ssh_common_args:      "-o UserKnownHostsFile={{ playbook_dir }}/../data/ssh/knownHosts"
+ansible_ssh_private_key_file: "{{ playbook_dir }}/../data/ssh/key.prv"
+ansible_user:                 "{{ userData.uName }}"
 
 # Privilege escalation configuration
 ansible_become:          "{{ becomeFlag | default('true') }}"

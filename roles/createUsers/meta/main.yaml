@@ -1,11 +1,11 @@
 ##############################################################################
-# Ansible role dependencies for setupUsers
+# Ansible role dependencies for createUsers
 #
-# Copyright 2025 Douglas WF Acheson (dwfa@dwfa.ca)
+# Copyright 2026 Douglas WF Acheson (dwfa@dwfa.ca)
 # Licensed under Apache License 2.0. See LICENSE.md for details.
 #
-# Version: 1.0
-# Date: February 22, 2026
+# Version: 1.1
+# Date: April 18, 2026
 ##############################################################################
 ---
 

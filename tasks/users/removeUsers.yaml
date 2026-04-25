@@ -1,0 +1,80 @@
+##############################################################################
+# Remove multiple user accounts from a directory of user.yaml files
+#
+# USAGE:
+#   Discovers user subdirectories under userDataDir (one per user), then
+#   iterates each and delegates to removeUser.yaml to remove the user.
+#   Use this for bulk user removal from a data directory; for a single
+#   user by path, use removeUser.yaml directly.
+#
+# REQUIRED VARIABLES:
+#   - userDataDir: Path to directory containing user subdirectories. Each
+#                  subdirectory must contain a user.yaml file.
+#
+# OPTIONAL VARIABLES:
+#   - debugFlag: Enable debug output
+#
+# WORKFLOW:
+#   1. Validate userDataDir is provided
+#   2. Discover immediate child directories via discoverDirs.yaml
+#   3. For each discovered subdirectory: delegate to removeUser.yaml
+#      with userDataPath = <userDataDir>/<subdir>/user.yaml
+#   4. Cleanup temporary facts
+#
+# EXAMPLE:
+#   - name: Remove all default users
+#     include_tasks:
+#       file: "{{ taskDir }}/users/removeUsers.yaml"
+#     vars:
+#       userDataDir: "{{ dataDir }}/users/default"
+#
+# NOTES:
+#   - Each subdirectory must contain a user.yaml at its top level
+#   - Idempotent: safe to run even if listed users do not exist
+#   - discoveredDirs (set by discoverDirs.yaml) is cleaned up here so it
+#     does not leak to callers
+#
+# Copyright 2026 Douglas WF Acheson (dwfa@dwfa.ca)
+# Licensed under Apache License 2.0. See LICENSE.md for details.
+#
+# Version: 1.0
+# Date: April 25, 2026
+##############################################################################
+---                                                   # identifies a YAML file
+
+##############################################################################
+# Validate required parameter
+##############################################################################
+- name: Validate userDataDir is provided
+  ansible.builtin.fail:
+    msg: "[ERROR] *** userDataDir is required for removeUsers task"
+  when: userDataDir is not defined
+
+##############################################################################
+# Discover user subdirectories
+##############################################################################
+- name: Discover user subdirectories
+  ansible.builtin.include_tasks:
+    file: "{{ taskDir }}/files/discoverDirs.yaml"
+  vars:
+    searchDir: "{{ userDataDir }}"
+
+##############################################################################
+# For each discovered subdirectory, remove its user
+##############################################################################
+- name: Remove each user
+  ansible.builtin.include_tasks:
+    file: "{{ taskDir }}/users/removeUser.yaml"
+  vars:
+    userDataPath: "{{ userDataDir }}/{{ item }}/user.yaml"
+  loop: "{{ discoveredDirs }}"
+  loop_control:
+    label: "{{ item }}"
+  when: discoveredDirs | length > 0
+
+##############################################################################
+# Cleanup temporary facts
+##############################################################################
+- name: Cleanup temporary facts
+  ansible.builtin.set_fact:
+    discoveredDirs: null

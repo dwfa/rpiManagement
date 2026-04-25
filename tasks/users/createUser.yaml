@@ -1,118 +1,119 @@
 ##############################################################################
-# Ansible task to create user account(s)
+# Create a single user account from a vault-encrypted user.yaml file
 #
 # USAGE:
-#   Creates user accounts from a pre-loaded user data map. Supports two
-#   modes depending on how data is provided:
+#   Loads user credentials from a single user.yaml path, ensures all
+#   referenced groups (primary + supplementary) exist on the target host,
+#   and creates the user account via ansible.builtin.user. Password is
+#   hashed and trimmed inline. This is the singular form — see
+#   createUsers.yaml for the plural (directory-scan) wrapper.
 #
-#   Map mode:       usersData dict passed directly (pre-loaded, vault
-#                   decrypted). Used when caller loads data on localhost.
-#   Directory mode: usersDir path provided. Task discovers directories
-#                   and loads user.yaml files itself (vault must be
-#                   available at task level).
-#
-# REQUIRED VARIABLES (one of):
-#   - usersData: Dictionary of username → userData mappings (map mode)
-#                e.g., { dwfa: { uName: dwfa, uid: 1701, ... }, ... }
-#   - usersDir:  Path to directory containing user subdirectories
-#                (directory mode). Each subdirectory must contain a
-#                user.yaml with a top-level 'userData' key.
+# REQUIRED VARIABLES:
+#   - userDataPath: Path to vault-encrypted user.yaml file containing a
+#                   userData dict with: uName, uid, name, shell,
+#                   primaryGroup (list with one {name, gid} entry),
+#                   supplementaryGroups (list of {name, gid?} entries),
+#                   pwd (vault-encrypted)
 #
 # OPTIONAL VARIABLES:
 #   - debugFlag: Enable debug output
 #
 # WORKFLOW:
-#   1. Validate input (usersData or usersDir)
-#   2. If directory mode: discover users and load data
-#   3. Create each user account via helper
-#   4. Cleanup temporary variables
+#   1. Validate userDataPath is provided
+#   2. Load user data from userDataPath (vault decrypted via include_vars)
+#   3. Ensure all referenced groups exist via createGroups.yaml (primary
+#      + supplementary). Missing groups are created (with gid if provided,
+#      else OS auto-assigns). Existing groups are left untouched.
+#   4. Create the user account via ansible.builtin.user
 #
-# EXAMPLE (map mode - vault pre-loaded on localhost):
-#   - name: Create default users
+# EXAMPLE:
+#   - name: Create dwfa user
 #     include_tasks:
 #       file: "{{ taskDir }}/users/createUser.yaml"
 #     vars:
-#       usersData: "{{ hostvars['localhost'].defaultUsersData }}"
-#
-# EXAMPLE (directory mode - vault available at task level):
-#   - name: Create default users
-#     include_tasks:
-#       file: "{{ taskDir }}/users/createUser.yaml"
-#     vars:
-#       usersDir: "{{ dataDir }}/users/default"
+#       userDataPath: "{{ dataDir }}/users/dwfa/user.yaml"
 #
 # NOTES:
-#   - Password must be pre-hashed (SHA-512 via mkpasswd -m sha-512)
-#   - Shell defaults to /bin/bash if not specified
-#   - Groups must exist before creating user (run createGroup.yaml first)
-#   - Map mode preferred when user.yaml contains vault-encrypted fields
+#   - Requires Python passlib for password_hash('sha512') filter
+#   - | trim applied to uName and pwd to strip trailing newlines that
+#     ansible-vault encrypt_string appends to decrypted values
+#   - _cuLoadedUser intentionally NOT cleaned up: loaded via include_vars
+#     (a var, not a fact); set_fact would create a blocking fact that
+#     prevents the next reload
+#   - Must run in a remote play (where ansible.builtin.user executes)
 #
-# Copyright 2025 Douglas WF Acheson (dwfa@dwfa.ca)
+# Copyright 2026 Douglas WF Acheson (dwfa@dwfa.ca)
 # Licensed under Apache License 2.0. See LICENSE.md for details.
 #
-# Version: 3.0
-# Date: February 28, 2026
+# Version: 4.0
+# Date: April 19, 2026
 ##############################################################################
 ---                                                   # identifies a YAML file
 
 ##############################################################################
-# Validate required parameters
+# Validate required parameter
 ##############################################################################
-- name: Validate input is provided
+- name: Validate userDataPath is provided
   ansible.builtin.fail:
-    msg: >-
-      [ERROR] *** Either usersData (map) or usersDir (path) is required
-      for createUser task but neither was provided
-  when: usersData is not defined and usersDir is not defined
+    msg: "[ERROR] *** userDataPath is required for createUser task"
+  when: userDataPath is not defined
 
 ##############################################################################
-# Directory mode: discover and load user data
+# Load user data from vault-encrypted file
 ##############################################################################
-- name: Directory mode - discover user directories
+- name: Load user data
+  ansible.builtin.include_vars:
+    file: "{{ userDataPath }}"
+    name: _cuLoadedUser
+
+##############################################################################
+# Ensure referenced groups exist
+# Concatenate primary + supplementary groups into one list and delegate
+# to createGroups.yaml (which loops and creates any that don't yet exist).
+# `| default([])` — if either list is undefined, use an empty list so
+# the `+` concatenation is always safe.
+##############################################################################
+- name: Ensure referenced groups exist
   ansible.builtin.include_tasks:
-    file: "{{ taskDir }}/files/discoverDirs.yaml"
+    file: "{{ taskDir }}/group/createGroups.yaml"
   vars:
-    searchDir: "{{ usersDir }}"
-  when: usersData is not defined and usersDir is defined
+    groupList: >-
+      {{ (_cuLoadedUser.userData.primaryGroup        | default([])) +
+         (_cuLoadedUser.userData.supplementaryGroups | default([])) }}
 
-- name: Directory mode - load user data
+##############################################################################
+# Create the user account
+##############################################################################
+- name: "Create user account [{{ _cuLoadedUser.userData.uName | trim }}]"
+  ansible.builtin.user:
+    comment:         "{{ _cuLoadedUser.userData.name }}"
+    group:           "{{ _cuLoadedUser.userData.primaryGroup[0].name }}"
+    groups:          "{{ _cuLoadedUser.userData.supplementaryGroups
+                          | default([])
+                          | map(attribute='name')
+                          | join(',') }}"
+    name:            "{{ _cuLoadedUser.userData.uName | trim }}"
+    password:        "{{ _cuLoadedUser.userData.pwd
+                          | default('')
+                          | trim
+                          | password_hash('sha512') }}"
+    shell:           "{{ _cuLoadedUser.userData.shell | default('/bin/bash') }}"
+    state:           present
+    uid:             "{{ _cuLoadedUser.userData.uid }}"
+    update_password: always
+
+##############################################################################
+# Install the user's public SSH keys (if any) — required before any later
+# play can SSH in as this user using key auth. Skipped if user.yaml has
+# no sshKeys.public section.
+##############################################################################
+- name: Install user's public SSH keys
   ansible.builtin.include_tasks:
-    file: "{{ taskDir }}/users/helper/loadUserData.yaml"
-  loop:         "{{ discoveredDirs }}"
-  loop_control:
-    loop_var: _userName
-  when: usersData is not defined and usersDir is defined and
-        discoveredDirs | length > 0
-
-- name: Directory mode - use loaded data
-  ansible.builtin.set_fact:
-    _usersToCreate: "{{ defaultUsersData }}"
-  when: usersData is not defined and usersDir is defined
-
-##############################################################################
-# Map mode: use pre-loaded data
-##############################################################################
-- name: Map mode - use provided data
-  ansible.builtin.set_fact:
-    _usersToCreate: "{{ usersData }}"
-  when: usersData is defined
-
-##############################################################################
-# Create user accounts
-##############################################################################
-- name: Create user accounts
-  ansible.builtin.include_tasks:
-    file: "{{ taskDir }}/users/helper/createSingleUser.yaml"
-  loop:         "{{ _usersToCreate.keys() | list | sort }}"
-  loop_control:
-    loop_var: _userName
-  when: _usersToCreate is defined and _usersToCreate | length > 0
-
-##############################################################################
-# Cleanup temporary facts (play-scoped set_fact variables)
-##############################################################################
-- name: Cleanup temporary facts
-  ansible.builtin.set_fact:
-    _usersToCreate:    null
-    defaultUsersData:  null
-    discoveredDirs:    null
+    file: "{{ taskDir }}/users/addSSHKeys.yaml"
+  vars:
+    uName:      "{{ _cuLoadedUser.userData.uName | trim }}"
+    publicKeys: "{{ _cuLoadedUser.userData.sshKeys.public }}"
+  when:
+    - _cuLoadedUser.userData.sshKeys             is defined
+    - _cuLoadedUser.userData.sshKeys.public      is defined
+    - _cuLoadedUser.userData.sshKeys.public      | length > 0

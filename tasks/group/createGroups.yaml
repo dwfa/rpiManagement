@@ -1,0 +1,64 @@
+##############################################################################
+# Ensure a list of groups exists on the target host (idempotent)
+#
+# USAGE:
+#   Takes a list of group entries and ensures each exists on the target.
+#   Delegates to tasks/group/createGroup.yaml per entry — check-then-create
+#   semantics preserved.
+#
+# REQUIRED VARIABLES:
+#   - groupList: List of group entries. Each entry is a dict with:
+#       name: Group name (required)
+#       gid:  Numeric gid (optional — OS auto-assigns if omitted)
+#
+# OPTIONAL VARIABLES:
+#   - debugFlag: Enable debug output
+#
+# WORKFLOW:
+#   1. Validate groupList
+#   2. For each entry, include createGroup.yaml with groupData=entry
+#
+# EXAMPLE:
+#   - name: Ensure user's groups exist
+#     include_tasks:
+#       file: "{{ taskDir }}/group/createGroups.yaml"
+#     vars:
+#       groupList:
+#         - name: acheson
+#           gid:  1701
+#         - name: sudo
+#         - name: docker
+#           gid:  2001
+#
+# NOTES:
+#   - Pre-existing groups are left untouched (see createGroup.yaml)
+#   - An empty groupList is a no-op (skipped silently)
+#
+# Copyright 2026 Douglas WF Acheson (dwfa@dwfa.ca)
+# Licensed under Apache License 2.0. See LICENSE.md for details.
+#
+# Version: 1.0
+# Date: April 18, 2026
+##############################################################################
+---                                                   # identifies a YAML file
+
+##############################################################################
+# Validate required parameter
+##############################################################################
+- name: Validate groupList is provided
+  ansible.builtin.fail:
+    msg: "[ERROR] *** groupList is required for createGroups task"
+  when: groupList is not defined
+
+##############################################################################
+# Iterate over groupList, ensuring each group exists
+##############################################################################
+- name: Ensure each group exists
+  ansible.builtin.include_tasks:
+    file: "{{ taskDir }}/group/createGroup.yaml"
+  vars:
+    groupData: "{{ item }}"
+  loop: "{{ groupList }}"
+  loop_control:
+    label: "{{ item.name }}"
+  when: groupList | length > 0

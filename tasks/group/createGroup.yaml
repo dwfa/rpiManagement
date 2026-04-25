@@ -1,0 +1,101 @@
+##############################################################################
+# Create a single group on the target host (idempotent, check-then-create)
+#
+# USAGE:
+#   Takes a single group entry and ensures the group exists on the target.
+#   Checks existence first via getent; creates only if missing. Preserves
+#   the gid of pre-existing groups (doesn't force a re-assign).
+#
+# REQUIRED VARIABLES:
+#   - groupData: Dict with:
+#       name:      Group name (required)
+#       gid:       Numeric gid (optional — OS auto-assigns if omitted)
+#
+# OPTIONAL VARIABLES:
+#   - debugFlag: Enable debug output
+#
+# WORKFLOW:
+#   1. Check if groupData.name exists via ansible.builtin.getent
+#   2. If missing, create with ansible.builtin.group
+#      - Use groupData.gid if provided, else let OS auto-assign
+#
+# EXAMPLE:
+#   - name: Create acheson group
+#     include_tasks:
+#       file: "{{ taskDir }}/group/createGroup.yaml"
+#     vars:
+#       groupData:
+#         name: acheson
+#         gid:  1701
+#
+#   # Loop over multiple groups
+#   - name: Ensure user's groups exist
+#     include_tasks:
+#       file: "{{ taskDir }}/group/createGroup.yaml"
+#     vars:
+#       groupData: "{{ item }}"
+#     loop: "{{ _allUserGroups }}"
+#     loop_control:
+#       label: "{{ item.name }}"
+#
+# NOTES:
+#   - Pre-existing groups are left untouched — their gid is NOT modified
+#     even if groupData.gid differs
+#   - Uses ansible.builtin.getent (not a raw command) for idempotency and
+#     structured output
+#   - _cg prefix on file-scoped facts (createGroup)
+#
+# Copyright 2026 Douglas WF Acheson (dwfa@dwfa.ca)
+# Licensed under Apache License 2.0. See LICENSE.md for details.
+#
+# Version: 1.0
+# Date: April 18, 2026
+##############################################################################
+---                                                   # identifies a YAML file
+
+##############################################################################
+# Validate required parameter
+##############################################################################
+- name: Validate groupData is provided
+  ansible.builtin.fail:
+    msg: "[ERROR] *** groupData (with at least a name) is required"
+  when:
+    - groupData is not defined or
+      groupData.name is not defined
+
+##############################################################################
+# Check if group exists on target
+##############################################################################
+- name: "Check existence of group [{{ groupData.name }}]"
+  ansible.builtin.getent:
+    database: group
+    key:      "{{ groupData.name }}"
+    fail_key: false
+  register: _cgGetentResult
+
+##############################################################################
+# Create group if missing
+##############################################################################
+- name: "Create group [{{ groupData.name }}]"
+  ansible.builtin.group:
+    name:  "{{ groupData.name }}"
+    gid:   "{{ groupData.gid | default(omit) }}"
+    state: present
+  when: _cgGetentResult.ansible_facts.getent_group[groupData.name] is none
+
+- name: "Debug group [{{ groupData.name }}]"
+  ansible.builtin.debug:
+    msg: >-
+      {{ '[DEBUG] *** Group [' + groupData.name + '] already exists'
+           if _cgGetentResult.ansible_facts.getent_group[groupData.name] is not none
+         else
+         '[DEBUG] *** Created group [' + groupData.name + ']' +
+         (' with gid [' + (groupData.gid | string) + ']' if groupData.gid is defined else ' with OS-assigned gid') }}
+  when: debugFlag | default(0) | int == 1
+
+##############################################################################
+# Cleanup temporary facts
+##############################################################################
+- name: Cleanup temporary facts
+  ansible.builtin.set_fact:
+    _cgGetentResult: null

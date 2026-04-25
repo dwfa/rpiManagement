@@ -97,8 +97,10 @@
     file: "{{ taskDir }}/users/materializeSSHKey.yaml"
 
 ##############################################################################
-# Cleanup temporary facts
+# Note: _rawUserData is intentionally NOT cleaned up here. It was loaded
+# via include_vars (a "var", not a "fact"), and facts take precedence over
+# vars in Ansible. Setting it to null via set_fact would create a fact
+# that blocks the next include_vars reload, breaking subsequent calls
+# (e.g., when postInstall-pb.yaml reloads credentials for a different user
+# in a later play).
 ##############################################################################
-- name: Cleanup temporary facts
-  ansible.builtin.set_fact:
-    _rawUserData: null

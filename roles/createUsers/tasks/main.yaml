@@ -1,0 +1,76 @@
+##############################################################################
+# Create user account(s) — scalar (single path) or vector (directory scan)
+#
+# USAGE:
+#   Thin dispatcher role. Based on which variable is passed, delegates to
+#   either tasks/users/createUser.yaml (single file) or
+#   tasks/users/createUsers.yaml (directory of user files).
+#
+# REQUIRED VARIABLES (exactly one of):
+#   - userDataPath: Path to a single vault-encrypted user.yaml file
+#   - userDataDir:  Path to a directory containing user subdirectories
+#                   (each subdirectory must contain a user.yaml)
+#
+# OPTIONAL VARIABLES:
+#   - debugFlag: Enable debug output
+#
+# WORKFLOW:
+#   1. Validate exactly one of userDataPath or userDataDir is provided
+#   2. If userDataPath → delegate to tasks/users/createUser.yaml
+#   3. If userDataDir  → delegate to tasks/users/createUsers.yaml
+#      (which internally discovers subdirs and loops createUser.yaml)
+#
+# EXAMPLE:
+#   # Single user
+#   roles:
+#     - role: createUsers
+#       vars:
+#         userDataPath: "{{ dataDir }}/users/dwfa/user.yaml"
+#
+#   # Multiple users from a directory
+#   roles:
+#     - role: createUsers
+#       vars:
+#         userDataDir: "{{ dataDir }}/users/default"
+#
+# NOTES:
+#   - Scalar mode and vector mode are mutually exclusive — provide one
+#     or the other, not both
+#   - See createUser.yaml / createUsers.yaml headers for details of each
+#     path's behavior
+#
+# Copyright 2026 Douglas WF Acheson (dwfa@dwfa.ca)
+# Licensed under Apache License 2.0. See LICENSE.md for details.
+#
+# Version: 4.0
+# Date: April 19, 2026
+##############################################################################
+---                                                   # identifies a YAML file
+
+##############################################################################
+# Validate: exactly one of userDataPath or userDataDir must be provided
+##############################################################################
+- name: Validate required input
+  ansible.builtin.fail:
+    msg: >-
+      [ERROR] *** createUsers role requires exactly one of userDataPath
+      or userDataDir to be provided
+  when: >-
+    (userDataPath is not defined and userDataDir is not defined) or
+    (userDataPath is defined     and userDataDir is defined)
+
+##############################################################################
+# Scalar mode — single user from a specific path
+##############################################################################
+- name: Create single user
+  ansible.builtin.include_tasks:
+    file: "{{ taskDir }}/users/createUser.yaml"
+  when: userDataPath is defined
+
+##############################################################################
+# Vector mode — multiple users from a directory
+##############################################################################
+- name: Create users from directory
+  ansible.builtin.include_tasks:
+    file: "{{ taskDir }}/users/createUsers.yaml"
+  when: userDataDir is defined

@@ -1,76 +1,71 @@
 ##############################################################################
-# Ansible task to add SSH public keys for user accounts
+# Install SSH public keys into one user's authorized_keys on the target
 #
 # USAGE:
-#   Installs SSH public keys in users' authorized_keys files. Caller is
-#   responsible for loading SSH key data and passing via vars parameter.
+#   Installs all public keys in publicKeys (natural user.yaml shape) into
+#   ~uName/.ssh/authorized_keys on the target host. Idempotent — existing
+#   keys are not duplicated.
 #
 # REQUIRED VARIABLES:
-#   - sshKeys: List of SSH key configurations
-#       Each item contains: comment, key, uName
+#   - uName:      Username whose authorized_keys file receives the keys
+#   - publicKeys: Dict of {keyName: {comment, key}} — same shape as
+#                 userData.sshKeys.public in user.yaml
 #
 # OPTIONAL VARIABLES:
 #   - debugFlag: Enable debug output
 #
-# WORKFLOW:
-#   1. Validate sshKeys is provided
-#   2. Add each SSH public key to user's authorized_keys
-#   3. Display status (debug mode)
-#   4. Cleanup temporary variables
-#
 # EXAMPLE:
-#   - name: Load SSH key data
-#     include_vars:
-#       file: "{{ dataDir }}/users/userSSHKeys.yaml"
-#
-#   - name: Add SSH keys for users
+#   - name: Install dwfa's SSH keys
 #     include_tasks:
 #       file: "{{ taskDir }}/users/addSSHKeys.yaml"
 #     vars:
-#       sshKeys: "{{ sshKeys }}"
+#       uName:      dwfa
+#       publicKeys: "{{ _cuLoadedUser.userData.sshKeys.public }}"
 #
 # NOTES:
-#   - Requires ansible.posix collection
-#   - User must exist before adding SSH keys
-#   - Creates ~/.ssh directory if needed
+#   - Requires ansible.posix collection (authorized_key module)
+#   - User must already exist on the target (created by createUser)
+#   - Creates ~/.ssh directory if needed (authorized_key module handles)
 #   - Idempotent: safe to run multiple times
 #
-# Copyright 2025 Douglas WF Acheson (dwfa@dwfa.ca)
+# Copyright 2026 Douglas WF Acheson (dwfa@dwfa.ca)
 # Licensed under Apache License 2.0. See LICENSE.md for details.
 #
-# Version: 1.1
-# Date: February 22, 2026
+# Version: 2.0
+# Date: April 19, 2026
 ##############################################################################
 ---                                                   # identifies a YAML file
 
 ##############################################################################
 # Validate required parameters
 ##############################################################################
-- name: Validate sshKeys is provided
+- name: Validate uName is provided
   ansible.builtin.fail:
-    msg: "[ERROR] *** sshKeys is required for addSSHKeys task but not provided"
-  when: sshKeys is not defined or sshKeys | length == 0
+    msg: "[ERROR] *** uName is required for addSSHKeys task"
+  when: uName is not defined
+
+- name: Validate publicKeys is provided and non-empty
+  ansible.builtin.fail:
+    msg: "[ERROR] *** publicKeys is required for addSSHKeys task"
+  when: publicKeys is not defined or publicKeys | length == 0
 
 ##############################################################################
-# Add SSH public keys for user accounts
+# Install each public key — dict2items yields {key: <keyName>, value: <entry>}
 ##############################################################################
-- name: Add SSH public keys for user accounts
+- name: "Install public keys for [{{ uName }}]"
   ansible.posix.authorized_key:
-    comment: "{{ item.comment }}"
-    key:     "{{ item.key }}"
+    comment: "{{ item.value.comment }}"
+    key:     "{{ item.value.key }}"
     state:   present
-    user:    "{{ item.uName }}"
-  loop: "{{ sshKeys }}"
-  register: _addSSHKeysResult
+    user:    "{{ uName }}"
+  loop: "{{ publicKeys | dict2items }}"
+  loop_control:
+    label: "{{ item.key }}"
 
-- name: Debug add SSH keys result
+- name: "Debug installed keys for [{{ uName }}]"
   ansible.builtin.debug:
-    msg: "[DEBUG] *** Added [{{ sshKeys | length }}] SSH key(s) for user(s): [{{ sshKeys | map(attribute='uName') | unique | join(', ') }}]"
-  when: debugFlag is defined
-
-##############################################################################
-# Cleanup temporary facts
-##############################################################################
-- name: Cleanup temporary facts
-  ansible.builtin.set_fact:
-    _addSSHKeysResult: null
+    msg: >-
+      [DEBUG] *** Installed [{{ publicKeys | length }}] public key(s)
+      for user [{{ uName }}]:
+      [{{ publicKeys.keys() | list | join(', ') }}]
+  when: debugFlag | default(0) | int == 1

@@ -1,93 +1,78 @@
 ##############################################################################
-# Ansible task to remove user account(s)
+# Remove a single user account from a vault-encrypted user.yaml file
 #
 # USAGE:
-#   Removes user accounts from the system. First terminates any running
-#   processes owned by the user, then removes the account and home directory.
+#   Loads user data from a single user.yaml path and removes the account
+#   (and home directory) from the target host. Singular form — see
+#   removeUsers.yaml for the plural (directory-scan) wrapper.
 #
 # REQUIRED VARIABLES:
-#   - users: List of users to remove
-#       Each item contains: uName
+#   - userDataPath: Path to vault-encrypted user.yaml file containing a
+#                   userData dict with at minimum: uName
 #
 # OPTIONAL VARIABLES:
 #   - debugFlag: Enable debug output
 #
 # WORKFLOW:
-#   1. Validate users is provided
-#   2. Kill all processes owned by each user (ignore_errors: true)
-#   3. Remove user account and home directory
-#   4. Display status (debug mode)
-#   5. Cleanup temporary variables
+#   1. Validate userDataPath is provided
+#   2. Load user data from userDataPath (vault decrypted via include_vars)
+#   3. Kill all processes owned by the user (errors ignored)
+#   4. Remove user account and home directory
 #
 # EXAMPLE:
-#   - name: Load user to remove
-#     include_vars:
-#       file: "{{ dataDir }}/users/installer/user.yaml"
-#
 #   - name: Remove installer user
 #     include_tasks:
 #       file: "{{ taskDir }}/users/removeUser.yaml"
 #     vars:
-#       users:
-#         - "{{ userData }}"
+#       userDataPath: "{{ dataDir }}/users/installer/user.yaml"
 #
 # NOTES:
-#   - Errors from killall are ignored (user may not exist or have no processes)
+#   - Errors from killall are ignored (user may not exist or have no
+#     processes)
 #   - User's home directory is removed with the account
 #   - Process termination uses signal 9 (SIGKILL)
-#   - Idempotent: safe to run multiple times
+#   - Idempotent: safe to run even if the user does not exist
+#   - | trim applied to uName to strip trailing newlines that
+#     ansible-vault encrypt_string appends to decrypted values
 #
-# Copyright 2025 Douglas WF Acheson (dwfa@dwfa.ca)
+# Copyright 2026 Douglas WF Acheson (dwfa@dwfa.ca)
 # Licensed under Apache License 2.0. See LICENSE.md for details.
 #
-# Version: 1.1
-# Date: February 22, 2026
+# Version: 2.0
+# Date: April 25, 2026
 ##############################################################################
 ---                                                   # identifies a YAML file
 
 ##############################################################################
-# Validate required parameters
+# Validate required parameter
 ##############################################################################
-- name: Validate users is provided
+- name: Validate userDataPath is provided
   ansible.builtin.fail:
-    msg: "[ERROR] *** users is required for removeUser task but not provided"
-  when: users is not defined or users | length == 0
+    msg: "[ERROR] *** userDataPath is required for removeUser task"
+  when: userDataPath is not defined
 
 ##############################################################################
-# Kill all processes by user before removing
+# Load user data from vault-encrypted file
 ##############################################################################
-- name: Display process termination info
-  ansible.builtin.debug:
-    msg: "[INFO] *** Killing user processes (errors expected if user has no processes)"
-  when: debugFlag is defined
+- name: Load user data
+  ansible.builtin.include_vars:
+    file: "{{ userDataPath }}"
+    name: _ruLoadedUser
 
-- name: Kill user processes
+##############################################################################
+# Kill all processes owned by user before removing
+##############################################################################
+- name: "Kill processes for user [{{ _ruLoadedUser.userData.uName | trim }}]"
   ansible.builtin.command:
-    cmd: "killall -9 -u {{ item.uName }}"
-  loop: "{{ users }}"
+    cmd: "killall -9 -u {{ _ruLoadedUser.userData.uName | trim }}"
   ignore_errors: true
   register: _killProcessesResult
 
 ##############################################################################
-# Remove user accounts
+# Remove user account and home directory
 ##############################################################################
-- name: Remove user accounts
+- name: "Remove user account [{{ _ruLoadedUser.userData.uName | trim }}]"
   ansible.builtin.user:
-    name:   "{{ item.uName }}"
+    name:   "{{ _ruLoadedUser.userData.uName | trim }}"
     remove: true
     state:  absent
-  loop: "{{ users }}"
-  register: _removeUserResult
-
-- name: Debug remove user result
-  ansible.builtin.debug:
-    msg: "[DEBUG] *** Removed [{{ users | length }}] user(s): [{{ users | map(attribute='uName') | join(', ') }}]"
-  when: debugFlag is defined
-
-##############################################################################
-# Cleanup temporary facts
-##############################################################################
-- name: Cleanup temporary facts
-  ansible.builtin.set_fact:
-    _killProcessesResult: null
-    _removeUserResult:    null

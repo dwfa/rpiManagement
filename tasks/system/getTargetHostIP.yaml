@@ -1,0 +1,142 @@
+##############################################################################
+# Resolve target host IP — try known, prompt if unreachable
+#
+# USAGE:
+#   Runs on localhost (typically in Play 1 of a playbook, before any remote
+#   play attempts SSH). Tries the target host's inventory IP first; if
+#   unreachable, prompts the user for the actual (e.g. DHCP-assigned) IP.
+#   Stores the resolved address as the global fact `newTarget` on localhost.
+#   Subsequent remote plays reference it directly:
+#       hosts: "{{ hostvars['localhost'].newTarget }}"
+#
+# REQUIRED VARIABLES:
+#   - targetHost: Inventory host key (IP string in this project's inventory)
+#                 to resolve. Typically "{{ groups[nodes] | first }}" when
+#                 called from a localhost play.
+#
+# OPTIONAL VARIABLES:
+#   - resolveTimeout: Seconds to wait for known IP   (default: 30)
+#   - sshPort:        SSH port to check              (default: 22)
+#   - debugFlag:      Enable debug output
+#
+# OUTPUT VARIABLES:
+#   - newTarget: Resolved IP string (set on localhost). Either equals
+#                targetHost (known IP reachable) or the user-prompted IP.
+#
+# WORKFLOW:
+#   1. Try targetHost on sshPort with short timeout
+#   2. If reachable: newTarget = targetHost
+#   3. If unreachable: prompt user for DHCP-assigned IP, validate format,
+#      wait for it to be reachable, set newTarget = prompted IP
+#
+# EXAMPLE:
+#   # Play 1 (localhost)
+#   pre_tasks:
+#     - name: Resolve target host IP
+#       include_tasks:
+#         file: "{{ taskDir }}/system/resolveTargetHost.yaml"
+#       vars:
+#         targetHost: "{{ groups[nodes] | first }}"
+#
+#   # Play 2 (remote)
+#   - name: Do work on RPi
+#     hosts: "{{ hostvars['localhost'].newTarget }}"
+#     ...
+#
+# NOTES:
+#   - Must be called from a localhost play (no SSH attempted to the target)
+#   - Simple regex validation on the prompted IP (loose but sufficient)
+#   - Dynamic DHCP lease discovery is deferred; prompt is the only fallback
+#
+# Copyright 2026 Douglas WF Acheson (dwfa@dwfa.ca)
+# Licensed under Apache License 2.0. See LICENSE.md for details.
+#
+# Version: 1.2
+# Date: April 15, 2026
+##############################################################################
+---                                                   # identifies a YAML file
+
+##############################################################################
+# Validate required parameter
+##############################################################################
+- name: Validate targetHost is provided
+  ansible.builtin.fail:
+    msg: "[ERROR] *** targetHost is required for resolveTargetHost task"
+  when: targetHost is not defined
+
+##############################################################################
+# Try known IP (targetHost) with short timeout
+##############################################################################
+- name: Try known IP [{{ targetHost }}]
+  ansible.builtin.wait_for:
+    host:    "{{ targetHost }}"
+    port:    "{{ sshPort        | default(22) }}"
+    timeout: "{{ resolveTimeout | default(30) }}"
+  register:      _rthKnownIPResult
+  ignore_errors: true
+
+##############################################################################
+# Known IP reachable — set newTarget to targetHost
+##############################################################################
+- name: Set newTarget to known IP
+  ansible.builtin.set_fact:
+    newTarget: "{{ targetHost }}"
+  when: _rthKnownIPResult is succeeded
+
+##############################################################################
+# Fallback: prompt user and set newTarget when known IP unreachable
+##############################################################################
+- name: Resolve via user prompt
+  block:
+    - name: Prompt for DHCP-assigned IP
+      ansible.builtin.pause:
+        prompt: |-
+          Host [{{ targetHost }}] not reachable on port {{ sshPort | default(22) }}.
+          Enter the DHCP-assigned IP for this host
+      register: _rthPrompt
+
+    - name: Validate prompted IP format
+      ansible.builtin.fail:
+        msg: >-
+          [ERROR] *** Invalid IPv4 format:
+          [{{ _rthPrompt.user_input | default('') | trim }}]
+      when: not (_rthPrompt.user_input | default('') | trim
+                 | regex_search('^([0-9]{1,3}\.){3}[0-9]{1,3}$'))
+
+    - name: Set newTarget to prompted IP
+      ansible.builtin.set_fact:
+        newTarget: "{{ _rthPrompt.user_input | trim }}"
+
+    - name: Wait for resolved host to be reachable
+      ansible.builtin.wait_for:
+        host:    "{{ newTarget }}"
+        port:    "{{ sshPort        | default(22) }}"
+        timeout: "{{ resolveTimeout | default(30) }}"
+  when: _rthKnownIPResult is failed
+
+##############################################################################
+# Register resolved target in runtime inventory so subsequent plays can
+# reference it via `hosts: "{{ hostvars['localhost'].newTarget }}"`.
+# Ansible's hosts: directive only matches hosts that exist in inventory;
+# add_host creates an entry for the resolved IP at runtime.
+##############################################################################
+- name: Add resolved target to runtime inventory
+  ansible.builtin.add_host:
+    name:   "{{ newTarget }}"
+    groups: resolved
+
+##############################################################################
+# Debug resolved target
+##############################################################################
+- name: Debug resolved target
+  ansible.builtin.debug:
+    msg: "[DEBUG] *** Target [{{ targetHost }}] resolved to [{{ newTarget }}]"
+  when: debugFlag | default(0) | int == 1
+
+##############################################################################
+# Cleanup temporary facts
+##############################################################################
+- name: Cleanup temporary facts
+  ansible.builtin.set_fact:
+    _rthKnownIPResult: null
+    _rthPrompt:        null

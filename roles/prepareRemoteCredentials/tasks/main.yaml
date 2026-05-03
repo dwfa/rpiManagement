@@ -54,7 +54,7 @@
 #   - trim applied to string fields — ansible-vault encrypt_string
 #     may append a trailing newline to the decrypted value
 #   - SSH keys materialized to data/ssh/key.prv and key.pub if present;
-#     call cleanupLocal role in a final localhost play to remove them
+#     call clearLocal role in a final localhost play to remove them
 #   - For plays that must use password auth regardless of userData.file
 #     (e.g. fresh RPi with no authorized_keys), load connectionPWD.yaml
 #     explicitly instead of using the userData.file filename
@@ -101,6 +101,6 @@
 # via include_vars (a "var", not a "fact"), and facts take precedence over
 # vars in Ansible. Setting it to null via set_fact would create a fact
 # that blocks the next include_vars reload, breaking subsequent calls
-# (e.g., when postInstall-pb.yaml reloads credentials for a different user
+# (e.g., when postCreate-pb.yaml reloads credentials for a different user
 # in a later play).
 ##############################################################################

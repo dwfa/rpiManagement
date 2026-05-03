@@ -1,0 +1,135 @@
+##############################################################################
+# Set static IP — offline strategy (write to mounted root filesystem)
+#
+# USAGE:
+#   Internal strategy of setStaticIP.yaml. Mounts a root partition, writes
+#   an NM .nmconnection file with the desired static IP, then unmounts.
+#   Used when the target's filesystem is accessible as a block device but
+#   the target is not running (e.g., during imaging workflows).
+#
+#   Callers should normally invoke setStaticIP.yaml (which dispatches to
+#   this strategy when partitionDevice is provided), not this file
+#   directly.
+#
+# REQUIRED VARIABLES:
+#   - partitionDevice:  Root partition device path (e.g., /dev/sdb2)
+#   - staticIPDataPath: Path to YAML file containing ipDetails
+#       (address, netmask, gateway, dns)
+#
+# OPTIONAL VARIABLES:
+#   - debugFlag: Enable debug output
+#
+# WORKFLOW:
+#   1. Mount root partition at /mnt/root
+#   2. Load static IP data from staticIPDataPath
+#   3. Generate UUID via the generateUUID custom module
+#   4. Write eth0-manual.nmconnection using the eth.conf template
+#   5. Unmount the root partition
+#   6. Cleanup temporary facts
+#
+# NOTES:
+#   - Reuses data/network/nm/eth.conf Jinja2 template (shared with the
+#     online strategy — both produce identical .nmconnection files)
+#   - File permissions set to 0600 owner/group root (NM requirement)
+#   - UUID generated fresh each invocation (unique per connection)
+#   - Mount point is internal (/mnt/root); reuses mountPartition.yaml
+#     and unmountPartition.yaml
+#   - partitionDevice is intentionally NOT rebound when including
+#     mountPartition.yaml. The pattern `varname: "{{ varname }}"` can
+#     resolve in the include's new scope and recurse into itself,
+#     producing a templating exception. mountPartition inherits
+#     partitionDevice from this file's scope automatically.
+#   - _ssipo prefix on file-scoped facts (setStaticIPOffline)
+#
+# Copyright 2025 Douglas WF Acheson (dwfa@dwfa.ca)
+# Licensed under Apache License 2.0. See LICENSE.md for details.
+#
+# Version: 3.1
+# Date: April 30, 2026
+##############################################################################
+---                                                   # identifies a YAML file
+
+##############################################################################
+# Set internal paths
+##############################################################################
+- name: Set internal paths
+  ansible.builtin.set_fact:
+    _ssipoNmConnectionDir: "/mnt/root/etc/NetworkManager/system-connections"
+    _ssipoRootMountPoint:  "/mnt/root"
+
+##############################################################################
+# Mount root partition (partitionDevice inherited from this scope; see
+# NOTES on why we do not rebind it in vars:)
+##############################################################################
+- name: Mount root partition
+  ansible.builtin.include_tasks:
+    file: "{{ taskDir }}/fileSystem/mountPartition.yaml"
+  vars:
+    mountPoint: "{{ _ssipoRootMountPoint }}"
+
+##############################################################################
+# Load static IP data
+##############################################################################
+- name: Load static IP data
+  ansible.builtin.include_vars:
+    file: "{{ staticIPDataPath }}"
+    name: _ssipoLoaded
+
+- name: Debug loaded IP data
+  when: debugFlag | default(0) | int == 1
+  ansible.builtin.debug:
+    msg: >-
+      [DEBUG] *** Static IP:
+      [{{ _ssipoLoaded.ipDetails.address }}/{{ _ssipoLoaded.ipDetails.netmask }}]
+      gateway [{{ _ssipoLoaded.ipDetails.gateway }}]
+
+##############################################################################
+# Generate UUID for connection
+##############################################################################
+- name: Generate UUID for NM connection
+  local_action:
+    module: generateUUID
+  register: _ssipoUUID
+
+##############################################################################
+# Write .nmconnection file using template
+##############################################################################
+- name: Write NM connection file
+  ansible.builtin.template:
+    dest:  "{{ _ssipoNmConnectionDir }}/eth0-manual.nmconnection"
+    group: root
+    mode:  '0600'
+    owner: root
+    src:   "{{ dataDir }}/network/nm/eth.conf"
+  vars:
+    autoconnect: "yes"
+    ip4Address:  "address1={{ _ssipoLoaded.ipDetails.address }}/{{ _ssipoLoaded.ipDetails.netmask }},{{ _ssipoLoaded.ipDetails.gateway }}"
+    ip4Dns:      "dns={{ _ssipoLoaded.ipDetails.dns }}"
+    method:      "manual"
+    uuid:        "{{ _ssipoUUID.uuid }}"
+
+- name: Debug NM connection file written
+  when: debugFlag | default(0) | int == 1
+  ansible.builtin.debug:
+    msg: >-
+      [DEBUG] *** Wrote NM connection file to
+      [{{ _ssipoNmConnectionDir }}/eth0-manual.nmconnection]
+
+##############################################################################
+# Unmount root partition
+##############################################################################
+- name: Unmount root partition
+  ansible.builtin.include_tasks:
+    file: "{{ taskDir }}/fileSystem/unmountPartition.yaml"
+  vars:
+    mountPoint: "{{ _ssipoRootMountPoint }}"
+
+##############################################################################
+# Cleanup temporary facts
+##############################################################################
+- name: Cleanup temporary facts
+  ansible.builtin.set_fact:
+    _ssipoNmConnectionDir: null
+    _ssipoRootMountPoint:  null
+    _ssipoLoaded:          null
+    _ssipoUUID:            null

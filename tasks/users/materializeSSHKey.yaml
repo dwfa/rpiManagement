@@ -6,7 +6,7 @@
 #   vault-decrypted credentials. Key content from userData.sshKeys is
 #   written to key.prv and key.pub so Ansible connection vars can
 #   reference them. Skips silently if userData has no SSH keys.
-#   Call cleanupLocal role in a final localhost play to remove the files.
+#   Call clearLocal role in a final localhost play to remove the files.
 #
 # OPTIONAL VARIABLES:
 #   - sshKeyPath: Directory to write key files

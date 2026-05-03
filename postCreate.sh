@@ -1,17 +1,18 @@
 #! /bin/bash
 
 ##############################################################################
-# Wrapper script for creating RPi SD card image
+# Wrapper script for post-create setup of a freshly imaged RPi
+# (normalize static IP, create main user, remove installer)
 #
-# Copyright 2025 Douglas WF Acheson (dwfa@dwfa.ca)
+# Copyright 2026 Douglas WF Acheson (dwfa@dwfa.ca)
 # Licensed under Apache License 2.0. See LICENSE.md for details.
 #
-# Version: 1.1
-# Date: February 15, 2026
+# Version: 2.0
+# Date: April 29, 2026
 ##############################################################################
 source ./scripts/init.sh
 
-playbook="playbooks/postInstall-pb.yaml"
+playbook="playbooks/postCreate-pb.yaml"
 node="${node:-preinstaller}"
 
 source ./scripts/runAnsible.sh

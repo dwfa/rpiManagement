@@ -1,19 +1,21 @@
 ##############################################################################
 # Command Line Parsing (clParsing) for bash
-#   enables debug      if -d flag is set
-#   enables check only if -c flag is set
-#   override node      if -n <node> is set
-#   list task          if -t flag is set
+#   enables debug        if -d flag is set
+#   enables check only   if -c flag is set
+#   override node        if -n <node> is set
+#   enables syntax check if -s flag is set
+#   list task            if -t flag is set
 #
-# Copyright 2025 Douglas WF Acheson (dwfa@dwfa.ca)
+# Copyright 2026 Douglas WF Acheson (dwfa@dwfa.ca)
 # Licensed under Apache License 2.0. See LICENSE.md for details.
 #
-# Version: 1.1
-# Date: February 15, 2026
+# Version: 1.2
+# Date: April 30, 2026
 ##############################################################################
 declare -a args
 debugFlag=""
 node=""
+syntaxCheck=""
 testOnly=""
 _expectNode=false
 if [ $# -gt 0 ]; then
@@ -34,6 +36,11 @@ if [ $# -gt 0 ]; then
     fi
     if [ "$cmdItem" == "-n" ]; then
       _expectNode=true
+      continue
+    fi
+    if [ "$cmdItem" == "-s" ]; then
+      testOnly+=" --syntax-check"
+      syntaxCheck="1"
       continue
     fi
     if [ "$cmdItem" == "-t" ]; then

@@ -1,0 +1,125 @@
+##############################################################################
+# Set static IP — entry point (selects online or offline strategy)
+#
+# USAGE:
+#   Public entry point for applying a static IP to a target. Dispatches
+#   internally to one of two strategies based on what the caller provides:
+#
+#     - Offline (mounted-filesystem) strategy: caller provides
+#       partitionDevice → setStaticIPOffline.yaml mounts the partition,
+#       writes the .nmconnection file, and unmounts.
+#
+#     - Online (running-host) strategy: caller does NOT provide
+#       partitionDevice → setStaticIPOnline.yaml writes the .nmconnection
+#       file via SSH and switches the live connection.
+#
+#   Callers declare *what* (set the static IP described by
+#   staticIPDataPath); this task decides *how*.
+#
+# REQUIRED VARIABLES:
+#   - staticIPDataPath: Path to YAML file containing ipDetails
+#                       (address, netmask, gateway, dns).
+#
+# REQUIRED VARIABLES (online strategy only):
+#   - currentAddress:   The address the running target is currently
+#                       reachable at. Used for idempotency. Not consulted
+#                       in the offline strategy.
+#
+# REQUIRED VARIABLES (offline strategy only):
+#   - partitionDevice:  Root partition device path (e.g., /dev/sdb2).
+#                       Presence selects the offline strategy.
+#
+# OPTIONAL VARIABLES:
+#   - debugFlag:        Enable debug output.
+#
+# WORKFLOW:
+#   1. Validate staticIPDataPath is provided
+#   2. If partitionDevice is defined → dispatch to setStaticIPOffline.yaml
+#   3. Else                          → validate currentAddress, dispatch
+#                                       to setStaticIPOnline.yaml
+#
+# EXAMPLES:
+#   # Offline (during imaging, partition mounted by caller chain)
+#   - include_tasks: "{{ taskDir }}/network/setStaticIP.yaml"
+#     vars:
+#       partitionDevice:  "{{ _rootPartitionDevice }}"
+#       staticIPDataPath: "{{ dataDir }}/network/staticIP/installer.yaml"
+#
+#   # Online (running host already reachable at currentAddress)
+#   - include_tasks: "{{ taskDir }}/network/setStaticIP.yaml"
+#     vars:
+#       currentAddress:   "{{ hostvars['localhost'].newTarget }}"
+#       staticIPDataPath: "{{ dataDir }}/network/staticIP/installer.yaml"
+#
+# NOTES:
+#   - Strategy selection is unambiguous by construction: presence of
+#     partitionDevice → offline; absence → online. There is no detection
+#     heuristic that could be wrong.
+#   - Both strategies produce an identical eth0-manual.nmconnection file
+#     (shared template at data/network/nm/eth.conf).
+#   - Project-specific consequences of an online switch (updating the
+#     getTargetHostIP `newTarget` fact, registering the new IP in
+#     runtime inventory) live in roles/setStaticIP, not in either
+#     strategy file.
+#
+# Copyright 2026 Douglas WF Acheson (dwfa@dwfa.ca)
+# Licensed under Apache License 2.0. See LICENSE.md for details.
+#
+# Version: 1.0
+# Date: April 26, 2026
+##############################################################################
+---                                                   # identifies a YAML file
+
+##############################################################################
+# Validate required parameters — fail fast before any side effects.
+# Strategy is selected by exactly one of partitionDevice or currentAddress;
+# providing neither is ambiguous, providing both is contradictory.
+##############################################################################
+- name: Validate staticIPDataPath is provided
+  ansible.builtin.fail:
+    msg: "[ERROR] *** staticIPDataPath is required for setStaticIP task"
+  when: staticIPDataPath is not defined
+
+- name: Validate exactly one of partitionDevice or currentAddress
+  ansible.builtin.fail:
+    msg: >-
+      [ERROR] *** setStaticIP requires exactly one of partitionDevice
+      (offline strategy) or currentAddress (online strategy);
+      partitionDevice=[{{ partitionDevice | default('<unset>') }}],
+      currentAddress=[{{ currentAddress | default('<unset>') }}]
+  when: >-
+    (partitionDevice is not defined and currentAddress is not defined) or
+    (partitionDevice is     defined and currentAddress is     defined)
+
+##############################################################################
+# Determine strategy — presence of partitionDevice selects offline,
+# absence selects online. Computed once so each dispatch can use a
+# positive equality check (no awkward double-negatives).
+##############################################################################
+- name: Determine strategy
+  ansible.builtin.set_fact:
+    _ssipStrategy: "{{ 'offline' if partitionDevice is defined else 'online' }}"
+
+##############################################################################
+# Offline strategy — write .nmconnection to a mounted root partition
+##############################################################################
+- name: Apply static IP (offline strategy)
+  when: _ssipStrategy == 'offline'
+  ansible.builtin.include_tasks:
+    file: "{{ taskDir }}/network/setStaticIPOffline.yaml"
+
+##############################################################################
+# Online strategy — write .nmconnection to a running host via SSH and
+# switch the live connection
+##############################################################################
+- name: Apply static IP (online strategy)
+  when: _ssipStrategy == 'online'
+  ansible.builtin.include_tasks:
+    file: "{{ taskDir }}/network/setStaticIPOnline.yaml"
+
+##############################################################################
+# Cleanup temporary facts
+##############################################################################
+- name: Cleanup temporary facts
+  ansible.builtin.set_fact:
+    _ssipStrategy: null

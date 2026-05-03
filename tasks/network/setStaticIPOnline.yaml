@@ -1,0 +1,182 @@
+##############################################################################
+# Set static IP — online strategy (apply to running host via NetworkManager)
+#
+# USAGE:
+#   Internal strategy of setStaticIP.yaml. Writes an eth0-manual
+#   .nmconnection file to the running target's filesystem, reloads
+#   NetworkManager, and switches the host from eth0-auto (DHCP) to
+#   eth0-manual without a reboot.
+#
+#   Pure mechanism: this task only switches the IP and verifies the new
+#   address is reachable. Project-specific conventions (updating the
+#   getTargetHostIP `newTarget` fact, registering the new IP in runtime
+#   inventory for `hosts:` matching) live in the wrapping role
+#   (roles/setStaticIP), not here.
+#
+#   Callers should normally invoke setStaticIP.yaml (which dispatches to
+#   this strategy when partitionDevice is NOT provided), not this file
+#   directly.
+#
+# REQUIRED VARIABLES:
+#   - currentAddress:   The address the target is currently reachable at.
+#                       Used both for idempotency (skip if already on the
+#                       desired address) and for the diagnostic message
+#                       describing the switch.
+#   - staticIPDataPath: Path to YAML file containing ipDetails
+#                       (address, netmask, gateway, dns).
+#
+# OPTIONAL VARIABLES:
+#   - debugFlag:        Enable debug output.
+#
+# OUTPUT FACTS:
+#   - _ssipnChanged:    Set to true on localhost when the apply block
+#                       actually ran (i.e., a switch was performed).
+#                       Wrappers gate post-conditions on this so a
+#                       no-op call doesn't trigger downstream side
+#                       effects. Not set on the no-op path; readers
+#                       should default it to false.
+#
+# WORKFLOW:
+#   1. Load static IP data from staticIPDataPath
+#   2. Skip block if currentAddress already equals the desired static
+#      address (idempotent)
+#   3. Mark _ssipnChanged=true so wrappers know the switch happened
+#   4. Generate UUID for the new NM connection (controller-side)
+#   5. Template eth0-manual.nmconnection into /etc/NetworkManager/
+#      system-connections/ on the target
+#   6. Reload NM connections so the new file is picked up
+#   7. Async-switch (down eth0-auto, up eth0-manual) so the task can
+#      return before the IP change tears down the SSH session
+#   8. Wait from localhost for the new address's :22 to confirm
+#      reachability before letting the play continue
+#
+# NOTES:
+#   - Reuses data/network/nm/eth.conf Jinja2 template (shared with the
+#     offline strategy — both produce identical .nmconnection files)
+#   - File permissions set to 0600 owner/group root (NM requirement)
+#   - The async/poll:0 nmcli switch is essential: without it, the
+#     handshake-bearing IP would disappear under the active SSH session
+#     and the task would hang until timeout
+#   - The leading `sleep 3` in the switch shell command lets the SSH ack
+#     reliably traverse back to the controller before nmcli tears the
+#     network down — defends against a race in fast/quiet environments
+#   - Companion eth0-auto connection is left intact so the host can
+#     still fall back to DHCP if eth0-manual is later removed
+#   - _ssipnChanged is set on localhost (delegate_to) so the role's
+#     main.yaml — which runs on the same play but reads via
+#     hostvars-style scope — sees it consistently
+#   - _ssipn prefix on file-scoped facts (setStaticIPOnline)
+#
+# Copyright 2026 Douglas WF Acheson (dwfa@dwfa.ca)
+# Licensed under Apache License 2.0. See LICENSE.md for details.
+#
+# Version: 1.2
+# Date: May 3, 2026
+##############################################################################
+---                                                   # identifies a YAML file
+
+##############################################################################
+# Validate required parameter
+##############################################################################
+- name: Validate currentAddress is provided
+  ansible.builtin.fail:
+    msg: "[ERROR] *** currentAddress is required for setStaticIPOnline task"
+  when: currentAddress is not defined
+
+##############################################################################
+# Load static IP data
+##############################################################################
+- name: Load static IP data
+  ansible.builtin.include_vars:
+    file: "{{ staticIPDataPath }}"
+    name: _ssipnLoaded
+
+##############################################################################
+# Apply static IP — skip entirely if host already at the desired address
+##############################################################################
+- name: Apply static IP
+  when: currentAddress != _ssipnLoaded.ipDetails.address
+  block:
+
+    ##########################################################################
+    # Mark that a real switch is happening so wrappers can gate their
+    # post-conditions on it (no-op runs leave _ssipnChanged unset).
+    ##########################################################################
+    - name: Mark switch as occurring
+      ansible.builtin.set_fact:
+        _ssipnChanged: true
+      delegate_to:    localhost
+      delegate_facts: true
+
+    - name: Debug switch intent
+      when: debugFlag | default(0) | int == 1
+      ansible.builtin.debug:
+        msg: >-
+          [DEBUG] *** Switching host from
+          [{{ currentAddress }}] to
+          [{{ _ssipnLoaded.ipDetails.address }}]
+
+    ##########################################################################
+    # Generate UUID for the new NM connection (custom module on controller)
+    ##########################################################################
+    - name: Generate UUID for NM connection
+      local_action:
+        module: generateUUID
+      register: _ssipnUUID
+
+    ##########################################################################
+    # Template the eth0-manual .nmconnection file onto the running target
+    ##########################################################################
+    - name: Write eth0-manual NM connection file
+      ansible.builtin.template:
+        dest:  "/etc/NetworkManager/system-connections/eth0-manual.nmconnection"
+        group: root
+        mode:  '0600'
+        owner: root
+        src:   "{{ dataDir }}/network/nm/eth.conf"
+      vars:
+        autoconnect: "yes"
+        ip4Address:  "address1={{ _ssipnLoaded.ipDetails.address }}/{{ _ssipnLoaded.ipDetails.netmask }},{{ _ssipnLoaded.ipDetails.gateway }}"
+        ip4Dns:      "dns={{ _ssipnLoaded.ipDetails.dns }}"
+        method:      "manual"
+        uuid:        "{{ _ssipnUUID.uuid }}"
+
+    ##########################################################################
+    # Reload NM so the new connection file is recognized
+    ##########################################################################
+    - name: Reload NetworkManager connections
+      ansible.builtin.command:
+        cmd: nmcli connection reload
+
+    ##########################################################################
+    # Switch active connection. async/poll:0 lets the task return before
+    # the IP change tears down the SSH session. The leading `sleep 3`
+    # ensures the SSH ack returns to the controller before nmcli touches
+    # the network.
+    ##########################################################################
+    - name: Switch from eth0-auto to eth0-manual
+      ansible.builtin.shell: >-
+        sleep 3;
+        nmcli connection down eth0-auto || true;
+        nmcli connection up   eth0-manual
+      async: 10
+      poll:  0
+
+    ##########################################################################
+    # Confirm the new IP is reachable before letting the play continue
+    ##########################################################################
+    - name: Wait for new static IP to be reachable
+      ansible.builtin.wait_for:
+        host:    "{{ _ssipnLoaded.ipDetails.address }}"
+        port:    22
+        timeout: 60
+      delegate_to: localhost
+
+##############################################################################
+# Cleanup temporary facts (note: _ssipnChanged is left in place — the
+# wrapping role reads it after this task returns)
+##############################################################################
+- name: Cleanup temporary facts
+  ansible.builtin.set_fact:
+    _ssipnLoaded: null
+    _ssipnUUID:   null

@@ -1,0 +1,114 @@
+##############################################################################
+# Set static IP on a target — thin role wrapper
+#
+# USAGE:
+#   Wraps tasks/network/setStaticIP.yaml (which dispatches between the
+#   online and offline strategies based on inputs) and adds the
+#   project-specific consequences of an online switch:
+#     - update the localhost fact `newTarget` to the new address so
+#       subsequent plays connect to the right host
+#     - register the new address in runtime inventory so `hosts:`
+#       directives can match it
+#
+#   Both consequences are gated to the online strategy AND only fire
+#   when the strategy actually performed a switch. A no-op call (host
+#   already on the desired address) leaves localhost state untouched.
+#
+# REQUIRED VARIABLES:
+#   - staticIPDataPath: Path to YAML file containing ipDetails
+#                       (address, netmask, gateway, dns)
+#
+# REQUIRED VARIABLES (online strategy only):
+#   - currentAddress:   Address the running target is currently reachable
+#                       at. Used for idempotency.
+#
+# REQUIRED VARIABLES (offline strategy only):
+#   - partitionDevice:  Root partition device path. Presence selects the
+#                       offline strategy.
+#
+# OPTIONAL VARIABLES:
+#   - debugFlag:        Enable debug output.
+#
+# EXAMPLES:
+#   # Offline (during imaging)
+#   - include_role:
+#       name: setStaticIP
+#     vars:
+#       partitionDevice:  "{{ _rootPartitionDevice }}"
+#       staticIPDataPath: "{{ dataDir }}/network/staticIP/installer.yaml"
+#
+#   # Online (running host)
+#   - hosts: "{{ hostvars['localhost'].newTarget }}"
+#     roles:
+#       - role: setStaticIP
+#         vars:
+#           currentAddress:   "{{ hostvars['localhost'].newTarget }}"
+#           staticIPDataPath: "{{ dataDir }}/network/staticIP/installer.yaml"
+#
+# NOTES:
+#   - Strategy selection is performed inside tasks/network/setStaticIP.yaml
+#     (presence of partitionDevice → offline; absence → online). The role
+#     re-reads the same input here only to gate the post-conditions; it
+#     does not duplicate dispatch.
+#   - Post-conditions also gate on hostvars.localhost._ssipnChanged, set
+#     by setStaticIPOnline only when the apply block actually ran. A
+#     no-op online run (target already on the desired address) leaves
+#     the fact unset, so the post-conditions skip cleanly.
+#
+# Copyright 2026 Douglas WF Acheson (dwfa@dwfa.ca)
+# Licensed under Apache License 2.0. See LICENSE.md for details.
+#
+# Version: 1.1
+# Date: May 3, 2026
+##############################################################################
+---                                                   # identifies a YAML file
+
+##############################################################################
+# Dispatch to the entry task (validates inputs, picks strategy, applies)
+##############################################################################
+- name: Apply static IP
+  ansible.builtin.include_tasks:
+    file: "{{ taskDir }}/network/setStaticIP.yaml"
+
+##############################################################################
+# Post-conditions for the online strategy — update localhost target fact
+# and register the new address in runtime inventory so subsequent plays
+# can reference the host by its new IP.
+#
+# Gates: online strategy AND a real switch occurred. A no-op run (host
+# already at the desired address) leaves _ssipnChanged unset, so the
+# block skips entirely.
+##############################################################################
+- name: Update target conventions after online switch
+  when:
+    - partitionDevice is not defined
+    - hostvars['localhost']._ssipnChanged | default(false)
+  block:
+
+    - name: Load static IP data (for new address)
+      ansible.builtin.include_vars:
+        file: "{{ staticIPDataPath }}"
+        name: _ssipRoleLoaded
+
+    - name: Update newTarget on localhost
+      ansible.builtin.set_fact:
+        newTarget: "{{ _ssipRoleLoaded.ipDetails.address }}"
+      delegate_to:    localhost
+      delegate_facts: true
+
+    - name: Add new static IP to runtime inventory
+      ansible.builtin.add_host:
+        name:   "{{ _ssipRoleLoaded.ipDetails.address }}"
+        groups: resolved
+      delegate_to: localhost
+
+##############################################################################
+# Cleanup temporary facts. _ssipnChanged is also cleaned so a later
+# invocation of the role in the same playbook starts from a clean slate.
+##############################################################################
+- name: Cleanup temporary facts
+  ansible.builtin.set_fact:
+    _ssipnChanged:   null
+    _ssipRoleLoaded: null
+  delegate_to:    localhost
+  delegate_facts: true

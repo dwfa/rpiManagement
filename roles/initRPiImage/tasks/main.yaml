@@ -116,8 +116,8 @@
 # Skipped on macOS (cannot mount ext4).
 ##############################################################################
 - name: Configure static IP on root filesystem
-  include_tasks:
-    file: "{{ taskDir }}/network/writeStaticIP.yaml"
+  include_role:
+    name: setStaticIP
   vars:
     partitionDevice:  "{{ _rootPartitionDevice }}"
     staticIPDataPath: "{{ dataDir }}/network/staticIP/installer.yaml"

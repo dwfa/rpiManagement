@@ -1,44 +1,65 @@
 ##############################################################################
-# Ansible role to clear local SSH known hosts data
+# Clear local artifacts left behind by remote plays
 #
 # USAGE:
-#   Clears the SSH known_hosts file to reset host key verification.
-#   Useful when re-imaging hosts or resetting environments.
+#   Run as the final role in a localhost cleanup play (or mid-playbook
+#   when switching credentials). Removes:
+#     1. Materialized SSH key files (key.prv, key.pub) written to disk
+#        by tasks/users/materializeSSHKey.yaml
+#     2. The data/ssh/knownHosts file (forces SSH to re-validate host
+#        keys on next connect — necessary after a host has been
+#        re-imaged with fresh host keys)
+#
+#   Both actions are coarse and complete: this role does not preserve
+#   per-host entries in knownHosts. Subsequent SSH connects re-populate
+#   the file naturally.
 #
 # REQUIRED VARIABLES:
-#   - dataDir: Path to data directory
-#   - debugFlag: (optional) Enable debug output
+#   - taskDir: Path to tasks directory (from common role)
+#   - dataDir: Path to data directory (from common role)
 #
-# ACTIONS:
-#   1. Ensures data/ssh directory exists
-#   2. Removes data/ssh/knownHosts file
+# OPTIONAL VARIABLES:
+#   - debugFlag: Enable debug output
+#
+# EXAMPLE:
+#   - name: Clear local artifacts
+#     hosts:        localhost
+#     connection:   local
+#     gather_facts: false
+#     roles:
+#       - clearLocal
 #
 # NOTES:
-#   - Next SSH connection will prompt for host key verification
-#   - Use before provisioning new/re-imaged hosts
+#   - Idempotent: ansible.builtin.file with state=absent tolerates the
+#     target file (or its parent directory) being missing
+#   - Wiping knownHosts mid-playbook is intentional — the next play's
+#     first SSH connect re-adds the current host key, which is the
+#     behavior we want when targets may have been re-imaged
+#   - Replaces the previous split between clearLocal (knownHosts only)
+#     and cleanupLocal (materialized keys only); the two were never
+#     used independently in practice
 #
-# Copyright 2025 Douglas WF Acheson (dwfa@dwfa.ca)
+# Copyright 2026 Douglas WF Acheson (dwfa@dwfa.ca)
 # Licensed under Apache License 2.0. See LICENSE.md for details.
 #
-# Version: 1.2
-# Date: October 16, 2025
+# Version: 2.1
+# Date: May 3, 2026
 ##############################################################################
+---                                                   # identifies a YAML file
 
----                                            # identifies a YAML config file
+##############################################################################
+# Remove materialized SSH key files (key.prv / key.pub)
+##############################################################################
+- name: Remove materialized SSH keys
+  ansible.builtin.include_tasks:
+    file: "{{ taskDir }}/users/cleanupSSHKey.yaml"
 
-# - name: clear ssh known hosts files
-- name: make sure directory exists
-  local_action: file path="{{ dataDir }}/ssh" state="directory"
-  register: cdResponse
-
-- name: clear ssh known hosts files
-  local_action: file path="{{ dataDir }}/ssh/knownHosts" state="absent"
-  register: rfResponse
-
-- name: debug message for clearing local data
-  debug:
-    msg:
-      - "[DEBUG] *** making directory  : {{ cdResponse }}"
-      - "[DEBUG] *** removing old file : {{ rfResponse }}"
-  when:
-    - debugFlag is defined
+##############################################################################
+# Wipe knownHosts file. state=absent is idempotent — succeeds whether
+# the file or its parent directory exists.
+##############################################################################
+- name: Remove knownHosts file
+  ansible.builtin.file:
+    path:  "{{ dataDir }}/ssh/knownHosts"
+    state: absent
+  delegate_to: localhost

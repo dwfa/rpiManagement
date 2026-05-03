@@ -37,6 +37,17 @@ ansibleVariables+="${debugFlag}"
 ansibleVariables+=" nodes=$node"
 
 ##############################################################################
+# Syntax-check shim: --syntax-check parses each play independently and
+# tries to resolve `hosts:` at parse time. Plays that reference
+# hostvars['localhost'].newTarget (set at runtime by getTargetHostIP)
+# would fail before they ever ran. Inject a dummy newTarget so parse
+# resolution succeeds; never reaches a real run.
+##############################################################################
+if [ "$syntaxCheck" == "1" ]; then
+  ansibleVariables+=" newTarget=localhost"
+fi
+
+##############################################################################
 # Run the playbook
 ##############################################################################
 if [ -f "$playbook" ]; then

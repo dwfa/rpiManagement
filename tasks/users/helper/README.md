@@ -49,7 +49,7 @@ operations within a larger workflow.
 | Helper                  | Purpose                                              | Called By                       |
 |-------------------------|------------------------------------------------------|---------------------------------|
 | `createSingleUser.yaml` | Creates one user account from pre-loaded data map    | `createUser.yaml`               |
-| `loadUserData.yaml`     | Loads one user's vault data and accumulates into map | `postInstall-pb.yaml` (Play 1)  |
+| `loadUserData.yaml`     | Loads one user's vault data and accumulates into map | `postCreate-pb.yaml` (Play 1)   |
 
 ## Adding New Helpers
 

@@ -4,9 +4,10 @@
 # USAGE:
 #   Loads user credentials from a single user.yaml path, ensures all
 #   referenced groups (primary + supplementary) exist on the target host,
-#   and creates the user account via ansible.builtin.user. Password is
-#   hashed and trimmed inline. This is the singular form — see
-#   createUsers.yaml for the plural (directory-scan) wrapper.
+#   creates the user account via ansible.builtin.user, sets the home
+#   directory permissions, then installs the user's public SSH keys.
+#   Password is hashed and trimmed inline. This is the singular form —
+#   see createUsers.yaml for the plural (directory-scan) wrapper.
 #
 # REQUIRED VARIABLES:
 #   - userDataPath: Path to vault-encrypted user.yaml file containing a
@@ -14,6 +15,13 @@
 #                   primaryGroup (list with one {name, gid} entry),
 #                   supplementaryGroups (list of {name, gid?} entries),
 #                   pwd (vault-encrypted)
+#
+# OPTIONAL user.yaml FIELDS:
+#   - userData.homeMode: Home directory mode (e.g. '0755'). Defaults to
+#                        '0755' if not provided. Override Debian's
+#                        restrictive default of 0700 here per-user.
+#   - userData.shell:    Login shell. Defaults to '/bin/bash'.
+#   - userData.sshKeys.public: Dict of public SSH keys to install.
 #
 # OPTIONAL VARIABLES:
 #   - debugFlag: Enable debug output
@@ -25,6 +33,8 @@
 #      + supplementary). Missing groups are created (with gid if provided,
 #      else OS auto-assigns). Existing groups are left untouched.
 #   4. Create the user account via ansible.builtin.user
+#   5. Set home directory mode (default 0755; userData.homeMode overrides)
+#   6. Install user's public SSH keys if any are defined
 #
 # EXAMPLE:
 #   - name: Create dwfa user
@@ -41,12 +51,15 @@
 #     (a var, not a fact); set_fact would create a blocking fact that
 #     prevents the next reload
 #   - Must run in a remote play (where ansible.builtin.user executes)
+#   - Debian's HOME_MODE in /etc/login.defs defaults to 0700; the home
+#     directory mode task above explicitly enforces 0755 (or
+#     userData.homeMode) so this project's convention prevails
 #
 # Copyright 2026 Douglas WF Acheson (dwfa@dwfa.ca)
 # Licensed under Apache License 2.0. See LICENSE.md for details.
 #
-# Version: 4.0
-# Date: April 19, 2026
+# Version: 4.1
+# Date: April 30, 2026
 ##############################################################################
 ---                                                   # identifies a YAML file
 
@@ -101,6 +114,19 @@
     state:           present
     uid:             "{{ _cuLoadedUser.userData.uid }}"
     update_password: always
+
+##############################################################################
+# Set home directory permissions. Debian's HOME_MODE default is 0700,
+# which is more restrictive than the project's convention. Mode comes
+# from userData.homeMode if present; otherwise defaults to 0755.
+##############################################################################
+- name: "Set home directory mode for [{{ _cuLoadedUser.userData.uName | trim }}]"
+  ansible.builtin.file:
+    path:  "/home/{{ _cuLoadedUser.userData.uName | trim }}"
+    mode:  "{{ _cuLoadedUser.userData.homeMode | default('0755') }}"
+    owner: "{{ _cuLoadedUser.userData.uName | trim }}"
+    group: "{{ _cuLoadedUser.userData.primaryGroup[0].name }}"
+    state: directory
 
 ##############################################################################
 # Install the user's public SSH keys (if any) — required before any later

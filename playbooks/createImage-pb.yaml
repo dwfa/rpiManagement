@@ -22,7 +22,7 @@
 #     4. createRPiImage: Copy image to target (if remote), write to disk
 #     5. initRPiImage: Copy init files and configure boot partition
 #   Play 3 (localhost):
-#     6. cleanupLocal: Remove materialized SSH key files from data/ssh/
+#     6. clearLocal: Remove materialized SSH key files from data/ssh/
 #
 # Copyright 2025 Douglas WF Acheson (dwfa@dwfa.ca)
 # Licensed under Apache License 2.0. See LICENSE.md for details.
@@ -75,4 +75,4 @@
   gather_facts: false
 
   roles:
-    - cleanupLocal
+    - clearLocal

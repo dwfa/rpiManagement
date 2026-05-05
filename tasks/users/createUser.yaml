@@ -2,89 +2,107 @@
 # Create a single user account from a vault-encrypted user.yaml file
 #
 # USAGE:
-#   Loads user credentials from a single user.yaml path, ensures all
-#   referenced groups (primary + supplementary) exist on the target host,
-#   creates the user account via ansible.builtin.user, sets the home
-#   directory permissions, then installs the user's public SSH keys.
-#   Password is hashed and trimmed inline. This is the singular form —
-#   see createUsers.yaml for the plural (directory-scan) wrapper.
+#   Loads user credentials, ensures referenced groups (primary +
+#   supplementary) exist on the target host, creates the user account,
+#   sets home directory permissions, installs public SSH keys, and
+#   installs any per-user files staged in the sibling files/ directory.
+#   Password is hashed and trimmed inline. Singular form — see
+#   createUsers.yaml for the directory-scan / list wrapper.
 #
-# REQUIRED VARIABLES:
-#   - userDataPath: Path to vault-encrypted user.yaml file containing a
-#                   userData dict with: uName, uid, name, shell,
-#                   primaryGroup (list with one {name, gid} entry),
-#                   supplementaryGroups (list of {name, gid?} entries),
-#                   pwd (vault-encrypted)
+# REQUIRED VARIABLES (exactly one of):
+#   - userDataPath: Explicit path to a vault-encrypted user.yaml file
+#   - uName:        Username; user.yaml is found by convention at
+#                   "{{ dataDir }}/users/<uName>/user.yaml"
+#
+#   user.yaml's userData dict must contain: uName, uid, name, shell,
+#   primaryGroup (list with one {name, gid}), supplementaryGroups
+#   (list of {name, gid?}), pwd (vault-encrypted).
 #
 # OPTIONAL user.yaml FIELDS:
-#   - userData.homeMode: Home directory mode (e.g. '0755'). Defaults to
-#                        '0755' if not provided. Override Debian's
-#                        restrictive default of 0700 here per-user.
-#   - userData.shell:    Login shell. Defaults to '/bin/bash'.
-#   - userData.sshKeys.public: Dict of public SSH keys to install.
+#   - userData.homeMode:        Home dir mode. Default '0755' (overrides
+#                               Debian's restrictive 0700 default).
+#   - userData.shell:           Login shell. Default '/bin/bash'.
+#   - userData.sshKeys.public:  Dict of public SSH keys to install.
 #
 # OPTIONAL VARIABLES:
 #   - debugFlag: Enable debug output
 #
 # WORKFLOW:
-#   1. Validate userDataPath is provided
-#   2. Load user data from userDataPath (vault decrypted via include_vars)
-#   3. Ensure all referenced groups exist via createGroups.yaml (primary
-#      + supplementary). Missing groups are created (with gid if provided,
-#      else OS auto-assigns). Existing groups are left untouched.
-#   4. Create the user account via ansible.builtin.user
-#   5. Set home directory mode (default 0755; userData.homeMode overrides)
-#   6. Install user's public SSH keys if any are defined
+#   1. Validate exactly one of userDataPath or uName
+#   2. Resolve internal _userDataPath: copied from userDataPath if
+#      given, otherwise derived from uName by convention
+#   3. Load user data (vault-decrypted via include_vars)
+#   4. Ensure referenced groups exist
+#   5. Create the user account
+#   6. Set home directory mode
+#   7. Install public SSH keys (if any)
+#   8. Install per-user files from sibling files/ (if any)
 #
-# EXAMPLE:
-#   - name: Create dwfa user
-#     include_tasks:
-#       file: "{{ taskDir }}/users/createUser.yaml"
+# EXAMPLES:
+#   - include_tasks: "{{ taskDir }}/users/createUser.yaml"
 #     vars:
 #       userDataPath: "{{ dataDir }}/users/dwfa/user.yaml"
 #
+#   - include_tasks: "{{ taskDir }}/users/createUser.yaml"
+#     vars:
+#       uName: dwfa
+#
 # NOTES:
-#   - Requires Python passlib for password_hash('sha512') filter
-#   - | trim applied to uName and pwd to strip trailing newlines that
-#     ansible-vault encrypt_string appends to decrypted values
-#   - _cuLoadedUser intentionally NOT cleaned up: loaded via include_vars
-#     (a var, not a fact); set_fact would create a blocking fact that
-#     prevents the next reload
-#   - Must run in a remote play (where ansible.builtin.user executes)
-#   - Debian's HOME_MODE in /etc/login.defs defaults to 0700; the home
-#     directory mode task above explicitly enforces 0755 (or
-#     userData.homeMode) so this project's convention prevails
+#   - Requires Python passlib for password_hash('sha512')
+#   - | trim applied to vault-decrypted strings (uName, pwd) to strip
+#     trailing newlines that ansible-vault encrypt_string appends
+#   - _cuLoadedUser intentionally NOT cleaned up: loaded via
+#     include_vars (a var, not a fact); set_fact would create a
+#     blocking fact that prevents the next reload
+#   - Internal `_userDataPath` is set once from the public input and
+#     used everywhere downstream. The public `userDataPath` is never
+#     rebound — Ansible's eager evaluation of include `vars:` makes
+#     `userDataPath: "{{ ... }}"` rebindings prone to a recursive
+#     templating bug
 #
 # Copyright 2026 Douglas WF Acheson (dwfa@dwfa.ca)
 # Licensed under Apache License 2.0. See LICENSE.md for details.
 #
-# Version: 4.1
-# Date: April 30, 2026
+# Version: 5.1
+# Date: May 4, 2026
 ##############################################################################
 ---                                                   # identifies a YAML file
 
 ##############################################################################
-# Validate required parameter
+# Validate: exactly one of userDataPath or uName must be provided
 ##############################################################################
-- name: Validate userDataPath is provided
+- name: Validate required input
   ansible.builtin.fail:
-    msg: "[ERROR] *** userDataPath is required for createUser task"
-  when: userDataPath is not defined
+    msg: >-
+      [ERROR] *** createUser task requires exactly one of userDataPath
+      or uName to be provided
+  when: >-
+    ([userDataPath is defined,
+      uName        is defined] | select | list | length) != 1
 
 ##############################################################################
-# Load user data from vault-encrypted file
+# Resolve the internal path. Used everywhere downstream — the public
+# `userDataPath` input is left untouched.
+##############################################################################
+- name: Resolve internal _userDataPath
+  ansible.builtin.set_fact:
+    _userDataPath: >-
+      {{ userDataPath
+         if userDataPath is defined
+         else dataDir ~ '/users/' ~ uName ~ '/user.yaml' }}
+
+##############################################################################
+# Load user data
 ##############################################################################
 - name: Load user data
   ansible.builtin.include_vars:
-    file: "{{ userDataPath }}"
+    file: "{{ _userDataPath }}"
     name: _cuLoadedUser
 
 ##############################################################################
-# Ensure referenced groups exist
-# Concatenate primary + supplementary groups into one list and delegate
-# to createGroups.yaml (which loops and creates any that don't yet exist).
-# `| default([])` — if either list is undefined, use an empty list so
-# the `+` concatenation is always safe.
+# Ensure referenced groups exist. Concatenates primary + supplementary
+# into one list; `| default([])` keeps the `+` safe when either is
+# undefined.
 ##############################################################################
 - name: Ensure referenced groups exist
   ansible.builtin.include_tasks:
@@ -116,9 +134,7 @@
     update_password: always
 
 ##############################################################################
-# Set home directory permissions. Debian's HOME_MODE default is 0700,
-# which is more restrictive than the project's convention. Mode comes
-# from userData.homeMode if present; otherwise defaults to 0755.
+# Set home directory mode (override Debian's 0700 default)
 ##############################################################################
 - name: "Set home directory mode for [{{ _cuLoadedUser.userData.uName | trim }}]"
   ansible.builtin.file:
@@ -129,17 +145,25 @@
     state: directory
 
 ##############################################################################
-# Install the user's public SSH keys (if any) — required before any later
-# play can SSH in as this user using key auth. Skipped if user.yaml has
-# no sshKeys.public section.
+# Install user's public SSH keys (skipped if user.yaml has none)
 ##############################################################################
 - name: Install user's public SSH keys
+  when:
+    - _cuLoadedUser.userData.sshKeys             is defined
+    - _cuLoadedUser.userData.sshKeys.public      is defined
+    - _cuLoadedUser.userData.sshKeys.public      | length > 0
   ansible.builtin.include_tasks:
     file: "{{ taskDir }}/users/addSSHKeys.yaml"
   vars:
     uName:      "{{ _cuLoadedUser.userData.uName | trim }}"
     publicKeys: "{{ _cuLoadedUser.userData.sshKeys.public }}"
-  when:
-    - _cuLoadedUser.userData.sshKeys             is defined
-    - _cuLoadedUser.userData.sshKeys.public      is defined
-    - _cuLoadedUser.userData.sshKeys.public      | length > 0
+
+##############################################################################
+# Install per-user files. Pass _userDataPath as userDataPath to the
+# sub-task — single substitution, no nested template.
+##############################################################################
+- name: Install user files
+  ansible.builtin.include_tasks:
+    file: "{{ taskDir }}/users/installUserFiles.yaml"
+  vars:
+    userDataPath: "{{ _userDataPath }}"

@@ -54,13 +54,14 @@
 ##############################################################################
 - name: "Install public keys for [{{ uName }}]"
   ansible.posix.authorized_key:
-    comment: "{{ item.value.comment }}"
-    key:     "{{ item.value.key }}"
+    comment: "{{ keyIdx.value.comment }}"
+    key:     "{{ keyIdx.value.key }}"
     state:   present
     user:    "{{ uName }}"
   loop: "{{ publicKeys | dict2items }}"
   loop_control:
-    label: "{{ item.key }}"
+    loop_var: keyIdx
+    label:    "{{ keyIdx.key }}"
 
 - name: "Debug installed keys for [{{ uName }}]"
   ansible.builtin.debug:

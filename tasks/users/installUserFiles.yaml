@@ -1,0 +1,112 @@
+##############################################################################
+# Install per-user files into the user's $HOME
+#
+# USAGE:
+#   Recursively copies everything under <userDataPath>/../files/ into
+#   /home/<uName>/, preserving the source directory layout. Owner/group
+#   are set to the user. The directory structure under files/ IS the
+#   manifest — there is no separate manifest file. Skips silently when
+#   the source dir is absent so callers can include this task
+#   unconditionally.
+#
+#   Interface mirrors createUser.yaml: pass the same userDataPath you
+#   would pass to createUser, and this task loads user.yaml itself to
+#   discover uName / primaryGroup.
+#
+# REQUIRED VARIABLES:
+#   - userDataPath: Path to vault-encrypted user.yaml file. The files/
+#                   directory is expected as a sibling of user.yaml at
+#                   <dirname(userDataPath)>/files/.
+#
+# OPTIONAL VARIABLES:
+#   - debugFlag: Enable debug output
+#
+# WORKFLOW:
+#   1. Validate userDataPath
+#   2. Load user data from userDataPath
+#   3. Stat the sibling files/ directory on the controller
+#   4. If present → recursive copy with owner/group and mode preservation
+#   5. If absent  → log (debug) and skip
+#
+# EXAMPLE:
+#   - name: Install user files for dwfa
+#     include_tasks:
+#       file: "{{ taskDir }}/users/installUserFiles.yaml"
+#     vars:
+#       userDataPath: "{{ dataDir }}/users/dwfa/user.yaml"
+#
+# NOTES:
+#   - Trailing slash on src means "contents of": files/.zshrc becomes
+#     /home/<uName>/.zshrc, files/bin/foo becomes /home/<uName>/bin/foo
+#   - mode: preserve keeps the source file modes (so executable scripts
+#     stay executable). directory_mode: '0755' for newly created dirs.
+#   - Idempotent: ansible.builtin.copy reports changed only when the
+#     destination differs from the source
+#   - _iufLoadedUser intentionally NOT cleaned up: loaded via
+#     include_vars (a var, not a fact); set_fact would create a
+#     blocking fact that prevents the next reload (same rationale as
+#     createUser.yaml's _cuLoadedUser)
+#   - _iuf prefix on file-scoped facts (installUserFiles)
+#
+# Copyright 2026 Douglas WF Acheson (dwfa@dwfa.ca)
+# Licensed under Apache License 2.0. See LICENSE.md for details.
+#
+# Version: 1.0
+# Date: May 3, 2026
+##############################################################################
+---                                                   # identifies a YAML file
+
+##############################################################################
+# Validate required parameter
+##############################################################################
+- name: Validate userDataPath is provided
+  ansible.builtin.fail:
+    msg: "[ERROR] *** userDataPath is required for installUserFiles task"
+  when: userDataPath is not defined
+
+##############################################################################
+# Load user data from vault-encrypted file
+##############################################################################
+- name: Load user data
+  ansible.builtin.include_vars:
+    file: "{{ userDataPath }}"
+    name: _iufLoadedUser
+
+##############################################################################
+# Check whether the sibling files/ directory exists on the controller
+##############################################################################
+- name: "Check for files directory for user [{{ _iufLoadedUser.userData.uName | trim }}]"
+  ansible.builtin.stat:
+    path: "{{ userDataPath | dirname }}/files"
+  delegate_to: localhost
+  register:    _iufSrcDir
+
+##############################################################################
+# Copy contents into the user's home (only when src exists)
+##############################################################################
+- name: "Install files into [/home/{{ _iufLoadedUser.userData.uName | trim }}/]"
+  when: _iufSrcDir.stat.isdir | default(false)
+  ansible.builtin.copy:
+    src:            "{{ userDataPath | dirname }}/files/"
+    dest:           "/home/{{ _iufLoadedUser.userData.uName | trim }}/"
+    owner:          "{{ _iufLoadedUser.userData.uName | trim }}"
+    group:          "{{ _iufLoadedUser.userData.primaryGroup[0].name }}"
+    mode:           preserve
+    directory_mode: '0755'
+
+- name: "Debug skip when files directory absent"
+  when:
+    - debugFlag | default(0) | int == 1
+    - not (_iufSrcDir.stat.isdir | default(false))
+  ansible.builtin.debug:
+    msg: >-
+      [DEBUG] *** No files/ directory for user
+      [{{ _iufLoadedUser.userData.uName | trim }}] at
+      [{{ userDataPath | dirname }}/files] — skipping
+
+##############################################################################
+# Cleanup temporary facts
+##############################################################################
+- name: Cleanup temporary facts
+  ansible.builtin.set_fact:
+    _iufSrcDir: null

@@ -54,11 +54,12 @@
 # Iterate over groupList, ensuring each group exists
 ##############################################################################
 - name: Ensure each group exists
+  when: groupList | length > 0
   ansible.builtin.include_tasks:
     file: "{{ taskDir }}/group/createGroup.yaml"
   vars:
-    groupData: "{{ item }}"
+    groupData: "{{ groupIdx }}"
   loop: "{{ groupList }}"
   loop_control:
-    label: "{{ item.name }}"
-  when: groupList | length > 0
+    loop_var: groupIdx
+    label:    "{{ groupIdx.name }}"

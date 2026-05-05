@@ -1,80 +1,107 @@
 ##############################################################################
-# Create multiple user accounts from a directory of user.yaml files
+# Create multiple user accounts — from a directory scan or an explicit
+# list of usernames
 #
 # USAGE:
-#   Discovers user subdirectories under userDataDir (one per user), then
-#   iterates each and delegates to createUser.yaml to create the user.
-#   Use this for bulk user creation from a data directory; for a single
-#   user by path, use createUser.yaml directly.
+#   Two modes, exactly one of which must be provided:
+#     - userDataDir: scan the directory for subdirectories, treat each
+#                    as a username, look for user.yaml inside
+#     - userNames:   take the list as-is; resolve each name to the
+#                    conventional "{{ dataDir }}/users/<uName>/user.yaml"
 #
-# REQUIRED VARIABLES:
-#   - userDataDir: Path to directory containing user subdirectories. Each
-#                  subdirectory must contain a user.yaml file.
+# REQUIRED VARIABLES (exactly one of):
+#   - userDataDir: Path to a directory containing user subdirectories
+#   - userNames:   List of usernames to create
 #
 # OPTIONAL VARIABLES:
 #   - debugFlag: Enable debug output
 #
 # WORKFLOW:
-#   1. Validate userDataDir is provided
-#   2. Discover immediate child directories via discoverDirs.yaml
-#   3. For each discovered subdirectory: delegate to createUser.yaml
-#      with userDataPath = <userDataDir>/<subdir>/user.yaml
-#   4. Cleanup temporary facts
+#   1. Validate exactly one input is provided
+#   2. If userDataDir → discoverDirs, then loop createUser per
+#      discovered subdirectory
+#   3. If userNames   → loop createUser per name, deriving the path by
+#      convention
 #
 # EXAMPLE:
-#   - name: Create all default users
-#     include_tasks:
-#       file: "{{ taskDir }}/users/createUsers.yaml"
+#   # Directory scan
+#   - include_tasks: "{{ taskDir }}/users/createUsers.yaml"
 #     vars:
 #       userDataDir: "{{ dataDir }}/users/default"
 #
+#   # Explicit list
+#   - include_tasks: "{{ taskDir }}/users/createUsers.yaml"
+#     vars:
+#       userNames:
+#         - dwfa
+#         - alice
+#
 # NOTES:
-#   - Each subdirectory must contain a user.yaml at its top level
-#   - Groups are ensured per user — see createUser.yaml
-#   - discoveredDirs (set by discoverDirs.yaml) is cleaned up here so it
-#     does not leak to callers
+#   - Each user.yaml must exist at its expected path; createUser fails
+#     loudly if the file is missing
+#   - Loops use loop_var: userIdx per the project's <noun>Idx convention
 #
 # Copyright 2026 Douglas WF Acheson (dwfa@dwfa.ca)
 # Licensed under Apache License 2.0. See LICENSE.md for details.
 #
-# Version: 1.0
-# Date: April 19, 2026
+# Version: 2.0
+# Date: May 4, 2026
 ##############################################################################
 ---                                                   # identifies a YAML file
 
 ##############################################################################
-# Validate required parameter
+# Validate: exactly one of userDataDir or userNames must be provided
 ##############################################################################
-- name: Validate userDataDir is provided
+- name: Validate required input
   ansible.builtin.fail:
-    msg: "[ERROR] *** userDataDir is required for createUsers task"
-  when: userDataDir is not defined
+    msg: >-
+      [ERROR] *** createUsers task requires exactly one of userDataDir
+      or userNames to be provided
+  when: >-
+    ([userDataDir is defined,
+      userNames   is defined] | select | list | length) != 1
 
 ##############################################################################
-# Discover user subdirectories
+# Mode A — userDataDir: discover subdirectories, then loop createUser
 ##############################################################################
-- name: Discover user subdirectories
-  ansible.builtin.include_tasks:
-    file: "{{ taskDir }}/files/discoverDirs.yaml"
-  vars:
-    searchDir: "{{ userDataDir }}"
+- name: Mode A — directory scan
+  when: userDataDir is defined
+  block:
+
+    - name: Discover user subdirectories
+      ansible.builtin.include_tasks:
+        file: "{{ taskDir }}/files/discoverDirs.yaml"
+      vars:
+        searchDir: "{{ userDataDir }}"
+
+    - name: Create each discovered user
+      when: discoveredDirs | length > 0
+      ansible.builtin.include_tasks:
+        file: "{{ taskDir }}/users/createUser.yaml"
+      vars:
+        userDataPath: "{{ userDataDir }}/{{ userIdx }}/user.yaml"
+      loop: "{{ discoveredDirs }}"
+      loop_control:
+        loop_var: userIdx
+        label:    "{{ userIdx }}"
+
+    - name: Cleanup temporary facts
+      ansible.builtin.set_fact:
+        discoveredDirs: null
 
 ##############################################################################
-# For each discovered subdirectory, create its user
+# Mode B — userNames: loop the supplied list directly. createUser.yaml
+# accepts uName and derives the path by convention internally, so the
+# vars: rebinding here is a single substitution from the loop_var (no
+# nested templates that could trigger Ansible's eager-evaluation bug).
 ##############################################################################
-- name: Create each user
+- name: Mode B — explicit list of names
+  when: userNames is defined
   ansible.builtin.include_tasks:
     file: "{{ taskDir }}/users/createUser.yaml"
   vars:
-    userDataPath: "{{ userDataDir }}/{{ item }}/user.yaml"
-  loop: "{{ discoveredDirs }}"
+    uName: "{{ userIdx }}"
+  loop: "{{ userNames }}"
   loop_control:
-    label: "{{ item }}"
-  when: discoveredDirs | length > 0
-
-##############################################################################
-# Cleanup temporary facts
-##############################################################################
-- name: Cleanup temporary facts
-  ansible.builtin.set_fact:
-    discoveredDirs: null
+    loop_var: userIdx
+    label:    "{{ userIdx }}"

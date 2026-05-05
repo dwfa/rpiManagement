@@ -1,0 +1,53 @@
+##############################################################################
+# Create DNS DHCP RPi Server image
+#
+# Copyright 2026 Douglas WF Acheson (dwfa@dwfa.ca)
+# Licensed under Apache License 2.0. See LICENSE.md for details.
+#
+# Version: 2.4
+# Date: March 22, 2026
+##############################################################################
+---                                            # identifies a YAML config file
+
+##############################################################################
+# Play 1: Load credentials, materialize SSH keys, manage image locally
+# Note: updateRPiImage must run on localhost where data/ directory exists
+##############################################################################
+- name: Prepare local resources
+  hosts:        localhost
+  connection:   local
+  gather_facts: false
+
+  roles:
+    - role: prepareRemoteCredentials
+      vars:
+        userDataPath: "{{ dataDir }}/users/dwfa/user.yaml"
+
+##############################################################################
+# Play 2: Execute on target hosts
+##############################################################################
+- name: TBD
+  hosts:        "{{ nodes }}"
+  become:       true
+  gather_facts: true
+
+# Load remote connection vars (connectionKey.yaml or connectionPWD.yaml)
+  vars_files:
+    - "{{ playbook_dir }}/vars/connection{{ hostvars['localhost'].userData.file }}.yaml"
+
+  roles:
+    - role: createUsers
+      vars:
+        userNames:
+          - dwfa
+
+##############################################################################
+# Play 3: Cleanup materialized SSH keys
+##############################################################################
+- name: Cleanup materialized SSH keys
+  hosts:        localhost
+  connection:   local
+  gather_facts: false
+
+  roles:
+    - clearLocal

@@ -1,0 +1,83 @@
+##############################################################################
+# Configure a single named package, if a per-package configure task exists
+#
+# USAGE:
+#   For one package name, look for tasks/<packageName>/configure.yaml on
+#   the controller. If present, include it; if not, no-op. Lets a
+#   bulk-install caller (e.g., installBasePackages role) auto-discover
+#   per-package configuration without hardcoding which packages have it.
+#
+# REQUIRED VARIABLES:
+#   - packageName: Name of the package whose configure.yaml may exist
+#                  at tasks/<packageName>/configure.yaml
+#
+# OPTIONAL VARIABLES:
+#   - debugFlag: Enable debug output
+#
+# WORKFLOW:
+#   1. Validate packageName is provided
+#   2. Stat tasks/<packageName>/configure.yaml on the controller
+#   3. If found, include it; otherwise quietly skip
+#
+# EXAMPLE:
+#   - include_tasks: "{{ taskDir }}/system/configurePackage.yaml"
+#     vars:
+#       packageName: vim
+#
+# NOTES:
+#   - Discovery is by filename convention. Renaming a package directory
+#     silently breaks the link — that's the trade-off for zero-config
+#     auto-discovery.
+#   - Stat runs on the controller (the task files live there, not on
+#     the target).
+#   - _cpStat is a transient register; cleaned up at end so it does
+#     not leak to the calling loop.
+#
+# Copyright 2026 Douglas WF Acheson (dwfa@dwfa.ca)
+# Licensed under Apache License 2.0. See LICENSE.md for details.
+#
+# Version: 1.0
+# Date: May 6, 2026
+##############################################################################
+---                                                   # identifies a YAML file
+
+##############################################################################
+# Validate required parameter
+##############################################################################
+- name: Validate packageName is provided
+  ansible.builtin.fail:
+    msg: "[ERROR] *** packageName is required for configurePackage task"
+  when: packageName is not defined
+
+##############################################################################
+# Look for the per-package configure task on the controller
+##############################################################################
+- name: "Look for configure task for [{{ packageName }}]"
+  ansible.builtin.stat:
+    path: "{{ taskDir }}/{{ packageName }}/configure.yaml"
+  delegate_to: localhost
+  register:    _cpStat
+
+##############################################################################
+# Include it if found
+##############################################################################
+- name: "Configure [{{ packageName }}]"
+  when: _cpStat.stat.exists | default(false)
+  ansible.builtin.include_tasks:
+    file: "{{ taskDir }}/{{ packageName }}/configure.yaml"
+
+- name: "Debug skip when no configure task for [{{ packageName }}]"
+  when:
+    - debugFlag | default(0) | int == 1
+    - not (_cpStat.stat.exists | default(false))
+  ansible.builtin.debug:
+    msg: >-
+      [DEBUG] *** No configure.yaml for package [{{ packageName }}] —
+      skipping
+
+##############################################################################
+# Cleanup transient facts
+##############################################################################
+- name: Cleanup temporary facts
+  ansible.builtin.set_fact:
+    _cpStat: null

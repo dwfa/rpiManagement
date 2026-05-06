@@ -1,0 +1,64 @@
+##############################################################################
+# Configure vim system-wide
+#
+# USAGE:
+#   Deploys the project's system-wide vim configuration files. Reads
+#   the manifest at data/vim/metadata.yaml — `vimFiles` is a dict where
+#   each entry has `src` and `dest`. Files are copied to the target with
+#   root:root ownership and mode 0644.
+#
+# REQUIRED VARIABLES:
+#   None at the call site. Driven by data/vim/metadata.yaml.
+#
+# OPTIONAL VARIABLES:
+#   - debugFlag: Enable debug output
+#
+# WORKFLOW:
+#   1. Load data/vim/metadata.yaml (defines vimFiles dict)
+#   2. Copy each vimFiles entry to its dest, with backup of any
+#      pre-existing target
+#
+# EXAMPLE:
+#   - include_tasks: "{{ taskDir }}/vim/configure.yaml"
+#
+# NOTES:
+#   - Files copied with backup: yes — pre-existing /etc/vim/vimrc.local
+#     is preserved as a .bak before being overwritten
+#   - User-level vim config (~/.vimrc) is NOT handled here — that
+#     belongs in the user's data/users/<uName>/files/ tree, picked up
+#     by installUserFiles during user creation
+#   - Add another file to deploy by extending data/vim/metadata.yaml's
+#     vimFiles dict — no task changes needed
+#   - _vcfIdx is the loop_var per the project's <noun>Idx convention;
+#     each iteration's value is the dict key (item_1, item_2, ...)
+#
+# Copyright 2026 Douglas WF Acheson (dwfa@dwfa.ca)
+# Licensed under Apache License 2.0. See LICENSE.md for details.
+#
+# Version: 1.0
+# Date: May 5, 2026
+##############################################################################
+---                                                   # identifies a YAML file
+
+##############################################################################
+# Load the vim configuration manifest
+##############################################################################
+- name: Load vim configuration manifest
+  ansible.builtin.include_vars:
+    file: "{{ dataDir }}/vim/metadata.yaml"
+
+##############################################################################
+# Copy each declared file to its destination
+##############################################################################
+- name: Deploy system-wide vim configuration
+  ansible.builtin.copy:
+    backup: true
+    src:    "{{ vimFiles[vcfIdx].src }}"
+    dest:   "{{ vimFiles[vcfIdx].dest }}"
+    owner:  root
+    group:  root
+    mode:   '0644'
+  loop: "{{ vimFiles.keys() | list }}"
+  loop_control:
+    loop_var: vcfIdx
+    label:    "{{ vimFiles[vcfIdx].dest }}"

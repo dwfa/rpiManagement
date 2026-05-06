@@ -1,0 +1,85 @@
+##############################################################################
+# Install one or more native OS packages
+#
+# USAGE:
+#   Public entry point for "install a package or set of packages."
+#   Caller declares the intent (which packages to install); this task
+#   picks the mechanism. Today it dispatches to apt (the only
+#   supported mechanism in this project); a future RHEL or macOS host
+#   could be added by branching internally on ansible_pkg_mgr without
+#   changing any caller.
+#
+# REQUIRED VARIABLES:
+#   - packageList: Single package name (string) or list of names
+#                  (e.g., 'vim' or ['fontconfig', 'git', 'zsh'])
+#
+# OPTIONAL VARIABLES:
+#   - aptCacheValidSeconds: Seconds to consider apt cache fresh
+#                           (default: 86400 — one day)
+#   - debugFlag:            Enable debug output
+#
+# WORKFLOW:
+#   1. Validate packageList is provided
+#   2. Install via the host's package manager (apt today)
+#
+# EXAMPLE:
+#   - include_tasks: "{{ taskDir }}/system/installPackage.yaml"
+#     vars:
+#       packageList: vim
+#
+#   - include_tasks: "{{ taskDir }}/system/installPackage.yaml"
+#     vars:
+#       packageList:
+#         - fontconfig
+#         - git
+#         - zsh
+#
+# NOTES:
+#   - state=latest upgrades to the newest available version. Use this
+#     deliberately — for "install if missing, leave alone if present"
+#     semantics, callers should set state via a dedicated wrapper.
+#   - update_cache=yes with cache_valid_time avoids hammering apt
+#     mirrors on rapid re-runs.
+#   - _ipResult is a transient register; cleaned up at end so it
+#     does not leak to callers.
+#
+# Copyright 2026 Douglas WF Acheson (dwfa@dwfa.ca)
+# Licensed under Apache License 2.0. See LICENSE.md for details.
+#
+# Version: 1.0
+# Date: May 5, 2026
+##############################################################################
+---                                                   # identifies a YAML file
+
+##############################################################################
+# Validate required parameter
+##############################################################################
+- name: Validate packageList is provided
+  ansible.builtin.fail:
+    msg: "[ERROR] *** packageList is required for installPackage task"
+  when: packageList is not defined
+
+##############################################################################
+# Install (or upgrade to latest) the requested packages via apt
+##############################################################################
+- name: "Install package(s) [{{ packageList }}]"
+  ansible.builtin.apt:
+    name:             "{{ packageList }}"
+    state:            latest
+    update_cache:     true
+    cache_valid_time: "{{ aptCacheValidSeconds | default(86400) }}"
+  register: _ipResult
+
+- name: Debug install result
+  when: debugFlag | default(0) | int == 1
+  ansible.builtin.debug:
+    msg:
+      - "[DEBUG] *** Installed [{{ packageList }}]"
+      - "[DEBUG] *** changed: [{{ _ipResult.changed }}]"
+
+##############################################################################
+# Cleanup transient facts
+##############################################################################
+- name: Cleanup temporary facts
+  ansible.builtin.set_fact:
+    _ipResult: null

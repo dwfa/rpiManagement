@@ -1,0 +1,68 @@
+##############################################################################
+# Install (and auto-configure) the project's canonical base packages
+#
+# USAGE:
+#   Thin role wrapper. Installs the list of "base" command-line tools
+#   defined in vars/main.yaml (vim, zsh, fish today), then for each
+#   package looks for tasks/<package>/configure.yaml and includes it if
+#   present. Caller does not pass any vars — the list is owned by the
+#   role.
+#
+# REQUIRED VARIABLES:
+#   None at the call site. basePackageList comes from this role's
+#   vars/main.yaml.
+#
+# OPTIONAL VARIABLES:
+#   - debugFlag: Enable debug output
+#
+# WORKFLOW:
+#   1. Install all packages via tasks/system/installPackage.yaml
+#   2. Loop the same list, calling tasks/system/configurePackage.yaml
+#      per package. configurePackage stats the per-package configure
+#      file and includes it if present, no-op otherwise.
+#
+# EXAMPLE:
+#   - hosts: "{{ nodes }}"
+#     become: true
+#     roles:
+#       - installBasePackages
+#
+# NOTES:
+#   - Must run in a remote play (apt requires the target host)
+#   - To change what counts as "base," edit vars/main.yaml
+#   - Per-package configuration is auto-discovered: drop a
+#     tasks/<package>/configure.yaml and it runs automatically on the
+#     next role invocation; remove the file and it stops running. No
+#     role changes required.
+#
+# Copyright 2026 Douglas WF Acheson (dwfa@dwfa.ca)
+# Licensed under Apache License 2.0. See LICENSE.md for details.
+#
+# Version: 1.1
+# Date: May 6, 2026
+##############################################################################
+---                                                   # identifies a YAML file
+
+##############################################################################
+# Install all base packages in one apt call
+##############################################################################
+- name: Install base packages
+  ansible.builtin.include_tasks:
+    file: "{{ taskDir }}/system/installPackage.yaml"
+  vars:
+    packageList: "{{ basePackageList }}"
+
+##############################################################################
+# Auto-configure each base package if it has a configure.yaml on the
+# controller. configurePackage handles the discovery (stat + conditional
+# include) per package.
+##############################################################################
+- name: Auto-configure each base package
+  ansible.builtin.include_tasks:
+    file: "{{ taskDir }}/system/configurePackage.yaml"
+  vars:
+    packageName: "{{ pkgIdx }}"
+  loop: "{{ basePackageList }}"
+  loop_control:
+    loop_var: pkgIdx
+    label:    "{{ pkgIdx }}"

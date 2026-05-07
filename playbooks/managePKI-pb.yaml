@@ -1,0 +1,33 @@
+##############################################################################
+# Manage internal PKI (create or renew the CA + wildcard server cert)
+#
+# Single-purpose localhost-only playbook. Idempotent:
+#   - First run:               creates the internal CA + wildcard cert
+#   - Subsequent run:          no-op (CA stable, wildcard >30 days)
+#   - Within 30 days of expiry: auto-renews the wildcard cert
+#   - With -e forceRenew=true: forces wildcard re-issue regardless
+#
+# The CA is intentionally NOT auto-rotated by this playbook — it's
+# meant to be long-lived (10-year validity). To rotate the CA, delete
+# data/pki/dwfaInternalCA.* manually and re-run, then re-install the
+# new dwfaInternalCA.crt on every admin device.
+#
+# Output files (in data/pki/):
+#   - dwfaInternalCA.{key,csr,crt}     — internal CA (key vault-encrypted)
+#   - wildcard.dwfa.ca.{key,csr,crt}   — *.dwfa.ca wildcard (key vault-encrypted)
+#
+# Copyright 2026 Douglas WF Acheson (dwfa@dwfa.ca)
+# Licensed under Apache License 2.0. See LICENSE.md for details.
+#
+# Version: 1.0
+# Date: May 7, 2026
+##############################################################################
+---                                            # identifies a YAML config file
+
+- name: Manage internal PKI (create or renew)
+  hosts:        localhost
+  connection:   local
+  gather_facts: false
+
+  roles:
+    - installInternalCA

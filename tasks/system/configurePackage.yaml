@@ -4,7 +4,7 @@
 # USAGE:
 #   For one package name, look for tasks/<packageName>/configure.yaml on
 #   the controller. If present, include it; if not, no-op. Lets a
-#   bulk-install caller (e.g., installBasePackages role) auto-discover
+#   bulk-install caller (e.g., installPackages role) auto-discover
 #   per-package configuration without hardcoding which packages have it.
 #
 # REQUIRED VARIABLES:

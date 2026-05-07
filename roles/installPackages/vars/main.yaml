@@ -1,15 +1,16 @@
 ##############################################################################
-# Ansible role variables for installBasePackages
+# Ansible role variables for installPackages
 #
-# Defines the canonical list of "base" command-line tools installed on
-# every host this role targets. The list is fixed here — callers do not
-# override it. To change what counts as "base," edit this file.
+# basePackageList is the default list used when the caller does not
+# pass packageList. To change what counts as "base," edit this list.
+# Callers can install other packages by passing their own packageList
+# at role-invocation time.
 #
 # Copyright 2026 Douglas WF Acheson (dwfa@dwfa.ca)
 # Licensed under Apache License 2.0. See LICENSE.md for details.
 #
-# Version: 1.0
-# Date: May 5, 2026
+# Version: 1.1
+# Date: May 7, 2026
 ##############################################################################
 ---                                            # identifies a YAML config file
 

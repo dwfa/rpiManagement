@@ -16,12 +16,22 @@
 #
 #   user.yaml's userData dict must contain: uName, uid, name, shell,
 #   primaryGroup (list with one {name, gid}), supplementaryGroups
-#   (list of {name, gid?}), pwd (vault-encrypted).
+#   (list of {name, gid?}).
 #
 # OPTIONAL user.yaml FIELDS:
+#   - userData.pwd:             Vault-encrypted password. If absent or
+#                               empty, the account is created with NO
+#                               password (locked) — suitable for
+#                               service accounts.
+#   - userData.createHome:      Whether to create /home/<uName>.
+#                               Default: true. Set to false for service
+#                               accounts that don't need a home dir.
 #   - userData.homeMode:        Home dir mode. Default '0755' (overrides
 #                               Debian's restrictive 0700 default).
-#   - userData.shell:           Login shell. Default '/bin/bash'.
+#                               Ignored when createHome is false.
+#   - userData.shell:           Login shell. Default '/bin/bash'. Use
+#                               '/usr/sbin/nologin' for service
+#                               accounts.
 #   - userData.sshKeys.public:  Dict of public SSH keys to install.
 #
 # OPTIONAL VARIABLES:
@@ -33,10 +43,11 @@
 #      given, otherwise derived from uName by convention
 #   3. Load user data (vault-decrypted via include_vars)
 #   4. Ensure referenced groups exist
-#   5. Create the user account
-#   6. Set home directory mode
+#   5. Create the user account (password omitted when pwd is empty)
+#   6. Set home directory mode (skipped when createHome=false)
 #   7. Install public SSH keys (if any)
-#   8. Install per-user files from sibling files/ (if any)
+#   8. Install per-user files from sibling files/ (skipped when
+#      createHome=false)
 #
 # EXAMPLES:
 #   - include_tasks: "{{ taskDir }}/users/createUser.yaml"
@@ -51,6 +62,10 @@
 #   - Requires Python passlib for password_hash('sha512')
 #   - | trim applied to vault-decrypted strings (uName, pwd) to strip
 #     trailing newlines that ansible-vault encrypt_string appends
+#   - When pwd is empty/absent, the user module's `password` parameter
+#     is omitted entirely (the account exists with no password set,
+#     equivalent to '!' in /etc/shadow). Login by password is then
+#     impossible; SSH key auth still works if keys are installed.
 #   - _cuLoadedUser intentionally NOT cleaned up: loaded via
 #     include_vars (a var, not a fact); set_fact would create a
 #     blocking fact that prevents the next reload
@@ -63,8 +78,8 @@
 # Copyright 2026 Douglas WF Acheson (dwfa@dwfa.ca)
 # Licensed under Apache License 2.0. See LICENSE.md for details.
 #
-# Version: 5.1
-# Date: May 4, 2026
+# Version: 5.2
+# Date: May 6, 2026
 ##############################################################################
 ---                                                   # identifies a YAML file
 
@@ -113,30 +128,34 @@
          (_cuLoadedUser.userData.supplementaryGroups | default([])) }}
 
 ##############################################################################
-# Create the user account
+# Create the user account. password is omitted when pwd is empty/absent
+# (the account is created locked — no password login). create_home
+# defaults to true; set userData.createHome=false for service accounts.
 ##############################################################################
 - name: "Create user account [{{ _cuLoadedUser.userData.uName | trim }}]"
   ansible.builtin.user:
     comment:         "{{ _cuLoadedUser.userData.name }}"
+    create_home:     "{{ _cuLoadedUser.userData.createHome | default(true) | bool }}"
     group:           "{{ _cuLoadedUser.userData.primaryGroup[0].name }}"
     groups:          "{{ _cuLoadedUser.userData.supplementaryGroups
                           | default([])
                           | map(attribute='name')
                           | join(',') }}"
     name:            "{{ _cuLoadedUser.userData.uName | trim }}"
-    password:        "{{ _cuLoadedUser.userData.pwd
-                          | default('')
-                          | trim
-                          | password_hash('sha512') }}"
+    password:        "{{ (_cuLoadedUser.userData.pwd | trim | password_hash('sha512'))
+                          if (_cuLoadedUser.userData.pwd | default('') | trim | length > 0)
+                          else omit }}"
     shell:           "{{ _cuLoadedUser.userData.shell | default('/bin/bash') }}"
     state:           present
     uid:             "{{ _cuLoadedUser.userData.uid }}"
     update_password: always
 
 ##############################################################################
-# Set home directory mode (override Debian's 0700 default)
+# Set home directory mode (override Debian's 0700 default). Skipped when
+# createHome is false — there is no home dir to mode-set.
 ##############################################################################
 - name: "Set home directory mode for [{{ _cuLoadedUser.userData.uName | trim }}]"
+  when: _cuLoadedUser.userData.createHome | default(true) | bool
   ansible.builtin.file:
     path:  "/home/{{ _cuLoadedUser.userData.uName | trim }}"
     mode:  "{{ _cuLoadedUser.userData.homeMode | default('0755') }}"
@@ -159,10 +178,13 @@
     publicKeys: "{{ _cuLoadedUser.userData.sshKeys.public }}"
 
 ##############################################################################
-# Install per-user files. Pass _userDataPath as userDataPath to the
-# sub-task — single substitution, no nested template.
+# Install per-user files. Skipped when createHome is false — there is
+# no home directory to install files into. Pass _userDataPath as
+# userDataPath to the sub-task — single substitution, no nested
+# template.
 ##############################################################################
 - name: Install user files
+  when: _cuLoadedUser.userData.createHome | default(true) | bool
   ansible.builtin.include_tasks:
     file: "{{ taskDir }}/users/installUserFiles.yaml"
   vars:

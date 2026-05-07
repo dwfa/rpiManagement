@@ -1,0 +1,74 @@
+##############################################################################
+# Install the *.dwfa.ca wildcard cert + key onto the target host
+#
+# USAGE:
+#   Copies the wildcard cert and private key (materialized on the
+#   controller by the installInternalCA role) to /etc/ssl/private/ on
+#   the target. Sets restrictive perms on the key.
+#
+# REQUIRED VARIABLES:
+#   None at the call site. Source paths are fixed under data/pki/.
+#
+# OPTIONAL VARIABLES:
+#   - debugFlag: Enable debug output
+#
+# OUTPUT FILES (on target):
+#   - /etc/ssl/private/wildcard.dwfa.ca.crt (root:root 0644)
+#   - /etc/ssl/private/wildcard.dwfa.ca.key (root:root 0600)
+#
+# WORKFLOW:
+#   1. Ensure /etc/ssl/private/ exists with mode 0750
+#   2. Copy cert (0644) + key (0600), backup any pre-existing files
+#
+# EXAMPLE:
+#   - include_tasks: "{{ taskDir }}/pki/installWildcardCert.yaml"
+#
+# NOTES:
+#   - The CA root key is NOT copied to targets — only the leaf cert + key
+#   - /etc/ssl/private/ already exists on Debian-derived distros with
+#     root:ssl-cert 0710; this task forces 0750 root:root for simplicity
+#   - Caller (typically tasks/nginx/configure.yaml) is responsible for triggering a
+#     reload of any service consuming the cert
+#
+# Copyright 2026 Douglas WF Acheson (dwfa@dwfa.ca)
+# Licensed under Apache License 2.0. See LICENSE.md for details.
+#
+# Version: 1.0
+# Date: May 7, 2026
+##############################################################################
+---                                                   # identifies a YAML file
+
+##############################################################################
+# Ensure the destination directory exists with restrictive perms
+##############################################################################
+- name: Ensure /etc/ssl/private/ exists
+  ansible.builtin.file:
+    path:  /etc/ssl/private
+    owner: root
+    group: root
+    mode:  '0750'
+    state: directory
+
+##############################################################################
+# Deploy the wildcard cert (public — readable)
+##############################################################################
+- name: Deploy wildcard certificate
+  ansible.builtin.copy:
+    backup: true
+    src:    "{{ dataDir }}/pki/wildcard.dwfa.ca.crt"
+    dest:   /etc/ssl/private/wildcard.dwfa.ca.crt
+    owner:  root
+    group:  root
+    mode:   '0644'
+
+##############################################################################
+# Deploy the wildcard private key (secret — root-only)
+##############################################################################
+- name: Deploy wildcard private key
+  ansible.builtin.copy:
+    backup: true
+    src:    "{{ dataDir }}/pki/wildcard.dwfa.ca.key"
+    dest:   /etc/ssl/private/wildcard.dwfa.ca.key
+    owner:  root
+    group:  root
+    mode:   '0600'

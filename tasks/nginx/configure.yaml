@@ -1,0 +1,129 @@
+##############################################################################
+# Configure nginx system-wide
+#
+# USAGE:
+#   Drives all configuration off data/packages/nginx/metadata.yaml,
+#   which declares three lists: nginxDirs (directories to create),
+#   nginxFiles (src→dest copies), and nginxLinks (src→dest symlinks).
+#   Before deploying files, installs the *.dwfa.ca wildcard cert (a
+#   prerequisite for nginx -t when 00-default.conf references it).
+#   After deploying files, validates the config with `nginx -t` and
+#   reloads (or starts) the nginx service.
+#
+# REQUIRED VARIABLES:
+#   None at the call site. Driven by data/packages/nginx/metadata.yaml.
+#
+# OPTIONAL VARIABLES:
+#   - debugFlag: Enable debug output
+#
+# WORKFLOW:
+#   1. Install the *.dwfa.ca wildcard cert + key into /etc/ssl/private/
+#      (cert files must exist before nginx -t in step 6)
+#   2. Load data/packages/nginx/metadata.yaml
+#   3. Create each nginxDirs entry (mode 0755, owner root)
+#   4. Copy each nginxFiles entry (mode 0644, owner root, with backup)
+#   5. Create each nginxLinks entry as a symlink
+#   6. Run `nginx -t` to validate the resulting config
+#   7. Reload nginx (also enables it if not already enabled)
+#
+# EXAMPLE:
+#   - include_tasks: "{{ taskDir }}/nginx/configure.yaml"
+#
+# NOTES:
+#   - nginx.conf references the wwwAdmin user. Validation step will
+#     fail if wwwAdmin does not exist on the target.
+#   - The wildcard cert is materialized on the controller by the
+#     installInternalCA role (Play 1, localhost). It must already
+#     exist under data/pki/ before this task runs.
+#   - `nginx -t` is run BEFORE reload so a bad config doesn't take
+#     down a running daemon.
+#   - reload (not restart) so existing connections survive config
+#     changes; nginx handles this gracefully.
+#   - Loop variables follow the project's <noun>Idx convention:
+#     dirIdx, fileIdx, linkIdx.
+#
+# Copyright 2026 Douglas WF Acheson (dwfa@dwfa.ca)
+# Licensed under Apache License 2.0. See LICENSE.md for details.
+#
+# Version: 1.1
+# Date: May 7, 2026
+##############################################################################
+---                                                   # identifies a YAML file
+
+##############################################################################
+# Install the wildcard TLS cert (prerequisite for nginx -t)
+##############################################################################
+- name: Install wildcard TLS cert
+  ansible.builtin.include_tasks:
+    file: "{{ taskDir }}/pki/installWildcardCert.yaml"
+
+##############################################################################
+# Load the nginx configuration manifest
+##############################################################################
+- name: Load nginx configuration manifest
+  ansible.builtin.include_vars:
+    file: "{{ dataDir }}/packages/nginx/metadata.yaml"
+
+##############################################################################
+# Create the directory structure declared in nginxDirs
+##############################################################################
+- name: Create nginx directory structure
+  ansible.builtin.file:
+    path:  "{{ dirIdx.dName }}"
+    owner: root
+    group: root
+    mode:  '0755'
+    state: directory
+  loop: "{{ nginxDirs }}"
+  loop_control:
+    loop_var: dirIdx
+    label:    "{{ dirIdx.dName }}"
+
+##############################################################################
+# Copy each nginx config file declared in nginxFiles
+##############################################################################
+- name: Deploy nginx config files
+  ansible.builtin.copy:
+    backup: true
+    src:    "{{ fileIdx.src }}"
+    dest:   "{{ fileIdx.dest }}"
+    owner:  root
+    group:  root
+    mode:   '0644'
+  loop: "{{ nginxFiles }}"
+  loop_control:
+    loop_var: fileIdx
+    label:    "{{ fileIdx.dest }}"
+
+##############################################################################
+# Create the symlinks declared in nginxLinks
+##############################################################################
+- name: Create nginx symlinks
+  ansible.builtin.file:
+    src:   "{{ linkIdx.src }}"
+    dest:  "{{ linkIdx.dest }}"
+    owner: root
+    group: root
+    state: link
+  loop: "{{ nginxLinks }}"
+  loop_control:
+    loop_var: linkIdx
+    label:    "{{ linkIdx.dest }}"
+
+##############################################################################
+# Validate the resulting config — fail loudly if nginx -t reports an
+# error rather than ship a broken reload
+##############################################################################
+- name: Validate nginx configuration
+  ansible.builtin.command:
+    cmd: nginx -t
+  changed_when: false
+
+##############################################################################
+# Enable + reload nginx (handles both first-install and re-runs)
+##############################################################################
+- name: Enable and reload nginx
+  ansible.builtin.systemd:
+    name:    nginx
+    enabled: true
+    state:   reloaded

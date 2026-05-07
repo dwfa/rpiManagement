@@ -1,0 +1,229 @@
+##############################################################################
+# Issue (or renew) the *.dwfa.ca wildcard server certificate
+#
+# USAGE:
+#   Idempotent. Issues data/pki/wildcard.dwfa.ca.{key,csr,crt} signed by
+#   the internal CA. Renews automatically when the existing cert is
+#   within 30 days of expiry, or when forceRenew=true is passed.
+#
+#   Operates inside the caller-provided temp staging dir
+#   (_icaWorkDir.path). Assumes createCA.yaml has already run earlier
+#   in the same role invocation, so the CA key + cert are present in
+#   the staging dir as plaintext.
+#
+# REQUIRED VARIABLES:
+#   - _icaWorkDir.path: Temp staging directory (created by the
+#                       installInternalCA role's main.yaml block)
+#
+# OPTIONAL VARIABLES:
+#   - forceRenew: Force re-issue even if cert is not near expiry
+#                 (default: false)
+#   - debugFlag:  Enable debug output
+#
+# OUTPUT FILES (in data/pki/):
+#   - wildcard.dwfa.ca.key (mode 0600, VAULT-ENCRYPTED) — wildcard private key
+#   - wildcard.dwfa.ca.csr (mode 0600, plaintext)        — intermediate CSR
+#   - wildcard.dwfa.ca.crt (mode 0644, plaintext)        — wildcard cert
+#
+# WORKFLOW:
+#   1. Stage existing wildcard cert (plaintext) and key (vault-decrypted)
+#      into the staging dir if they exist
+#   2. Decide whether to issue/renew (missing OR <30 days OR forceRenew)
+#   3. Generate ECDSA P-256 wildcard private key (idempotent — preserves
+#      key across renewals unless removed)
+#   4. Build wildcard CSR with SAN [DNS:dwfa.ca, DNS:*.dwfa.ca]
+#   5. Sign CSR with the internal CA (ownca provider, 1-year validity) —
+#      only when renewal is needed
+#   6. Persist new key/csr/crt back to data/pki/, then vault-encrypt the
+#      key in place if currently plaintext
+#
+# NOTES:
+#   - SAN list includes the apex (dwfa.ca) AND the wildcard (*.dwfa.ca);
+#     a cert for *.dwfa.ca alone does NOT cover the bare apex
+#   - Wildcard depth is one level; *.dwfa.ca matches webmin.dwfa.ca but
+#     NOT admin.webmin.dwfa.ca
+#   - 1-year validity is short by internal-CA standards; balances
+#     low-friction renewal (annual playbook re-run) with bounded blast
+#     radius if the key ever leaks
+#   - The wildcard key is preserved across cert renewals unless the
+#     .key file is missing from data/pki/. To rotate the key on renewal,
+#     delete data/pki/wildcard.dwfa.ca.key before running.
+#
+# Copyright 2026 Douglas WF Acheson (dwfa@dwfa.ca)
+# Licensed under Apache License 2.0. See LICENSE.md for details.
+#
+# Version: 2.0
+# Date: May 7, 2026
+##############################################################################
+---                                                   # identifies a YAML file
+
+##############################################################################
+# Step 1a: Stat existing artifacts to drive staging + renewal decisions
+##############################################################################
+- name: Stat existing wildcard cert
+  ansible.builtin.stat:
+    path: "{{ dataDir }}/pki/wildcard.dwfa.ca.crt"
+  register: _iwcCertStat
+
+- name: Stat existing wildcard key
+  ansible.builtin.stat:
+    path: "{{ dataDir }}/pki/wildcard.dwfa.ca.key"
+  register: _iwcKeyStat
+
+##############################################################################
+# Step 1b: Stage existing artifacts into the work dir
+##############################################################################
+- name: Stage existing wildcard cert
+  ansible.builtin.copy:
+    src:        "{{ dataDir }}/pki/wildcard.dwfa.ca.crt"
+    dest:       "{{ _icaWorkDir.path }}/wildcard.dwfa.ca.crt"
+    remote_src: true
+    mode:       '0644'
+  when: _iwcCertStat.stat.exists
+
+- name: Stage existing wildcard key (auto-decrypts if vault-encrypted)
+  ansible.builtin.copy:
+    src:     "{{ dataDir }}/pki/wildcard.dwfa.ca.key"
+    dest:    "{{ _icaWorkDir.path }}/wildcard.dwfa.ca.key"
+    decrypt: true
+    mode:    '0600'
+  when: _iwcKeyStat.stat.exists
+
+##############################################################################
+# Step 2a: Read existing cert info (drives the renewal decision)
+##############################################################################
+- name: Read existing wildcard cert info
+  community.crypto.x509_certificate_info:
+    path:           "{{ _icaWorkDir.path }}/wildcard.dwfa.ca.crt"
+    valid_at:
+      in30Days: "+30d"
+  register: _iwcCertInfo
+  when: _iwcCertStat.stat.exists
+
+##############################################################################
+# Step 2b: Decide whether wildcard cert needs (re-)issue
+#   - True if: forceRenew passed, OR cert missing, OR <30 days remaining
+##############################################################################
+- name: Decide whether wildcard cert needs (re-)issue
+  ansible.builtin.set_fact:
+    _iwcNeedsIssue: >-
+      {{ (forceRenew | default(false) | bool)
+         or (not _iwcCertStat.stat.exists)
+         or (not (_iwcCertInfo.valid_at.in30Days | default(false))) }}
+
+- name: "Debug: wildcard cert renewal decision"
+  ansible.builtin.debug:
+    msg: >-
+      [DEBUG] *** wildcard cert exists=[{{ _iwcCertStat.stat.exists }}]
+      forceRenew=[{{ forceRenew | default(false) }}]
+      needsIssue=[{{ _iwcNeedsIssue }}]
+      not_after=[{{ _iwcCertInfo.not_after | default('?') }}]
+  when: debugFlag | default(0) | int == 1
+
+##############################################################################
+# Step 3: Generate the wildcard private key (idempotent — preserved
+# across re-issues unless the staged file is missing)
+##############################################################################
+- name: Generate wildcard private key
+  community.crypto.openssl_privatekey:
+    path:  "{{ _icaWorkDir.path }}/wildcard.dwfa.ca.key"
+    type:  ECC
+    curve: secp256r1
+    mode:  '0600'
+  register: _iwcKey
+
+##############################################################################
+# Step 4: Build the wildcard CSR
+#   - SAN covers apex + single-level wildcard
+#   - basicConstraints CA:FALSE (this is a leaf cert, not a CA)
+#   - extendedKeyUsage serverAuth (it's a TLS server cert)
+##############################################################################
+- name: Generate wildcard CSR
+  community.crypto.openssl_csr:
+    path:                       "{{ _icaWorkDir.path }}/wildcard.dwfa.ca.csr"
+    privatekey_path:            "{{ _icaWorkDir.path }}/wildcard.dwfa.ca.key"
+    common_name:                "*.dwfa.ca"
+    organization_name:          "dwfa.ca"
+    subject_alt_name:
+      - "DNS:dwfa.ca"
+      - "DNS:*.dwfa.ca"
+    basic_constraints:
+      - "CA:FALSE"
+    basic_constraints_critical: true
+    key_usage:
+      - digitalSignature
+      - keyAgreement
+    key_usage_critical:         true
+    extended_key_usage:
+      - serverAuth
+    mode:                       '0600'
+  register: _iwcCsr
+
+##############################################################################
+# Step 5: Sign the CSR with the internal CA — only when renewal is needed
+##############################################################################
+- name: Sign wildcard cert with internal CA
+  community.crypto.x509_certificate:
+    path:                                  "{{ _icaWorkDir.path }}/wildcard.dwfa.ca.crt"
+    privatekey_path:                       "{{ _icaWorkDir.path }}/wildcard.dwfa.ca.key"
+    csr_path:                              "{{ _icaWorkDir.path }}/wildcard.dwfa.ca.csr"
+    provider:                              ownca
+    ownca_path:                            "{{ _icaWorkDir.path }}/dwfaInternalCA.crt"
+    ownca_privatekey_path:                 "{{ _icaWorkDir.path }}/dwfaInternalCA.key"
+    ownca_not_after:                       "+365d"
+    ownca_create_subject_key_identifier:   always_create
+    ownca_create_authority_key_identifier: true
+    force:                                 true
+    mode:                                  '0644'
+  register: _iwcSign
+  when: _iwcNeedsIssue | bool
+
+##############################################################################
+# Step 6a: Persist plaintext outputs back to data/pki/. Cert is persisted
+#          only on actual signing (renewal). CSR is persisted whenever
+#          openssl_csr changed it. Key is persisted only when newly
+#          generated.
+##############################################################################
+- name: Persist wildcard cert to data/pki/
+  ansible.builtin.copy:
+    src:        "{{ _icaWorkDir.path }}/wildcard.dwfa.ca.crt"
+    dest:       "{{ dataDir }}/pki/wildcard.dwfa.ca.crt"
+    remote_src: true
+    mode:       '0644'
+  when:
+    - _iwcSign is defined
+    - _iwcSign is changed
+
+- name: Persist wildcard CSR to data/pki/
+  ansible.builtin.copy:
+    src:        "{{ _icaWorkDir.path }}/wildcard.dwfa.ca.csr"
+    dest:       "{{ dataDir }}/pki/wildcard.dwfa.ca.csr"
+    remote_src: true
+    mode:       '0600'
+  when: _iwcCsr is changed
+
+- name: Persist wildcard private key to data/pki/
+  ansible.builtin.copy:
+    src:        "{{ _icaWorkDir.path }}/wildcard.dwfa.ca.key"
+    dest:       "{{ dataDir }}/pki/wildcard.dwfa.ca.key"
+    remote_src: true
+    mode:       '0600'
+  when: _iwcKey is changed
+
+##############################################################################
+# Step 6b: Vault-encrypt the wildcard private key in place — but only if
+#          it's currently plaintext (idempotency guard).
+##############################################################################
+- name: Read wildcard key first bytes (vault idempotency check)
+  ansible.builtin.slurp:
+    src: "{{ dataDir }}/pki/wildcard.dwfa.ca.key"
+  register: _iwcKeyHead
+
+- name: Vault-encrypt wildcard private key (only if currently plaintext)
+  ansible.builtin.command:
+    cmd: >-
+      ansible-vault encrypt
+      --vault-password-file ~/.ansibleVaultPWD
+      "{{ dataDir }}/pki/wildcard.dwfa.ca.key"
+  changed_when: true
+  when: not (_iwcKeyHead.content | b64decode).startswith('$ANSIBLE_VAULT')

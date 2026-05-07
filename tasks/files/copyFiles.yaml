@@ -3,7 +3,7 @@
 #
 # USAGE:
 #   Generic task to copy files from a source directory to a destination directory.
-#   Files to copy are defined in a metadata YAML file with an '_initFiles' structure.
+#   Files to copy are defined in a metadata YAML file with an '_initFiles' list.
 #   Source and destination can be overridden or use defaults from metadata.
 #   Caller is responsible for mounting/unmounting if needed.
 #
@@ -36,19 +36,21 @@
 #       destDir: "/custom/destination"
 #
 # NOTES:
-#   - Metadata file must contain '_initFiles' dictionary and optionally _srcDir/_destDir
+#   - Metadata file must contain '_initFiles' list and optionally _srcDir/_destDir
 #   - Metadata defines: _srcDir (with sourceDir override), _destDir (with destDir override)
 #   - Each _initFiles entry can specify: file (required), mode (optional, default: 0644)
 #   - Example metadata: _srcDir: "{{ sourceDir | default(dataDir + '/rpi') }}"
 #   - Caller must ensure destDir is accessible (mounted if needed)
 #   - Requires write permissions to destDir
 #   - Generic: can copy from any source to any destination with any metadata
+#   - fileIdx is the loop_var per the project's <noun>Idx convention; each
+#     iteration's value is the list element (a dict with file/mode keys)
 #
 # Copyright 2025 Douglas WF Acheson (dwfa@dwfa.ca)
 # Licensed under Apache License 2.0. See LICENSE.md for details.
 #
-# Version: 4.5
-# Date: February 07, 2026
+# Version: 5.0
+# Date: May 7, 2026
 ##############################################################################
 ---                                            # identifies a YAML config file
 
@@ -64,10 +66,13 @@
 ##############################################################################
 - name: Copy files from source to destination
   ansible.builtin.copy:
-    dest: "{{ _destDir }}/{{ _initFiles[item].file }}"
-    mode: "{{ _initFiles[item].mode | default('0644') }}"
-    src:  "{{ _srcDir }}/{{ _initFiles[item].file }}"
-  with_items: "{{ _initFiles.keys() | list }}"
+    dest: "{{ _destDir }}/{{ fileIdx.file }}"
+    mode: "{{ fileIdx.mode | default('0644') }}"
+    src:  "{{ _srcDir }}/{{ fileIdx.file }}"
+  loop: "{{ _initFiles }}"
+  loop_control:
+    loop_var: fileIdx
+    label:    "{{ fileIdx.file }}"
   register: _cifResult
 
 - name: Display copy status

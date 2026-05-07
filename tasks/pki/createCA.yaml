@@ -1,0 +1,183 @@
+##############################################################################
+# Create the internal Certificate Authority (key + self-signed cert)
+#
+# USAGE:
+#   Idempotent. Generates data/pki/dwfaInternalCA.{key,crt,csr} if missing.
+#   The private key is vault-encrypted at rest. All crypto operations
+#   run inside the caller-provided temp staging dir (_icaWorkDir.path)
+#   so plaintext key material never persists in data/pki/.
+#
+# REQUIRED VARIABLES:
+#   - _icaWorkDir.path: Temp staging directory (created by the
+#                       installInternalCA role's main.yaml block)
+#
+# OPTIONAL VARIABLES:
+#   - debugFlag: Enable debug output
+#
+# OUTPUT FILES (in data/pki/):
+#   - dwfaInternalCA.key (mode 0600, VAULT-ENCRYPTED) — CA private key
+#   - dwfaInternalCA.csr (mode 0600, plaintext)       — intermediate CSR
+#   - dwfaInternalCA.crt (mode 0644, plaintext)       — CA public cert;
+#     install this into admin devices' trust stores
+#
+# WORKFLOW:
+#   1. If an existing vault-encrypted CA key exists in data/pki/, decrypt
+#      it into the staging dir (preserves the key across re-runs)
+#   2. Generate ECDSA P-256 private key in staging (no-op if staged)
+#   3. Generate the CA CSR (subject + CA extensions) in staging
+#   4. Self-sign the CA cert in staging (10-year validity)
+#   5. Persist .crt and .csr to data/pki/ (plaintext); persist .key only
+#      if the key task changed, then vault-encrypt it (idempotency
+#      guarded — won't re-encrypt an already-encrypted file)
+#
+# NOTES:
+#   - ECDSA P-256 chosen over RSA: smaller, faster, well-supported on
+#     every modern OS / browser
+#   - The CA is meant to be long-lived (10-year validity); to rotate,
+#     delete data/pki/dwfaInternalCA.* and re-run, then re-install the
+#     new dwfaInternalCA.crt on every admin device
+#   - The CA private key never leaves the controller
+#
+# Copyright 2026 Douglas WF Acheson (dwfa@dwfa.ca)
+# Licensed under Apache License 2.0. See LICENSE.md for details.
+#
+# Version: 2.0
+# Date: May 7, 2026
+##############################################################################
+---                                                   # identifies a YAML file
+
+##############################################################################
+# Step 1: Stage the existing CA key (if any) into the staging dir,
+#         decrypting from vault transparently. openssl_privatekey below
+#         is idempotent — only generates if the staged file is missing.
+##############################################################################
+- name: Stat existing CA key
+  ansible.builtin.stat:
+    path: "{{ dataDir }}/pki/dwfaInternalCA.key"
+  register: _icaCaKeyStat
+
+- name: Stage existing CA key (auto-decrypts if vault-encrypted)
+  ansible.builtin.copy:
+    src:     "{{ dataDir }}/pki/dwfaInternalCA.key"
+    dest:    "{{ _icaWorkDir.path }}/dwfaInternalCA.key"
+    decrypt: true
+    mode:    '0600'
+  when: _icaCaKeyStat.stat.exists
+
+##############################################################################
+# Step 2: Generate the CA private key (idempotent — only creates if missing)
+##############################################################################
+- name: Generate internal CA private key
+  community.crypto.openssl_privatekey:
+    path:  "{{ _icaWorkDir.path }}/dwfaInternalCA.key"
+    type:  ECC
+    curve: secp256r1
+    mode:  '0600'
+  register: _icaCaKey
+
+##############################################################################
+# Step 3: Generate the CA CSR (subject + CA extensions)
+##############################################################################
+- name: Generate internal CA CSR
+  community.crypto.openssl_csr:
+    path:                       "{{ _icaWorkDir.path }}/dwfaInternalCA.csr"
+    privatekey_path:            "{{ _icaWorkDir.path }}/dwfaInternalCA.key"
+    common_name:                "dwfa Internal CA"
+    organization_name:          "dwfa.ca"
+    organizational_unit_name:   "Internal PKI"
+    country_name:               "CA"
+    use_common_name_for_san:    false
+    basic_constraints:
+      - "CA:TRUE"
+    basic_constraints_critical: true
+    key_usage:
+      - keyCertSign
+      - cRLSign
+    key_usage_critical:         true
+    mode:                       '0600'
+  register: _icaCaCsr
+
+##############################################################################
+# Step 4: Self-sign the CA cert from the CSR (10-year validity)
+##############################################################################
+- name: Generate self-signed internal CA certificate
+  community.crypto.x509_certificate:
+    path:                                     "{{ _icaWorkDir.path }}/dwfaInternalCA.crt"
+    privatekey_path:                          "{{ _icaWorkDir.path }}/dwfaInternalCA.key"
+    csr_path:                                 "{{ _icaWorkDir.path }}/dwfaInternalCA.csr"
+    provider:                                 selfsigned
+    selfsigned_not_after:                     "+3650d"
+    selfsigned_create_subject_key_identifier: always_create
+    mode:                                     '0644'
+  register: _icaCaCert
+
+##############################################################################
+# Step 5a: Persist plaintext outputs back to data/pki/ when their
+#          generation tasks reported changes (preserves idempotency on
+#          repeat runs)
+##############################################################################
+- name: Persist CA certificate to data/pki/
+  ansible.builtin.copy:
+    src:        "{{ _icaWorkDir.path }}/dwfaInternalCA.crt"
+    dest:       "{{ dataDir }}/pki/dwfaInternalCA.crt"
+    remote_src: true
+    mode:       '0644'
+  when: _icaCaCert is changed
+
+- name: Persist CA CSR to data/pki/
+  ansible.builtin.copy:
+    src:        "{{ _icaWorkDir.path }}/dwfaInternalCA.csr"
+    dest:       "{{ dataDir }}/pki/dwfaInternalCA.csr"
+    remote_src: true
+    mode:       '0600'
+  when: _icaCaCsr is changed
+
+##############################################################################
+# Step 5b: Persist the private key, then vault-encrypt in place. Skip
+#          unless openssl_privatekey reported a change (the key was
+#          newly generated).
+##############################################################################
+- name: Persist CA private key to data/pki/
+  ansible.builtin.copy:
+    src:        "{{ _icaWorkDir.path }}/dwfaInternalCA.key"
+    dest:       "{{ dataDir }}/pki/dwfaInternalCA.key"
+    remote_src: true
+    mode:       '0600'
+  when: _icaCaKey is changed
+
+##############################################################################
+# Step 5c: Vault-encrypt the CA private key in place — but only if it's
+#          currently plaintext. ansible-vault encrypt fails on already-
+#          encrypted files, so we read the first bytes and check for the
+#          $ANSIBLE_VAULT header before invoking the command.
+##############################################################################
+- name: Read CA key first bytes (vault idempotency check)
+  ansible.builtin.slurp:
+    src: "{{ dataDir }}/pki/dwfaInternalCA.key"
+  register: _icaCaKeyHead
+
+- name: Vault-encrypt CA private key (only if currently plaintext)
+  ansible.builtin.command:
+    cmd: >-
+      ansible-vault encrypt
+      --vault-password-file ~/.ansibleVaultPWD
+      "{{ dataDir }}/pki/dwfaInternalCA.key"
+  changed_when: true
+  when: not (_icaCaKeyHead.content | b64decode).startswith('$ANSIBLE_VAULT')
+
+##############################################################################
+# Debug — confirm what we have (reads from the staged plaintext copy)
+##############################################################################
+- name: Read CA cert info
+  community.crypto.x509_certificate_info:
+    path: "{{ _icaWorkDir.path }}/dwfaInternalCA.crt"
+  register: _icaCaInfo
+  when: debugFlag | default(0) | int == 1
+
+- name: "Debug: CA cert summary"
+  ansible.builtin.debug:
+    msg: >-
+      [DEBUG] *** CA cert
+      subject=[{{ _icaCaInfo.subject | default({}) }}]
+      not_after=[{{ _icaCaInfo.not_after | default('?') }}]
+  when: debugFlag | default(0) | int == 1

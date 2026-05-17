@@ -19,7 +19,6 @@
 ##############################################################################
 source ./scripts/init.sh
 
-playbook="playbooks/managePKI-pb.yaml"
-node="${node:-localhost}"
+playbooks=("playbooks/managePKI-pb.yaml localhost")
 
 source ./scripts/runAnsible.sh

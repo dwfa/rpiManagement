@@ -12,7 +12,6 @@
 ##############################################################################
 source ./scripts/init.sh
 
-playbook="playbooks/postCreate-pb.yaml"
-node="${node:-preinstaller}"
+playbooks=("playbooks/postCreate-pb.yaml preinstaller")
 
 source ./scripts/runAnsible.sh

@@ -48,7 +48,7 @@
 - name: Debug wait for host result
   ansible.builtin.debug:
     msg: "[DEBUG] *** Host [{{ inventory_hostname }}] available on port [{{ sshPort | default(22) }}]"
-  when: debugFlag is defined
+  when: debugFlag | default(0) | int == 1
 
 ##############################################################################
 # Cleanup temporary facts

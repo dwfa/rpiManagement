@@ -230,7 +230,7 @@ cat <<'EOF'
    ./scripts/setupCredentials.sh
 
 3. Customize RPi configuration:
-   vi data/rpi/metadata.yaml          # File copy configuration
+   vi data/rpi/imageBuild.yaml        # Image-build manifest (init files, partition layout)
    vi data/rpi/cmdline-txt-mods.yaml  # Kernel boot parameters
    vi data/rpi/userconf.txt           # First boot user
       # (see file for password encryption)

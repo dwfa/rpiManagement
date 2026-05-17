@@ -26,13 +26,13 @@
 #     include_tasks:
 #       file: "{{ taskDir }}/files/copyFiles.yaml"
 #     vars:
-#       metadataPath: "{{ dataDir }}/rpi/metadata.yaml"
+#       metadataPath: "{{ dataDir }}/rpi/imageBuild.yaml"
 #
 #   - name: Copy RPi init files with override
 #     include_tasks:
 #       file: "{{ taskDir }}/files/copyFiles.yaml"
 #     vars:
-#       metadataPath: "{{ dataDir }}/rpi/metadata.yaml"
+#       metadataPath: "{{ dataDir }}/rpi/imageBuild.yaml"
 #       destDir: "/custom/destination"
 #
 # NOTES:

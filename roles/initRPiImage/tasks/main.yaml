@@ -34,7 +34,7 @@
 #   - Requires createRPiImage to have written image first
 #   - Boot partition: FAT32, mountable on macOS and Linux
 #   - Root partition: ext4, mountable on Linux only (static IP skipped on macOS)
-#   - Static init files defined in data/rpi/metadata.yaml
+#   - Static init files defined in data/rpi/imageBuild.yaml
 #   - userconf.txt written by tasks/rpi/writeUserConf.yaml — loads
 #     userDataPath independently so RPi initial user can differ from
 #     SSH connection user (userData)
@@ -81,7 +81,7 @@
     file: "{{ taskDir }}/files/copyFiles.yaml"
   vars:
     destDir:      "{{ _bootMountPoint }}"
-    metadataPath: "{{ dataDir }}/rpi/metadata.yaml"
+    metadataPath: "{{ dataDir }}/rpi/imageBuild.yaml"
 
 ##############################################################################
 # Generate initial user in userconf.txt on boot partition

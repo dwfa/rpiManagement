@@ -94,15 +94,14 @@
     mode:           preserve
     directory_mode: '0755'
 
-- name: "Debug skip when files directory absent"
-  when:
-    - debugFlag | default(0) | int == 1
-    - not (_iufSrcDir.stat.isdir | default(false))
+- name: "Debug: user files install"
+  when: debugFlag | default(0) | int == 1
   ansible.builtin.debug:
     msg: >-
-      [DEBUG] *** No files/ directory for user
-      [{{ _iufLoadedUser.userData.uName | trim }}] at
-      [{{ userDataPath | dirname }}/files] — skipping
+      [DEBUG] *** User [{{ _iufLoadedUser.userData.uName | trim }}]
+      files/ at [{{ userDataPath | dirname }}/files]:
+      {{ 'copied' if (_iufSrcDir.stat.isdir | default(false))
+                  else 'absent -- skipped' }}
 
 ##############################################################################
 # Cleanup temporary facts

@@ -66,14 +66,13 @@
   ansible.builtin.include_tasks:
     file: "{{ taskDir }}/{{ packageName }}/configure.yaml"
 
-- name: "Debug skip when no configure task for [{{ packageName }}]"
-  when:
-    - debugFlag | default(0) | int == 1
-    - not (_cpStat.stat.exists | default(false))
+- name: "Debug: per-package configure for [{{ packageName }}]"
+  when: debugFlag | default(0) | int == 1
   ansible.builtin.debug:
     msg: >-
-      [DEBUG] *** No configure.yaml for package [{{ packageName }}] —
-      skipping
+      [DEBUG] *** Package [{{ packageName }}] configure.yaml:
+      {{ 'included' if (_cpStat.stat.exists | default(false))
+                    else 'not present -- skipped' }}
 
 ##############################################################################
 # Cleanup transient facts

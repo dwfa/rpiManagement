@@ -31,14 +31,14 @@
 #       file: "{{ taskDir }}/files/modifyFile.yaml"
 #     vars:
 #       filePath: "{{ bootMountPoint }}/cmdline.txt"
-#       metadataPath: "{{ dataDir }}/rpi/metadata.yaml"
+#       metadataPath: "{{ dataDir }}/rpi/imageBuild.yaml"
 #
 #   - name: Modify config file post-boot
 #     include_tasks:
 #       file: "{{ taskDir }}/files/modifyFile.yaml"
 #     vars:
 #       filePath: "/boot/config.txt"
-#       metadataPath: "{{ dataDir }}/rpi/metadata.yaml"
+#       metadataPath: "{{ dataDir }}/rpi/imageBuild.yaml"
 #       createBackup: false
 #
 # NOTES:

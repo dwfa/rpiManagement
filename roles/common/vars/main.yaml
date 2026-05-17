@@ -18,5 +18,6 @@
 ---                                            # identifies a YAML config file
 
 # Directory paths (relative to playbook)
-dataDir: "{{ playbook_dir }}/../data"
-taskDir: "{{ playbook_dir }}/../tasks"
+dataDir:    "{{ playbook_dir }}/../data"
+taskDir:    "{{ playbook_dir }}/../tasks"
+netGenPath: "{{ playbook_dir }}/../../netGen"      # sibling project: Excel → canonical JSON

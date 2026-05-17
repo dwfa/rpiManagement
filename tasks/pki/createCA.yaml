@@ -83,7 +83,7 @@
     path:                       "{{ _icaWorkDir.path }}/dwfaInternalCA.csr"
     privatekey_path:            "{{ _icaWorkDir.path }}/dwfaInternalCA.key"
     common_name:                "dwfa Internal CA"
-    organization_name:          "dwfa.ca"
+    organization_name:          "{{ domain }}"
     organizational_unit_name:   "Internal PKI"
     country_name:               "CA"
     use_common_name_for_san:    false

@@ -1,0 +1,122 @@
+##############################################################################
+# Configure webmin: bind to localhost, drop SSL (nginx terminates), set
+# /admin webprefix, and deploy the nginx reverse-proxy snippet
+#
+# USAGE:
+#   Drives all configuration off data/packages/webmin/metadata.yaml,
+#   which declares webminConfig (regex/replace edits to existing webmin
+#   config files), nginxFiles (the .location snippet copy), and
+#   nginxLinks (its sites-enabled symlink).
+#
+# REQUIRED VARIABLES:
+#   None at the call site. Driven by data/packages/webmin/metadata.yaml.
+#
+# OPTIONAL VARIABLES:
+#   - debugFlag: Enable debug output
+#
+# WORKFLOW:
+#   1. Load data/packages/webmin/metadata.yaml
+#   2. Apply each webminConfig regex/replace via lineinfile
+#   3. Deploy the nginx .location snippet (copy + symlink)
+#   4. Validate nginx config with `nginx -t`
+#   5. Restart webmin (config edits change listener address + webprefix
+#      so a reload isn't enough — needs a full restart)
+#   6. Reload nginx (graceful — picks up the new location include)
+#
+# EXAMPLE:
+#   - include_tasks: "{{ taskDir }}/webmin/configure.yaml"
+#
+# NOTES:
+#   - lineinfile's regexp must match an existing line; we're updating
+#     in place, not appending. Webmin's default config ships with all
+#     the keys we edit, so the match always finds something
+#   - webmin needs a restart (not reload) — listener bind address
+#     changes (bind=127.0.0.1) only take effect on listener restart
+#   - nginx gets a graceful reload — existing connections survive
+#   - Loop variables follow the project's <noun>Idx convention:
+#     cfgIdx, fileIdx, linkIdx
+#
+# Copyright 2026 Douglas WF Acheson (dwfa@dwfa.ca)
+# Licensed under Apache License 2.0. See LICENSE.md for details.
+#
+# Version: 1.0
+# Date: May 7, 2026
+##############################################################################
+---                                                   # identifies a YAML file
+
+##############################################################################
+# Step 1: Load the webmin configuration manifest
+##############################################################################
+- name: Load webmin configuration manifest
+  ansible.builtin.include_vars:
+    file: "{{ dataDir }}/packages/webmin/metadata.yaml"
+
+##############################################################################
+# Step 2: Apply regex/replace edits to webmin's config files
+##############################################################################
+- name: Apply webmin configuration edits
+  ansible.builtin.lineinfile:
+    path:    "{{ cfgIdx.fName }}"
+    regexp:  "{{ cfgIdx.re }}"
+    line:    "{{ cfgIdx.rl }}"
+    backup:  true
+  loop: "{{ webminConfig }}"
+  loop_control:
+    loop_var: cfgIdx
+    label:    "{{ cfgIdx.fName }} ← {{ cfgIdx.rl }}"
+  register: _wmcConfigEdits
+
+##############################################################################
+# Step 3: Deploy the nginx .location snippet (copy + symlink into enabled)
+##############################################################################
+- name: Deploy webmin nginx snippet
+  ansible.builtin.copy:
+    backup: true
+    src:    "{{ fileIdx.src }}"
+    dest:   "{{ fileIdx.dest }}"
+    owner:  root
+    group:  root
+    mode:   '0644'
+  loop: "{{ nginxFiles }}"
+  loop_control:
+    loop_var: fileIdx
+    label:    "{{ fileIdx.dest }}"
+
+- name: Symlink webmin nginx snippet into sites-enabled
+  ansible.builtin.file:
+    src:   "{{ linkIdx.src }}"
+    dest:  "{{ linkIdx.dest }}"
+    owner: root
+    group: root
+    state: link
+  loop: "{{ nginxLinks }}"
+  loop_control:
+    loop_var: linkIdx
+    label:    "{{ linkIdx.dest }}"
+
+##############################################################################
+# Step 4: Validate nginx config before reloading
+##############################################################################
+- name: Validate nginx configuration
+  ansible.builtin.command:
+    cmd: nginx -t
+  changed_when: false
+
+##############################################################################
+# Step 5: Restart webmin so listener bind + webprefix changes take effect
+##############################################################################
+- name: Restart webmin
+  ansible.builtin.systemd:
+    name:    webmin
+    state:   restarted
+    enabled: true
+  when: _wmcConfigEdits is changed
+
+##############################################################################
+# Step 6: Reload nginx to pick up the /admin/ location
+##############################################################################
+- name: Reload nginx
+  ansible.builtin.systemd:
+    name:    nginx
+    state:   reloaded
+    enabled: true

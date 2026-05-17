@@ -138,6 +138,7 @@
         autoconnect: "yes"
         ip4Address:  "address1={{ _ssipnLoaded.ipDetails.address }}/{{ _ssipnLoaded.ipDetails.netmask }},{{ _ssipnLoaded.ipDetails.gateway }}"
         ip4Dns:      "dns={{ _ssipnLoaded.ipDetails.dns }}"
+        ip4Search:   "dns-search={{ _ssipnLoaded.ipDetails.domain }}"
         method:      "manual"
         uuid:        "{{ _ssipnUUID.uuid }}"
 

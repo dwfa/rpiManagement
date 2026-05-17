@@ -1,0 +1,265 @@
+##############################################################################
+# Set up a 3rd-party apt repository for one package, if its metadata
+# declares one. Idempotent. No-op for packages without a 3rd-party repo.
+#
+# USAGE:
+#   For one package name, look for an `aptRepo` block in
+#   data/packages/<packageName>/metadata.yaml. If present, install its
+#   signing key into /etc/apt/keyrings/ (dearmored to binary .gpg
+#   format) and write the sources entry into /etc/apt/sources.list.d/.
+#   Skips silently if metadata.yaml is missing or has no `aptRepo` block.
+#
+# REQUIRED VARIABLES:
+#   - packageName: Concept name of the package (matches data/packages/<name>/)
+#
+# OPTIONAL VARIABLES:
+#   - debugFlag: Enable debug output
+#
+# WORKFLOW:
+#   1. Validate packageName is provided
+#   2. Stat data/packages/<packageName>/metadata.yaml on the controller
+#   3. Outer block (when metadata file exists):
+#      a. Slurp the metadata file (delegated to localhost)
+#      b. set_fact _sarAptRepo to the aptRepo block (or null if absent)
+#      c. Inner block (when _sarAptRepo is a mapping):
+#         - Ensure gnupg is installed (needed for dearmor)
+#         - Ensure /etc/apt/keyrings/ exists
+#         - Download upstream key (ASCII-armored) to /tmp
+#         - Dearmor into /etc/apt/keyrings/<keyName> (binary .gpg)
+#         - Compute fingerprint of the dearmored key (TOFU pinning)
+#         - Auto-record / auto-update keyFingerprint in metadata.yaml
+#           on the controller when it differs from current value
+#         - Add the sources entry referencing the dearmored key
+#      d. Debug skip log when no aptRepo block
+#      always: cleanup _sarAptRepo so the next iteration starts fresh
+#
+# EXAMPLE:
+#   - include_tasks: "{{ taskDir }}/system/setupAptRepo.yaml"
+#     vars:
+#       packageName: webmin
+#
+# NOTES:
+#   - Modern Debian (12+) uses Sequoia (sqv) for repo signature
+#     verification. sqv is stricter than gpgv and rejects ASCII-armored
+#     .asc keys passed via signed-by=. Hence the explicit dearmor step.
+#     Webmin's own webmin-setup-repo.sh does the same dearmor —
+#     confirms this is the correct modern convention.
+#   - Discovery uses the same filesystem-as-manifest pattern as
+#     configurePackage: presence/absence of an aptRepo block in
+#     metadata.yaml IS the signal
+#   - We use slurp + from_yaml + set_fact (instead of include_vars)
+#     because set_fact has HIGHER precedence than include_vars in
+#     Ansible. Resetting via set_fact would block include_vars from
+#     overwriting. Going slurp→set_fact end-to-end keeps writes in
+#     one precedence tier (linear "last write wins").
+#   - Slurp is delegated to localhost (metadata.yaml lives on the
+#     controller); apt operations run on the target
+#   - Idempotent end-to-end: get_url skips if file present + checksum
+#     matches; gpg --dearmor uses creates: to skip when output exists;
+#     apt_repository skips if entry already in sources list
+#   - aptRepo schema:
+#       aptRepo:
+#         keyURL:         <URL to upstream ASCII-armored .asc key>
+#         keyFingerprint: <40-hex primary-key fingerprint — optional;
+#                          auto-populated on first run (TOFU). On
+#                          subsequent runs, if the upstream key
+#                          rotates, this field is auto-updated AND a
+#                          clear "Recorded NEW fingerprint" log line
+#                          is emitted so the rotation shows up in
+#                          `git diff` for review.>
+#         keyName:        <dearmored target filename in /etc/apt/keyrings/,
+#                          typically <pkg>.gpg>
+#         repoLine:       <the deb entry, with signed-by=/etc/apt/keyrings/<keyName>>
+#         filename:       <basename for /etc/apt/sources.list.d/>
+#
+#   - Fingerprint trust model: trust-on-first-use with git as the
+#     audit trail. We DO NOT hard-fail on fingerprint mismatch — the
+#     auto-update behavior is intentional. The only hard-fail points
+#     are network errors (get_url returning 4xx/5xx). When a key
+#     rotates, the next playbook run records the new fingerprint;
+#     `git diff data/packages/<pkg>/metadata.yaml` surfaces it for
+#     review before commit.
+#
+# Copyright 2026 Douglas WF Acheson (dwfa@dwfa.ca)
+# Licensed under Apache License 2.0. See LICENSE.md for details.
+#
+# Version: 1.5
+# Date: May 16, 2026
+##############################################################################
+---                                                   # identifies a YAML file
+
+##############################################################################
+# Validate required parameter
+##############################################################################
+- name: Validate packageName is provided
+  ansible.builtin.fail:
+    msg: "[ERROR] *** packageName is required for setupAptRepo task"
+  when: packageName is not defined
+
+##############################################################################
+# Stat the per-package metadata on the controller — gates the outer block
+##############################################################################
+- name: "Stat metadata for [{{ packageName }}]"
+  ansible.builtin.stat:
+    path: "{{ dataDir }}/packages/{{ packageName }}/metadata.yaml"
+  delegate_to: localhost
+  register:    _sarStat
+
+##############################################################################
+# Outer block: only run when metadata file exists. Inner block (further
+# nested) only runs when the metadata declares an aptRepo. always:
+# cleans _sarAptRepo so the next iteration starts fresh.
+##############################################################################
+- name: "Discover and apply 3rd-party apt repo for [{{ packageName }}]"
+  when: _sarStat.stat.exists | default(false)
+  block:
+    ##########################################################################
+    # Slurp the metadata YAML (controller-side) and extract aptRepo
+    # into a single named fact. set_fact handles linear last-write-wins;
+    # any previous iteration's _sarAptRepo is overwritten cleanly.
+    ##########################################################################
+    - name: "Read metadata for [{{ packageName }}]"
+      ansible.builtin.slurp:
+        src: "{{ dataDir }}/packages/{{ packageName }}/metadata.yaml"
+      delegate_to: localhost
+      register:    _sarSlurp
+
+    - name: "Extract aptRepo for [{{ packageName }}]"
+      ansible.builtin.set_fact:
+        _sarAptRepo: "{{ (_sarSlurp.content | b64decode | from_yaml).aptRepo | default(None) }}"
+
+    ##########################################################################
+    # Inner block: install the repo only when metadata declares one.
+    # `is mapping` ensures _sarAptRepo is a dict (not null).
+    ##########################################################################
+    - name: "Install 3rd-party apt repo for [{{ packageName }}]"
+      when: _sarAptRepo is mapping
+      block:
+        - name: "Ensure gnupg is installed (needed to dearmor 3rd-party keys)"
+          ansible.builtin.apt:
+            name:             gnupg
+            state:            present
+            update_cache:     true
+            cache_valid_time: 86400
+
+        - name: "Ensure /etc/apt/keyrings/ exists"
+          ansible.builtin.file:
+            path:  /etc/apt/keyrings
+            owner: root
+            group: root
+            mode:  '0755'
+            state: directory
+
+        - name: "Download upstream signing key (ASCII-armored)"
+          ansible.builtin.get_url:
+            url:   "{{ _sarAptRepo.keyURL }}"
+            dest:  "/tmp/{{ packageName }}-upstream-key.asc"
+            owner: root
+            group: root
+            mode:  '0644'
+
+        - name: "Dearmor signing key into /etc/apt/keyrings/"
+          ansible.builtin.command:
+            cmd:     "gpg --dearmor --output /etc/apt/keyrings/{{ _sarAptRepo.keyName }} /tmp/{{ packageName }}-upstream-key.asc"
+            creates: "/etc/apt/keyrings/{{ _sarAptRepo.keyName }}"
+
+        - name: "Set perms on dearmored key"
+          ansible.builtin.file:
+            path:  "/etc/apt/keyrings/{{ _sarAptRepo.keyName }}"
+            owner: root
+            group: root
+            mode:  '0644'
+
+        ########################################################################
+        # Compute the fingerprint of the installed key (TOFU pinning).
+        # gpg --show-keys --with-colons output has one line per public
+        # key field, colon-separated. The `fpr:` line carries the 40-hex
+        # primary fingerprint at field index 9 (zero-based).
+        ########################################################################
+        - name: "Compute fingerprint of installed key"
+          ansible.builtin.command:
+            cmd: "gpg --show-keys --with-colons /etc/apt/keyrings/{{ _sarAptRepo.keyName }}"
+          register:     _sarKeyShow
+          changed_when: false
+
+        - name: "Extract fingerprint from gpg output"
+          ansible.builtin.set_fact:
+            _sarComputedFingerprint: >-
+              {{ (_sarKeyShow.stdout_lines
+                  | select('match', '^fpr:')
+                  | first
+                  | default(':' * 10)).split(':')[9] }}
+
+        - name: "Debug: computed vs recorded fingerprint"
+          ansible.builtin.debug:
+            msg: >-
+              [DEBUG] *** [{{ packageName }}] fingerprint computed=[{{ _sarComputedFingerprint }}]
+              recorded=[{{ _sarAptRepo.keyFingerprint | default('(none)') }}]
+          when: debugFlag | default(0) | int == 1
+
+        ########################################################################
+        # Auto-update keyFingerprint in metadata.yaml on the controller
+        # when it differs from what we just computed. lineinfile handles
+        # both cases:
+        #   - regexp matches an existing keyFingerprint line → replace
+        #   - regexp does not match → insertafter keyURL adds a new line
+        # Indentation matches the rest of the aptRepo block (2 spaces).
+        # state=present + a matching regexp = idempotent overwrite.
+        ########################################################################
+        - name: "Auto-record/update keyFingerprint in metadata.yaml"
+          ansible.builtin.lineinfile:
+            path:        "{{ dataDir }}/packages/{{ packageName }}/metadata.yaml"
+            regexp:      '^(\s*)keyFingerprint:.*$'
+            line:        '  keyFingerprint: {{ _sarComputedFingerprint }}'
+            insertafter: '^\s*keyURL:'
+            state:       present
+          delegate_to: localhost
+          register:    _sarFingerprintUpdate
+          when:        _sarComputedFingerprint != (_sarAptRepo.keyFingerprint | default(''))
+
+        - name: "Notify when fingerprint was recorded / rotated"
+          ansible.builtin.debug:
+            msg: >-
+              [INFO] *** [{{ packageName }}] Recorded NEW key fingerprint
+              [{{ _sarComputedFingerprint }}]
+              (previous: [{{ _sarAptRepo.keyFingerprint | default('(none)') }}]).
+              Review with [git diff data/packages/{{ packageName }}/metadata.yaml]
+              before committing.
+          when: _sarFingerprintUpdate.changed | default(false)
+
+        - name: "Add apt repository"
+          ansible.builtin.apt_repository:
+            repo:         "{{ _sarAptRepo.repoLine }}"
+            filename:     "{{ _sarAptRepo.filename }}"
+            state:        present
+            update_cache: true
+
+        - name: "Remove temp ASCII-armored key (no longer needed)"
+          ansible.builtin.file:
+            path:  "/tmp/{{ packageName }}-upstream-key.asc"
+            state: absent
+
+  always:
+    ##########################################################################
+    # Cleanup — null out per-package facts so the next iteration starts fresh
+    ##########################################################################
+    - name: Cleanup per-package facts
+      ansible.builtin.set_fact:
+        _sarAptRepo:             null
+        _sarSlurp:               null
+        _sarKeyShow:             null
+        _sarComputedFingerprint: null
+        _sarFingerprintUpdate:   null
+
+##############################################################################
+# Debug — single log line per package noting whether anything happened.
+# Lives outside the outer block so it fires whether the metadata file
+# was missing OR present-but-without-aptRepo.
+##############################################################################
+- name: "Debug: 3rd-party apt repo for [{{ packageName }}]"
+  ansible.builtin.debug:
+    msg: >-
+      [DEBUG] *** Package [{{ packageName }}] 3rd-party apt repo:
+      {{ 'installed' if ((_sarAptRepo | default(none)) is mapping)
+                     else 'none declared -- skipped' }}
+  when: debugFlag | default(0) | int == 1

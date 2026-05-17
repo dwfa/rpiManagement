@@ -1,0 +1,121 @@
+##############################################################################
+# Configure pi-hole on a host where it's already installed
+#
+# USAGE:
+#   include_tasks AFTER tasks/pihole/install.yaml in the playbook.
+#   Re-renders setupVars.conf (so metadata changes are picked up on
+#   re-runs), drops the nginx reverse-proxy snippet into nginx's
+#   default-locations, then reloads pihole-FTL + nginx.
+#
+# REQUIRED VARIABLES:
+#   None at the call site. The setupVars.conf template pulls
+#   userData from hostvars['localhost'] (set by Play 1's
+#   prepareRemoteCredentials role) for the WEBPASSWORD default.
+#
+# OPTIONAL VARIABLES:
+#   - webPassword, piholeInterface, ipv4Address: see install.yaml
+#   - debugFlag:                                  Enable debug output
+#
+# WORKFLOW:
+#   1. Re-render /etc/pihole/setupVars.conf (idempotent overwrite)
+#   2. Drop 01_pihole.location into nginx's default-locations
+#      (available + enabled symlink)
+#   3. Validate nginx config (`nginx -t`)
+#   4. Restart pihole-FTL (it re-reads setupVars.conf on restart)
+#   5. Reload nginx
+#
+# NOTES:
+#   - INSTALL_WEB_SERVER=false in setupVars.conf told the installer to
+#     skip lighttpd, so the admin UI is served by pi-hole-FTL's own
+#     embedded HTTP server. FTL listens on 127.0.0.1:8080 per the
+#     `webserver.port` setting in our pihole.toml template; nginx
+#     reverse-proxies /pihole/ to it via 01_pihole.location.
+#   - `pihole-FTL` restart (not reload) is required for setupVars.conf
+#     and pihole.toml changes to take effect.
+#
+# Copyright 2026 Douglas WF Acheson (dwfa@dwfa.ca)
+# Licensed under Apache License 2.0. See LICENSE.md for details.
+#
+# Version: 1.0
+# Date: May 10, 2026
+##############################################################################
+---                                                   # identifies a YAML file
+
+##############################################################################
+# Step 1: Re-render setupVars.conf + pihole.toml so on-disk config
+# matches metadata. Load pi-hole metadata first so ftlWebserverPort
+# is in scope for the toml template.
+##############################################################################
+- name: Load pi-hole metadata
+  ansible.builtin.include_vars:
+    file: "{{ dataDir }}/packages/pihole/metadata.yaml"
+
+- name: Render /etc/pihole/setupVars.conf
+  ansible.builtin.template:
+    src:    "{{ dataDir }}/packages/pihole/setupVars.conf.j2"
+    dest:   /etc/pihole/setupVars.conf
+    owner:  root
+    group:  root
+    mode:   '0644'
+    backup: true
+  vars:
+    userData: "{{ hostvars['localhost'].userData }}"
+  register: _pcSetupVarsResult
+
+- name: Render /etc/pihole/pihole.toml (FTL webserver port)
+  ansible.builtin.template:
+    src:    "{{ dataDir }}/packages/pihole/pihole.toml.j2"
+    dest:   /etc/pihole/pihole.toml
+    owner:  root
+    group:  root
+    mode:   '0644'
+    backup: true
+  register: _pcPiholeTomlResult
+
+##############################################################################
+# Step 2: Install the nginx reverse-proxy snippet for the admin UI
+##############################################################################
+- name: Drop 01_pihole.location into nginx default-locations
+  ansible.builtin.copy:
+    src:    "{{ dataDir }}/packages/pihole/01_pihole.location"
+    dest:   /etc/nginx/sites-available/default-locations/01_pihole.location
+    owner:  root
+    group:  root
+    mode:   '0644'
+    backup: true
+  register: _pcLocationResult
+
+- name: Enable 01_pihole.location via sites-enabled symlink
+  ansible.builtin.file:
+    src:   /etc/nginx/sites-available/default-locations/01_pihole.location
+    dest:  /etc/nginx/sites-enabled/default-locations/01_pihole.location
+    owner: root
+    group: root
+    state: link
+
+##############################################################################
+# Step 3: Validate the nginx config before reloading
+##############################################################################
+- name: Validate nginx configuration
+  ansible.builtin.command:
+    cmd: nginx -t
+  changed_when: false
+
+##############################################################################
+# Step 4: Restart pihole-FTL so it picks up setupVars.conf changes
+##############################################################################
+- name: Restart pihole-FTL
+  ansible.builtin.systemd:
+    name:    pihole-FTL
+    enabled: true
+    state:   restarted
+  when: _pcSetupVarsResult.changed or _pcPiholeTomlResult.changed
+
+##############################################################################
+# Step 5: Reload nginx so the new /pihole/ location is live
+##############################################################################
+- name: Reload nginx
+  ansible.builtin.systemd:
+    name:  nginx
+    state: reloaded
+  when: _pcLocationResult.changed

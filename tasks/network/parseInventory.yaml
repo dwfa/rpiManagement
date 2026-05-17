@@ -1,0 +1,65 @@
+##############################################################################
+# Parse the canonical network inventory (Excel -> JSON) via netGen.
+#
+# USAGE:
+#   include_tasks from any role/task that needs the rendered network
+#   inventory. Sets `netInventory` as a play-scoped shared fact:
+#
+#     - include_tasks: "{{ taskDir }}/network/parseInventory.yaml"
+#     - debug: var=netInventory.hosts
+#
+#   The task is cached: the first caller in a play does the netGen
+#   parse; subsequent callers in the same play short-circuit on the
+#   `netInventory is defined` guard so the Excel file is read only
+#   once per playbook run -- important for multi-service plays like
+#   reconfigureDNSServer where bind9 + isc-dhcp-server + pi-hole all
+#   need the same data.
+#
+# REQUIRED VARIABLES:
+#   None at the call site. Driven by:
+#     - {{ dataDir }}/network/inventory.xlsx
+#     - {{ netGenPath }} (controller-side path to the netGen project)
+#
+# OPTIONAL VARIABLES:
+#   - debugFlag: enable debug output (parse summary line)
+#
+# WORKFLOW:
+#   1. Skip if `netInventory` is already defined in this play
+#   2. Call the networkInventory custom module (delegated to localhost
+#      -- it imports netGen's Python package). --strict so data-quality
+#      issues fail the play fast.
+#   3. Emit a one-line parse summary when debugFlag is on.
+#
+# NOTES:
+#   - Naming: `netInventory` (no underscore) is intentional. The
+#     project's `_<name>` convention marks transient/role-local facts
+#     that get cleaned up; this one is intentionally play-scoped and
+#     shared across consumers, like userData / defaultUsersData.
+#
+# Copyright 2026 Douglas WF Acheson (dwfa@dwfa.ca)
+# Licensed under Apache License 2.0. See LICENSE.md for details.
+#
+# Version: 1.0
+# Date: May 17, 2026
+##############################################################################
+---                                                   # identifies a YAML file
+
+- name: Parse network inventory (cached per play)
+  when: netInventory is not defined
+  block:
+
+    - name: Parse network inventory via netGen
+      networkInventory:
+        path:       "{{ dataDir }}/network/inventory.xlsx"
+        netGenPath: "{{ netGenPath }}"
+        strict:     true
+      delegate_to: localhost
+      register:    netInventory
+
+    - name: "Debug: inventory parse"
+      ansible.builtin.debug:
+        msg: >-
+          [DEBUG] *** parsed [{{ netInventory.host_count }}] hosts;
+          dhcpManaged=[{{ netInventory.metadata.statistics.dhcpManaged }}];
+          warnings=[{{ netInventory.metadata.warnings | length }}]
+      when: debugFlag | default(0) | int == 1

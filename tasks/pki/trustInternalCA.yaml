@@ -1,0 +1,95 @@
+##############################################################################
+# Install the internal CA root cert into the local machine's trust store
+#
+# USAGE:
+#   Localhost-only task. Adds data/pki/dwfaInternalCA.crt to the running
+#   machine's system trust store so browsers and TLS clients trust
+#   wildcard certificates issued by the internal CA without warnings.
+#
+#   Idempotent. Detects existing trust and skips re-install.
+#
+# REQUIRED VARIABLES:
+#   None at the call site. Cert path is fixed at data/pki/dwfaInternalCA.crt.
+#
+# OPTIONAL VARIABLES:
+#   - debugFlag: Enable debug output
+#
+# WORKFLOW:
+#   - macOS:    `security find-certificate` to check; if missing,
+#               `security add-trusted-cert` into /Library/Keychains/System.keychain
+#   - Debian:   `copy` cert to /usr/local/share/ca-certificates/; run
+#               `update-ca-certificates` only when content changed
+#   - other:    log a warning and skip (iOS/Android can't be automated)
+#
+# NOTES:
+#   - Privileged: needs sudo on the running machine. Caller is responsible
+#     for `become` configuration (the role wraps with become: true).
+#   - Firefox does NOT use the system trust store by default on Mac/Linux.
+#     After this task succeeds, Firefox users still need either
+#     security.enterprise_roots.enabled=true (about:config) OR a manual
+#     import via Settings → Privacy & Security → Certificates → Authorities.
+#   - iOS / Android cannot be automated by Ansible. Install
+#     data/pki/dwfaInternalCA.crt manually on those devices.
+#
+# Copyright 2026 Douglas WF Acheson (dwfa@dwfa.ca)
+# Licensed under Apache License 2.0. See LICENSE.md for details.
+#
+# Version: 1.0
+# Date: May 7, 2026
+##############################################################################
+---                                                   # identifies a YAML file
+
+##############################################################################
+# macOS — install into the System Keychain
+##############################################################################
+- name: "[macOS] Check if internal CA is already trusted"
+  ansible.builtin.command:
+    cmd: security find-certificate -c "dwfa Internal CA" /Library/Keychains/System.keychain
+  register:     _tcaMacFind
+  changed_when: false
+  failed_when:  false
+  when: ansible_facts['os_family'] == "Darwin"
+
+- name: "[macOS] Add internal CA to System Keychain"
+  ansible.builtin.command:
+    cmd: >-
+      security add-trusted-cert -d -r trustRoot
+      -k /Library/Keychains/System.keychain
+      "{{ dataDir }}/pki/dwfaInternalCA.crt"
+  become: true
+  when:
+    - ansible_facts['os_family'] == "Darwin"
+    - _tcaMacFind.rc != 0
+
+##############################################################################
+# Debian / Ubuntu — install into /usr/local/share/ca-certificates
+##############################################################################
+- name: "[Debian] Deploy internal CA to /usr/local/share/ca-certificates/"
+  ansible.builtin.copy:
+    src:    "{{ dataDir }}/pki/dwfaInternalCA.crt"
+    dest:   /usr/local/share/ca-certificates/dwfaInternalCA.crt
+    owner:  root
+    group:  root
+    mode:   '0644'
+  become:   true
+  register: _tcaDebianCopy
+  when: ansible_facts['os_family'] == "Debian"
+
+- name: "[Debian] Update CA trust store"
+  ansible.builtin.command:
+    cmd: update-ca-certificates
+  become: true
+  when:
+    - ansible_facts['os_family'] == "Debian"
+    - _tcaDebianCopy is changed
+
+##############################################################################
+# Unknown OS — log a clear warning and skip
+##############################################################################
+- name: "[other OS] Warn and skip — manual install required"
+  ansible.builtin.debug:
+    msg: >-
+      [WARN] *** OS family [{{ ansible_facts['os_family'] | default('unknown') }}]
+      not supported by trustInternalCA. Install the CA cert manually:
+      [{{ dataDir }}/pki/dwfaInternalCA.crt]
+  when: ansible_facts['os_family'] not in ["Darwin", "Debian"]

@@ -105,6 +105,7 @@
     autoconnect: "yes"
     ip4Address:  "address1={{ _ssipoLoaded.ipDetails.address }}/{{ _ssipoLoaded.ipDetails.netmask }},{{ _ssipoLoaded.ipDetails.gateway }}"
     ip4Dns:      "dns={{ _ssipoLoaded.ipDetails.dns }}"
+    ip4Search:   "dns-search={{ _ssipoLoaded.ipDetails.domain }}"
     method:      "manual"
     uuid:        "{{ _ssipoUUID.uuid }}"
 

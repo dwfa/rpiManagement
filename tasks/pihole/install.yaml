@@ -1,0 +1,161 @@
+##############################################################################
+# Install pi-hole (native, unattended)
+#
+# USAGE:
+#   include_tasks from a playbook on the DNS server host. Idempotent:
+#   if /usr/local/bin/pihole already exists the installer is skipped.
+#   First-run path pre-seeds /etc/pihole/setupVars.conf so the
+#   official unattended installer picks up our config instead of
+#   prompting.
+#
+# REQUIRED VARIABLES:
+#   None at the call site. The setupVars.conf template pulls
+#   userData from hostvars['localhost'] (set by Play 1's
+#   prepareRemoteCredentials role) for the WEBPASSWORD default.
+#
+# OPTIONAL VARIABLES:
+#   - webPassword:     Plaintext pi-hole admin password override.
+#                      When unset, defaults to userData.sudoPWD
+#                      (the sudo password for the admin user
+#                      decrypted in Play 1). Either way the value
+#                      is double-sha256'd before being written.
+#   - piholeInterface: LAN interface for pi-hole to listen on
+#                      (default: eth0)
+#   - ipv4Address:     CIDR address pi-hole reports as its own
+#                      (default: ansible_default_ipv4.address + /16)
+#   - debugFlag:       Enable debug output
+#
+# WORKFLOW:
+#   1. Stat /usr/local/bin/pihole -- skip the rest if already installed
+#   2. Ensure /etc/pihole exists
+#   3. Render /etc/pihole/setupVars.conf from the template (the
+#      installer reads this when --unattended is passed)
+#   4. Download the official installer script to /tmp
+#   5. Run the installer with --unattended
+#
+# NOTES:
+#   - The installer pulls ~30 transitive packages (pihole-FTL, php-cgi,
+#     sqlite3, etc.) -- this is the cost of going native. See the
+#     "Revisit containerized pi-hole" backlog item for context.
+#   - INSTALL_WEB_SERVER=false in setupVars.conf tells the installer to
+#     skip lighttpd; nginx (already installed earlier in the playbook)
+#     fronts the admin UI via the 01_pihole.location snippet dropped
+#     in configure.yaml.
+#   - We do NOT pipe curl directly into bash -- script is downloaded to
+#     /tmp first so a failed download fails the task instead of
+#     half-executing.
+#
+# Copyright 2026 Douglas WF Acheson (dwfa@dwfa.ca)
+# Licensed under Apache License 2.0. See LICENSE.md for details.
+#
+# Version: 1.0
+# Date: May 10, 2026
+##############################################################################
+---                                                   # identifies a YAML file
+
+##############################################################################
+# Step 1: Check whether pi-hole is already installed
+##############################################################################
+- name: Check for existing pi-hole install
+  ansible.builtin.stat:
+    path: /usr/local/bin/pihole
+  register: _piPiholeBin
+
+- name: "Debug: pi-hole install status"
+  ansible.builtin.debug:
+    msg: >-
+      [DEBUG] *** pi-hole installed=[{{ _piPiholeBin.stat.exists }}]
+  when: debugFlag | default(0) | int == 1
+
+##############################################################################
+# Steps 2-5: First-time install path -- skipped when pi-hole is already
+# present on the target.
+#
+# block:    happy path -- pre-seed config, download installer, run it
+# rescue:   on failure, surface installer output and drop the stale
+#           pre-seeded setupVars.conf so a re-run starts from a clean
+#           seed (then re-raises so the play stops)
+# always:   remove the downloaded installer script from /tmp regardless
+#           of outcome -- it's our artifact, no reason to leave it
+##############################################################################
+- when: not _piPiholeBin.stat.exists
+  block:
+
+    - name: Ensure /etc/pihole exists
+      ansible.builtin.file:
+        path:  /etc/pihole
+        owner: root
+        group: root
+        mode:  '0755'
+        state: directory
+
+    - name: Pre-seed /etc/pihole/setupVars.conf
+      ansible.builtin.template:
+        src:   "{{ dataDir }}/packages/pihole/setupVars.conf.j2"
+        dest:  /etc/pihole/setupVars.conf
+        owner: root
+        group: root
+        mode:  '0644'
+      vars:
+        userData: "{{ hostvars['localhost'].userData }}"
+
+    ##########################################################################
+    # Pre-seed pihole.toml with FTL webserver.port set to 8080 BEFORE
+    # the installer runs. Otherwise FTL's first start binds port 80,
+    # which nginx already owns.
+    ##########################################################################
+    - name: Load pi-hole metadata for ftlWebserverPort
+      ansible.builtin.include_vars:
+        file: "{{ dataDir }}/packages/pihole/metadata.yaml"
+
+    - name: Pre-seed /etc/pihole/pihole.toml (FTL webserver port)
+      ansible.builtin.template:
+        src:   "{{ dataDir }}/packages/pihole/pihole.toml.j2"
+        dest:  /etc/pihole/pihole.toml
+        owner: root
+        group: root
+        mode:  '0644'
+
+    - name: Download pi-hole installer
+      ansible.builtin.get_url:
+        url:   https://install.pi-hole.net
+        dest:  /tmp/install-pihole.sh
+        mode:  '0755'
+
+    - name: Run pi-hole installer (unattended)
+      ansible.builtin.command:
+        cmd: /tmp/install-pihole.sh --unattended
+      register:     _piInstallResult
+      changed_when: true
+
+    - name: "Debug: installer output (tail)"
+      ansible.builtin.debug:
+        msg: "{{ _piInstallResult.stdout_lines[-20:] }}"
+      when: debugFlag | default(0) | int == 1
+
+  rescue:
+
+    - name: "Surface installer output on failure"
+      ansible.builtin.debug:
+        msg: "{{ _piInstallResult.stdout_lines[-30:] | default(['(no installer output captured)']) }}"
+
+    - name: "Remove stale pre-seeded setupVars.conf after failed install"
+      ansible.builtin.file:
+        path:  /etc/pihole/setupVars.conf
+        state: absent
+
+    - name: "Re-raise failure"
+      ansible.builtin.fail:
+        msg: >-
+          [ERROR] *** pi-hole installer failed. /tmp/install-pihole.sh
+          has been removed; pre-seeded setupVars.conf has been removed.
+          Any packages/users/files the installer placed before crashing
+          are outside this task's scope -- inspect the host and run
+          [pihole uninstall] or clean up manually before retrying.
+
+  always:
+
+    - name: "Remove downloaded installer script"
+      ansible.builtin.file:
+        path:  /tmp/install-pihole.sh
+        state: absent

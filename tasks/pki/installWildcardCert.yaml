@@ -1,5 +1,5 @@
 ##############################################################################
-# Install the *.dwfa.ca wildcard cert + key onto the target host
+# Install the wildcard cert + key onto the target host
 #
 # USAGE:
 #   Copies the wildcard cert and private key (materialized on the
@@ -13,8 +13,8 @@
 #   - debugFlag: Enable debug output
 #
 # OUTPUT FILES (on target):
-#   - /etc/ssl/private/wildcard.dwfa.ca.crt (root:root 0644)
-#   - /etc/ssl/private/wildcard.dwfa.ca.key (root:root 0600)
+#   - /etc/ssl/private/wildcard.{{ domain }}.crt (root:root 0644)
+#   - /etc/ssl/private/wildcard.{{ domain }}.key (root:root 0600)
 #
 # WORKFLOW:
 #   1. Ensure /etc/ssl/private/ exists with mode 0750
@@ -55,8 +55,8 @@
 - name: Deploy wildcard certificate
   ansible.builtin.copy:
     backup: true
-    src:    "{{ dataDir }}/pki/wildcard.dwfa.ca.crt"
-    dest:   /etc/ssl/private/wildcard.dwfa.ca.crt
+    src:    "{{ dataDir }}/pki/wildcard.{{ domain }}.crt"
+    dest:   /etc/ssl/private/wildcard.{{ domain }}.crt
     owner:  root
     group:  root
     mode:   '0644'
@@ -67,8 +67,8 @@
 - name: Deploy wildcard private key
   ansible.builtin.copy:
     backup: true
-    src:    "{{ dataDir }}/pki/wildcard.dwfa.ca.key"
-    dest:   /etc/ssl/private/wildcard.dwfa.ca.key
+    src:    "{{ dataDir }}/pki/wildcard.{{ domain }}.key"
+    dest:   /etc/ssl/private/wildcard.{{ domain }}.key
     owner:  root
     group:  root
     mode:   '0600'

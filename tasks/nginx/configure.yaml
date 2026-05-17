@@ -5,7 +5,7 @@
 #   Drives all configuration off data/packages/nginx/metadata.yaml,
 #   which declares three lists: nginxDirs (directories to create),
 #   nginxFiles (src→dest copies), and nginxLinks (src→dest symlinks).
-#   Before deploying files, installs the *.dwfa.ca wildcard cert (a
+#   Before deploying files, installs the wildcard cert (a
 #   prerequisite for nginx -t when 00-default.conf references it).
 #   After deploying files, validates the config with `nginx -t` and
 #   reloads (or starts) the nginx service.
@@ -17,7 +17,7 @@
 #   - debugFlag: Enable debug output
 #
 # WORKFLOW:
-#   1. Install the *.dwfa.ca wildcard cert + key into /etc/ssl/private/
+#   1. Install the wildcard cert + key into /etc/ssl/private/
 #      (cert files must exist before nginx -t in step 6)
 #   2. Load data/packages/nginx/metadata.yaml
 #   3. Create each nginxDirs entry (mode 0755, owner root)

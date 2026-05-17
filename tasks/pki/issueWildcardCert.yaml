@@ -1,8 +1,8 @@
 ##############################################################################
-# Issue (or renew) the *.dwfa.ca wildcard server certificate
+# Issue (or renew) the wildcard server certificate
 #
 # USAGE:
-#   Idempotent. Issues data/pki/wildcard.dwfa.ca.{key,csr,crt} signed by
+#   Idempotent. Issues data/pki/wildcard.{{ domain }}.{key,csr,crt} signed by
 #   the internal CA. Renews automatically when the existing cert is
 #   within 30 days of expiry, or when forceRenew=true is passed.
 #
@@ -21,9 +21,9 @@
 #   - debugFlag:  Enable debug output
 #
 # OUTPUT FILES (in data/pki/):
-#   - wildcard.dwfa.ca.key (mode 0600, VAULT-ENCRYPTED) — wildcard private key
-#   - wildcard.dwfa.ca.csr (mode 0600, plaintext)        — intermediate CSR
-#   - wildcard.dwfa.ca.crt (mode 0644, plaintext)        — wildcard cert
+#   - wildcard.{{ domain }}.key (mode 0600, VAULT-ENCRYPTED) — wildcard private key
+#   - wildcard.{{ domain }}.csr (mode 0600, plaintext)        — intermediate CSR
+#   - wildcard.{{ domain }}.crt (mode 0644, plaintext)        — wildcard cert
 #
 # WORKFLOW:
 #   1. Stage existing wildcard cert (plaintext) and key (vault-decrypted)
@@ -31,23 +31,23 @@
 #   2. Decide whether to issue/renew (missing OR <30 days OR forceRenew)
 #   3. Generate ECDSA P-256 wildcard private key (idempotent — preserves
 #      key across renewals unless removed)
-#   4. Build wildcard CSR with SAN [DNS:dwfa.ca, DNS:*.dwfa.ca]
+#   4. Build wildcard CSR with SAN list (apex + wildcard)
 #   5. Sign CSR with the internal CA (ownca provider, 1-year validity) —
 #      only when renewal is needed
 #   6. Persist new key/csr/crt back to data/pki/, then vault-encrypt the
 #      key in place if currently plaintext
 #
 # NOTES:
-#   - SAN list includes the apex (dwfa.ca) AND the wildcard (*.dwfa.ca);
-#     a cert for *.dwfa.ca alone does NOT cover the bare apex
-#   - Wildcard depth is one level; *.dwfa.ca matches webmin.dwfa.ca but
-#     NOT admin.webmin.dwfa.ca
+#   - SAN list includes the apex AND the wildcard;
+#     a cert for the wildcard alone does NOT cover the bare apex
+#   - Wildcard depth is one level; the wildcard matches one-level subdomains but
+#     NOT deeper subdomains
 #   - 1-year validity is short by internal-CA standards; balances
 #     low-friction renewal (annual playbook re-run) with bounded blast
 #     radius if the key ever leaks
 #   - The wildcard key is preserved across cert renewals unless the
 #     .key file is missing from data/pki/. To rotate the key on renewal,
-#     delete data/pki/wildcard.dwfa.ca.key before running.
+#     delete data/pki/wildcard.{{ domain }}.key before running.
 #
 # Copyright 2026 Douglas WF Acheson (dwfa@dwfa.ca)
 # Licensed under Apache License 2.0. See LICENSE.md for details.
@@ -62,12 +62,12 @@
 ##############################################################################
 - name: Stat existing wildcard cert
   ansible.builtin.stat:
-    path: "{{ dataDir }}/pki/wildcard.dwfa.ca.crt"
+    path: "{{ dataDir }}/pki/wildcard.{{ domain }}.crt"
   register: _iwcCertStat
 
 - name: Stat existing wildcard key
   ansible.builtin.stat:
-    path: "{{ dataDir }}/pki/wildcard.dwfa.ca.key"
+    path: "{{ dataDir }}/pki/wildcard.{{ domain }}.key"
   register: _iwcKeyStat
 
 ##############################################################################
@@ -75,16 +75,16 @@
 ##############################################################################
 - name: Stage existing wildcard cert
   ansible.builtin.copy:
-    src:        "{{ dataDir }}/pki/wildcard.dwfa.ca.crt"
-    dest:       "{{ _icaWorkDir.path }}/wildcard.dwfa.ca.crt"
+    src:        "{{ dataDir }}/pki/wildcard.{{ domain }}.crt"
+    dest:       "{{ _icaWorkDir.path }}/wildcard.{{ domain }}.crt"
     remote_src: true
     mode:       '0644'
   when: _iwcCertStat.stat.exists
 
 - name: Stage existing wildcard key (auto-decrypts if vault-encrypted)
   ansible.builtin.copy:
-    src:     "{{ dataDir }}/pki/wildcard.dwfa.ca.key"
-    dest:    "{{ _icaWorkDir.path }}/wildcard.dwfa.ca.key"
+    src:     "{{ dataDir }}/pki/wildcard.{{ domain }}.key"
+    dest:    "{{ _icaWorkDir.path }}/wildcard.{{ domain }}.key"
     decrypt: true
     mode:    '0600'
   when: _iwcKeyStat.stat.exists
@@ -94,7 +94,7 @@
 ##############################################################################
 - name: Read existing wildcard cert info
   community.crypto.x509_certificate_info:
-    path:           "{{ _icaWorkDir.path }}/wildcard.dwfa.ca.crt"
+    path:           "{{ _icaWorkDir.path }}/wildcard.{{ domain }}.crt"
     valid_at:
       in30Days: "+30d"
   register: _iwcCertInfo
@@ -126,7 +126,7 @@
 ##############################################################################
 - name: Generate wildcard private key
   community.crypto.openssl_privatekey:
-    path:  "{{ _icaWorkDir.path }}/wildcard.dwfa.ca.key"
+    path:  "{{ _icaWorkDir.path }}/wildcard.{{ domain }}.key"
     type:  ECC
     curve: secp256r1
     mode:  '0600'
@@ -140,13 +140,13 @@
 ##############################################################################
 - name: Generate wildcard CSR
   community.crypto.openssl_csr:
-    path:                       "{{ _icaWorkDir.path }}/wildcard.dwfa.ca.csr"
-    privatekey_path:            "{{ _icaWorkDir.path }}/wildcard.dwfa.ca.key"
-    common_name:                "*.dwfa.ca"
-    organization_name:          "dwfa.ca"
+    path:                       "{{ _icaWorkDir.path }}/wildcard.{{ domain }}.csr"
+    privatekey_path:            "{{ _icaWorkDir.path }}/wildcard.{{ domain }}.key"
+    common_name:                "*.{{ domain }}"
+    organization_name:          "{{ domain }}"
     subject_alt_name:
-      - "DNS:dwfa.ca"
-      - "DNS:*.dwfa.ca"
+      - "DNS:{{ domain }}"
+      - "DNS:*.{{ domain }}"
     basic_constraints:
       - "CA:FALSE"
     basic_constraints_critical: true
@@ -164,9 +164,9 @@
 ##############################################################################
 - name: Sign wildcard cert with internal CA
   community.crypto.x509_certificate:
-    path:                                  "{{ _icaWorkDir.path }}/wildcard.dwfa.ca.crt"
-    privatekey_path:                       "{{ _icaWorkDir.path }}/wildcard.dwfa.ca.key"
-    csr_path:                              "{{ _icaWorkDir.path }}/wildcard.dwfa.ca.csr"
+    path:                                  "{{ _icaWorkDir.path }}/wildcard.{{ domain }}.crt"
+    privatekey_path:                       "{{ _icaWorkDir.path }}/wildcard.{{ domain }}.key"
+    csr_path:                              "{{ _icaWorkDir.path }}/wildcard.{{ domain }}.csr"
     provider:                              ownca
     ownca_path:                            "{{ _icaWorkDir.path }}/dwfaInternalCA.crt"
     ownca_privatekey_path:                 "{{ _icaWorkDir.path }}/dwfaInternalCA.key"
@@ -186,8 +186,8 @@
 ##############################################################################
 - name: Persist wildcard cert to data/pki/
   ansible.builtin.copy:
-    src:        "{{ _icaWorkDir.path }}/wildcard.dwfa.ca.crt"
-    dest:       "{{ dataDir }}/pki/wildcard.dwfa.ca.crt"
+    src:        "{{ _icaWorkDir.path }}/wildcard.{{ domain }}.crt"
+    dest:       "{{ dataDir }}/pki/wildcard.{{ domain }}.crt"
     remote_src: true
     mode:       '0644'
   when:
@@ -196,16 +196,16 @@
 
 - name: Persist wildcard CSR to data/pki/
   ansible.builtin.copy:
-    src:        "{{ _icaWorkDir.path }}/wildcard.dwfa.ca.csr"
-    dest:       "{{ dataDir }}/pki/wildcard.dwfa.ca.csr"
+    src:        "{{ _icaWorkDir.path }}/wildcard.{{ domain }}.csr"
+    dest:       "{{ dataDir }}/pki/wildcard.{{ domain }}.csr"
     remote_src: true
     mode:       '0600'
   when: _iwcCsr is changed
 
 - name: Persist wildcard private key to data/pki/
   ansible.builtin.copy:
-    src:        "{{ _icaWorkDir.path }}/wildcard.dwfa.ca.key"
-    dest:       "{{ dataDir }}/pki/wildcard.dwfa.ca.key"
+    src:        "{{ _icaWorkDir.path }}/wildcard.{{ domain }}.key"
+    dest:       "{{ dataDir }}/pki/wildcard.{{ domain }}.key"
     remote_src: true
     mode:       '0600'
   when: _iwcKey is changed
@@ -216,7 +216,7 @@
 ##############################################################################
 - name: Read wildcard key first bytes (vault idempotency check)
   ansible.builtin.slurp:
-    src: "{{ dataDir }}/pki/wildcard.dwfa.ca.key"
+    src: "{{ dataDir }}/pki/wildcard.{{ domain }}.key"
   register: _iwcKeyHead
 
 - name: Vault-encrypt wildcard private key (only if currently plaintext)
@@ -224,6 +224,6 @@
     cmd: >-
       ansible-vault encrypt
       --vault-password-file ~/.ansibleVaultPWD
-      "{{ dataDir }}/pki/wildcard.dwfa.ca.key"
+      "{{ dataDir }}/pki/wildcard.{{ domain }}.key"
   changed_when: true
   when: not (_iwcKeyHead.content | b64decode).startswith('$ANSIBLE_VAULT')

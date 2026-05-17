@@ -4,7 +4,7 @@
 # USAGE:
 #   Localhost-only role. Run in Play 1 (or any localhost play) to ensure
 #   the project's internal CA exists and a current wildcard cert for
-#   *.dwfa.ca (with apex dwfa.ca) is available under data/pki/.
+#   the wildcard (with apex) is available under data/pki/.
 #
 #   Despite the "install" verb, this role does NOT install the CA cert
 #   into any trust store — that is a one-time manual step on each admin
@@ -28,7 +28,7 @@
 #   1. Ensure data/pki/ exists with restrictive perms
 #   2. Create a temp staging dir for crypto operations (cleaned up at end)
 #   3. Create the internal CA (key + self-signed cert) if missing
-#   4. Issue or renew the *.dwfa.ca wildcard cert (renews within 30 days
+#   4. Issue or renew the wildcard cert (renews within 30 days
 #      of expiry, or always when forceRenew=true)
 #
 # EXAMPLE:

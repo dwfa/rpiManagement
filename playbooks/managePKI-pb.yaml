@@ -1,9 +1,12 @@
 ##############################################################################
 # Manage internal PKI (create or renew the CA + wildcard server cert)
+# and trust the CA on the local machine.
 #
 # Single-purpose localhost-only playbook. Idempotent:
-#   - First run:               creates the internal CA + wildcard cert
-#   - Subsequent run:          no-op (CA stable, wildcard >30 days)
+#   - First run:               creates the internal CA + wildcard cert,
+#                              installs CA into local trust store
+#   - Subsequent run:          no-op (CA stable, wildcard >30 days, CA
+#                              already trusted)
 #   - Within 30 days of expiry: auto-renews the wildcard cert
 #   - With -e forceRenew=true: forces wildcard re-issue regardless
 #
@@ -14,20 +17,60 @@
 #
 # Output files (in data/pki/):
 #   - dwfaInternalCA.{key,csr,crt}     — internal CA (key vault-encrypted)
-#   - wildcard.dwfa.ca.{key,csr,crt}   — *.dwfa.ca wildcard (key vault-encrypted)
+#   - wildcard.{{ domain }}.{key,csr,crt}   — wildcard cert (key vault-encrypted)
+#
+# Side effect on the running machine:
+#   - macOS:  CA installed into /Library/Keychains/System.keychain
+#   - Debian: CA installed into /usr/local/share/ca-certificates/
+#   - other:  warning logged; install manually
+#
+# SUDO HANDLING:
+#   trustInternalCA tasks use become: true. Rather than prompt, the
+#   pre_tasks below load data/users/dwfa/user.yaml (vault-decrypted on
+#   the fly) and set ansible_become_password from userData.sudoPWD via
+#   set_fact. The set_fact must come AFTER include_vars (play-level
+#   `vars:` are evaluated before pre_tasks, which is why we don't put
+#   the assignment there). Assumes the local Mac/Linux sudo password
+#   matches the password stored in user.yaml.
+#
+# NOTES:
+#   - Firefox uses its own trust store; after this playbook, set
+#     security.enterprise_roots.enabled=true (about:config) or import
+#     dwfaInternalCA.crt manually under Settings → Privacy & Security.
+#   - iOS / Android devices need manual install — Ansible can't reach them.
 #
 # Copyright 2026 Douglas WF Acheson (dwfa@dwfa.ca)
 # Licensed under Apache License 2.0. See LICENSE.md for details.
 #
-# Version: 1.0
+# Version: 1.3
 # Date: May 7, 2026
 ##############################################################################
 ---                                            # identifies a YAML config file
 
-- name: Manage internal PKI (create or renew)
+- name: Manage internal PKI (create or renew + trust locally)
   hosts:        localhost
   connection:   local
-  gather_facts: false
+  gather_facts: true       # required by trustInternalCA (reads os_family)
+
+  pre_tasks:
+    ##########################################################################
+    # Load the local user's vault-encrypted credentials.
+    ##########################################################################
+    - name: Load local user secrets
+      ansible.builtin.include_vars:
+        file: "{{ dataDir }}/users/dwfa/user.yaml"
+
+    ##########################################################################
+    # Set ansible_become_password from the loaded userData. Done via
+    # set_fact (NOT play-level vars:) because play-level vars are
+    # validated before pre_tasks runs, which would error with userData
+    # undefined.
+    ##########################################################################
+    - name: Set become password from user secrets
+      ansible.builtin.set_fact:
+        ansible_become_password: "{{ userData.sudoPWD }}"
+      no_log: true
 
   roles:
     - installInternalCA
+    - trustInternalCA

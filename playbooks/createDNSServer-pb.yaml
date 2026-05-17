@@ -1,22 +1,48 @@
 ##############################################################################
-# Create DNS / DHCP RPi server image
+# Create DNS / DHCP RPi server
 #
-# Provisions a freshly-imaged RPi as a DNS / DHCP server: creates the
-# admin + service users, installs base packages, and stands up nginx
-# (HTTPS, fronted by the project's internal CA wildcard cert).
+# Provisions a freshly-imaged RPi (already bootstrapped via
+# postCreate-pb.yaml) into the project's DNS / DHCP server. Layered:
 #
-# bind, isc-dhcp-server, pihole, and webmin roles to follow.
+#   Play 1 (localhost) -- validate prereqs + load credentials:
+#     - verify wildcard cert exists under data/pki/
+#     - decrypt dwfa user vault via prepareRemoteCredentials
+#
+#   Play 2 (target, become):
+#     - createUsers          -- dwfa + wwwAdmin
+#     - configureBaseRPi     -- TZ, locale, keyboard, wifi country,
+#                               GPU memory, framebuffer, console video,
+#                               EEPROM BOOT_ORDER; reboot at the end
+#     - installPackages      -- base list (vim, zsh, fish)
+#     - installPackages      -- nginx-core, nginx, bind9, bind9utils,
+#                               dnsutils, isc-dhcp-server, webmin.
+#                               Each per-package configure.yaml runs
+#                               via installPackages' auto-discovery.
+#                               Webmin is intentionally last so its
+#                               module-detection picks up bind/dhcp.
+#     - pihole               -- native install + configure; nginx
+#                               reverse-proxies /pihole/ -> FTL:8080
+#                               (pi-hole is not an apt package, so it
+#                               lives outside installPackages)
+#
+#   post_tasks:
+#     - restart webmin       -- belt-and-suspenders module re-scan
+#
+#   Play 3 (localhost) -- cleanup materialized SSH keys.
 #
 # PREREQUISITES:
-#   - Run [ansible-playbook playbooks/managePKI-pb.yaml] first to
-#     materialize data/pki/ (CA + wildcard cert)
-#   - Target RPi reachable on the network at the inventory address
+#   - Run [./managePKI.sh] first to materialize data/pki/
+#     (CA + wildcard cert; the pre_tasks block fails fast otherwise)
+#   - postCreate-pb.yaml has already run against this host (dwfa user
+#     exists, static IP applied, host reachable at the dns inventory
+#     address). [./buildDNSServer.sh] chains postCreate -> this
+#     playbook for a fresh build.
 #
 # Copyright 2026 Douglas WF Acheson (dwfa@dwfa.ca)
 # Licensed under Apache License 2.0. See LICENSE.md for details.
 #
-# Version: 2.5
-# Date: May 7, 2026
+# Version: 3.0
+# Date: May 17, 2026
 ##############################################################################
 ---                                            # identifies a YAML config file
 
@@ -36,16 +62,16 @@
     ##########################################################################
     - name: Verify wildcard cert exists
       ansible.builtin.stat:
-        path: "{{ dataDir }}/pki/wildcard.dwfa.ca.key"
+        path: "{{ dataDir }}/pki/wildcard.{{ domain }}.key"
       register: _cdsWildcardKeyStat
 
     - name: Fail if wildcard cert is missing
       ansible.builtin.fail:
         msg: >-
           [ERROR] *** Wildcard cert/key not found at
-          [{{ dataDir }}/pki/wildcard.dwfa.ca.key].
-          Run [ansible-playbook playbooks/managePKI-pb.yaml] first to
-          generate the internal CA + wildcard cert.
+          [{{ dataDir }}/pki/wildcard.{{ domain }}.key].
+          Run [./managePKI.sh] first to generate the internal CA +
+          wildcard cert.
       when: not _cdsWildcardKeyStat.stat.exists
 
   roles:
@@ -66,17 +92,37 @@
     - "{{ playbook_dir }}/vars/connection{{ hostvars['localhost'].userData.file }}.yaml"
 
   roles:
-    - role: createUsers
-      vars:
-        userNames:
-          - dwfa
-          - wwwAdmin
-    - role: installPackages
-    - role: installPackages
-      vars:
-        packageList:
-          - nginx-core
-          - nginx
+    # - role: createUsers
+    #   vars:
+    #     userNames:
+    #       - dwfa
+    #       - wwwAdmin
+    - role: configureBaseRPi
+    # - role: installPackages
+    # - role: installPackages
+    #   vars:
+    #     packageList:
+    #       - nginx-core
+    #       - nginx
+    #       - bind9
+    #       - bind9utils
+    #       - dnsutils
+    #       - isc-dhcp-server
+    #       - webmin
+    # Pi-hole is native (see BACKLOG "Revisit containerized pi-hole").
+    # Not an apt package, so it does not flow through installPackages.
+    # - role: pihole
+
+  post_tasks:
+    ##########################################################################
+    # Once all manageable services have been installed and configured,
+    # restart webmin so its module-detection re-scan picks up newcomers
+    # (e.g., the BIND DNS Server module after bind9 lands).
+    ##########################################################################
+    - name: Restart webmin so it auto-detects newly-installed modules
+      ansible.builtin.systemd:
+        name:  webmin
+        state: restarted
 
 ##############################################################################
 # Play 3: Cleanup materialized SSH keys on the controller

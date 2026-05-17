@@ -7,6 +7,13 @@
 #   to override the default; otherwise basePackageList from
 #   vars/main.yaml (vim, zsh, fish today) is used.
 #
+#   Before the bulk apt install, the role loops the package list and
+#   calls tasks/system/setupAptRepo.yaml per package — which checks
+#   data/packages/<package>/metadata.yaml for an `aptRepo` block and
+#   installs the upstream signing key + sources entry if declared. So
+#   3rd-party-repo packages (e.g. webmin) become first-class members
+#   of packageList without needing a dedicated install role.
+#
 #   The configure auto-discovery looks up tasks/<packageName>/configure.yaml
 #   for each entry in the install list. When the apt package name and
 #   the configure-task directory name match (e.g. nginx → tasks/nginx/),
@@ -25,8 +32,11 @@
 #
 # WORKFLOW:
 #   1. Resolve effective package list (packageList override OR default)
-#   2. Install all packages in one apt call via tasks/system/installPackage.yaml
-#   3. For each package, call tasks/system/configurePackage.yaml — which
+#   2. For each package, call tasks/system/setupAptRepo.yaml — which
+#      stats data/packages/<package>/metadata.yaml and installs the
+#      3rd-party repo when an aptRepo block is declared (no-op otherwise)
+#   3. Install all packages in one apt call via tasks/system/installPackage.yaml
+#   4. For each package, call tasks/system/configurePackage.yaml — which
 #      stats tasks/<package>/configure.yaml and includes it if present
 #
 # EXAMPLE:
@@ -44,18 +54,29 @@
 #         vars:
 #           packageList: [nginx-core, nginx]
 #
+#   # Install webmin (3rd-party repo declared in metadata; configure
+#   # auto-discovered at tasks/webmin/configure.yaml)
+#   - hosts: "{{ nodes }}"
+#     become: true
+#     roles:
+#       - role: installPackages
+#         vars:
+#           packageList: [webmin]
+#
 # NOTES:
 #   - Must run in a remote play (apt requires the target host)
 #   - To change what counts as "base," edit vars/main.yaml
 #   - Per-package configuration is auto-discovered: drop a
 #     tasks/<package>/configure.yaml and it runs automatically; remove
 #     the file and it stops. No role changes required.
+#   - Per-package 3rd-party repo install is also auto-discovered: add
+#     an aptRepo block to data/packages/<package>/metadata.yaml.
 #
 # Copyright 2026 Douglas WF Acheson (dwfa@dwfa.ca)
 # Licensed under Apache License 2.0. See LICENSE.md for details.
 #
-# Version: 2.0
-# Date: May 7, 2026
+# Version: 2.1
+# Date: May 8, 2026
 ##############################################################################
 ---                                                   # identifies a YAML file
 
@@ -65,6 +86,20 @@
 - name: Resolve effective package list
   ansible.builtin.set_fact:
     _ipPackageList: "{{ packageList | default(basePackageList) }}"
+
+##############################################################################
+# For each package, install its 3rd-party apt repo if metadata declares
+# one. setupAptRepo no-ops for packages without an aptRepo block.
+##############################################################################
+- name: Set up any 3rd-party apt repos
+  ansible.builtin.include_tasks:
+    file: "{{ taskDir }}/system/setupAptRepo.yaml"
+  vars:
+    packageName: "{{ pkgIdx }}"
+  loop: "{{ _ipPackageList }}"
+  loop_control:
+    loop_var: pkgIdx
+    label:    "{{ pkgIdx }}"
 
 ##############################################################################
 # Install all packages in one apt call

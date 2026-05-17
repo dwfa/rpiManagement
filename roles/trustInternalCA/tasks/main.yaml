@@ -1,0 +1,47 @@
+##############################################################################
+# Install the internal CA root cert into the local machine's trust store
+#
+# USAGE:
+#   Localhost-only role. Add to a localhost play AFTER installInternalCA
+#   so the CA cert is guaranteed to exist on disk before this role tries
+#   to install it.
+#
+#   The actual install logic (OS detection + per-platform commands) lives
+#   in tasks/pki/trustInternalCA.yaml; this role is a thin wrapper.
+#
+# REQUIRED VARIABLES:
+#   None.
+#
+# OPTIONAL VARIABLES:
+#   - debugFlag: Enable debug output
+#
+# WORKFLOW:
+#   1. Include tasks/pki/trustInternalCA.yaml (per-OS install branches)
+#
+# EXAMPLE:
+#   - hosts:        localhost
+#     connection:   local
+#     gather_facts: true        # required — task uses ansible_facts['os_family']
+#     roles:
+#       - installInternalCA
+#       - trustInternalCA
+#
+# NOTES:
+#   - Requires gather_facts: true on the calling play (uses os_family)
+#   - Requires sudo (some sub-tasks use become: true)
+#   - Only macOS + Debian/Ubuntu supported. Other OSes log a warning
+#     and skip — install manually on those devices.
+#   - iOS / Android cannot be automated; install dwfaInternalCA.crt
+#     manually on those devices.
+#
+# Copyright 2026 Douglas WF Acheson (dwfa@dwfa.ca)
+# Licensed under Apache License 2.0. See LICENSE.md for details.
+#
+# Version: 1.0
+# Date: May 7, 2026
+##############################################################################
+---                                                   # identifies a YAML file
+
+- name: Trust internal CA on the local machine
+  ansible.builtin.include_tasks:
+    file: "{{ taskDir }}/pki/trustInternalCA.yaml"

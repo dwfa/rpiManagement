@@ -1,0 +1,44 @@
+##############################################################################
+# Configure the RPi Wi-Fi regulatory country code
+#
+# USAGE:
+#   include_tasks from roles/configureBaseRPi/tasks/main.yaml (after
+#   baseConfig.yaml has been loaded).
+#
+# REQUIRED VARIABLES:
+#   - wifiCountry: ISO 3166-1 alpha-2 code (e.g. "US", "CA")
+#
+# OPTIONAL VARIABLES:
+#   - debugFlag: enable debug output
+#
+# NOTES:
+#   - Required for the radio to operate. Without it, the RPi will
+#     refuse to associate with any 5GHz network.
+#   - Idempotent: queries raspi-config's getter first.
+#
+# Copyright 2026 Douglas WF Acheson (dwfa@dwfa.ca)
+# Licensed under Apache License 2.0. See LICENSE.md for details.
+#
+# Version: 1.0
+# Date: May 16, 2026
+##############################################################################
+---                                                   # identifies a YAML file
+
+- name: "Read current Wi-Fi country code"
+  ansible.builtin.command:
+    cmd: /usr/bin/raspi-config nonint get_wifi_country
+  register:     _cwccCurrent
+  changed_when: false
+  failed_when:  false
+
+- name: "Set Wi-Fi country code to [{{ wifiCountry }}]"
+  ansible.builtin.command:
+    cmd: "/usr/bin/raspi-config nonint do_wifi_country {{ wifiCountry }}"
+  when: _cwccCurrent.stdout | trim != wifiCountry
+
+- name: "Debug: Wi-Fi country code"
+  ansible.builtin.debug:
+    msg: >-
+      [DEBUG] *** wifi country before=[{{ _cwccCurrent.stdout | trim }}]
+      target=[{{ wifiCountry }}]
+  when: debugFlag | default(0) | int == 1

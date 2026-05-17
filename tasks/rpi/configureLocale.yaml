@@ -1,0 +1,50 @@
+##############################################################################
+# Configure the RPi system locale
+#
+# USAGE:
+#   include_tasks from roles/configureBaseRPi/tasks/main.yaml (after
+#   baseConfig.yaml has been loaded).
+#
+# REQUIRED VARIABLES:
+#   - locale: full locale line, e.g. "en_US.UTF-8 UTF-8"
+#
+# OPTIONAL VARIABLES:
+#   - debugFlag: enable debug output
+#
+# NOTES:
+#   - Idempotent: reads current LANG via localectl before applying.
+#   - raspi-config nonint do_change_locale regenerates /etc/locale.gen
+#     and runs locale-gen -- can take 30+ seconds on first run.
+#   - Locale change requires a reboot for all services to pick it up;
+#     the reboot fires from the role orchestrator after every
+#     configure*.yaml is done.
+#
+# Copyright 2026 Douglas WF Acheson (dwfa@dwfa.ca)
+# Licensed under Apache License 2.0. See LICENSE.md for details.
+#
+# Version: 1.0
+# Date: May 16, 2026
+##############################################################################
+---                                                   # identifies a YAML file
+
+- name: "Read current LANG"
+  ansible.builtin.command:
+    cmd: localectl status
+  register:     _clLocaleStatus
+  changed_when: false
+
+- name: "Extract LANG token from localectl"
+  ansible.builtin.set_fact:
+    _clCurrentLang: "{{ ((_clLocaleStatus.stdout | regex_search('LANG=\\S+')) or '') | regex_replace('^LANG=', '') }}"
+
+- name: "Set locale to [{{ locale }}]"
+  ansible.builtin.command:
+    cmd: "/usr/bin/raspi-config nonint do_change_locale {{ locale }}"
+  when: not (_clCurrentLang | length > 0 and locale.startswith(_clCurrentLang))
+
+- name: "Debug: locale"
+  ansible.builtin.debug:
+    msg: >-
+      [DEBUG] *** locale current LANG=[{{ _clCurrentLang }}]
+      target=[{{ locale }}]
+  when: debugFlag | default(0) | int == 1

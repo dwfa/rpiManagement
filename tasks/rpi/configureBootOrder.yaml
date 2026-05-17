@@ -1,0 +1,88 @@
+##############################################################################
+# Configure RPi EEPROM BOOT_ORDER (USB / SD priority)
+#
+# USAGE:
+#   include_tasks from roles/configureBaseRPi/tasks/main.yaml (after
+#   baseConfig.yaml has been loaded).
+#
+# REQUIRED VARIABLES:
+#   - bootOrder: hex string (e.g. "0xf41" for SD->USB->loop,
+#                "0xf14" for USB->SD->loop). See `rpi-eeprom-config`
+#                man page for full digit list.
+#
+# OPTIONAL VARIABLES:
+#   - debugFlag: enable debug output
+#
+# NOTES:
+#   - Replaces the old broken configureUSB-MSD.yaml (which was an
+#     unintended verbatim copy of configureConsole.yaml). This task
+#     does the real thing via rpi-eeprom-config.
+#   - Applies to RPi 4/5 with the bootloader EEPROM. Pre-RPi-4 boards
+#     boot from SD only -- rpi-eeprom-config will not be installed and
+#     this task will skip cleanly.
+#   - EEPROM changes take effect on the next reboot.
+#
+# Copyright 2026 Douglas WF Acheson (dwfa@dwfa.ca)
+# Licensed under Apache License 2.0. See LICENSE.md for details.
+#
+# Version: 1.0
+# Date: May 16, 2026
+##############################################################################
+---                                                   # identifies a YAML file
+
+- name: "Check rpi-eeprom-config availability"
+  ansible.builtin.stat:
+    path: /usr/bin/rpi-eeprom-config
+  register: _cboEepromBin
+
+- when: _cboEepromBin.stat.exists
+  block:
+
+    - name: "Read current EEPROM config"
+      ansible.builtin.command:
+        cmd: /usr/bin/rpi-eeprom-config
+      register:     _cboCurrentConfig
+      changed_when: false
+
+    - name: "Extract current BOOT_ORDER"
+      ansible.builtin.set_fact:
+        _cboCurrentBootOrder: "{{ ((_cboCurrentConfig.stdout | regex_search('BOOT_ORDER=\\S+', multiline=True)) or '') | regex_replace('^BOOT_ORDER=', '') }}"
+
+    - name: "Debug: BOOT_ORDER state"
+      ansible.builtin.debug:
+        msg: >-
+          [DEBUG] *** BOOT_ORDER current=[{{ _cboCurrentBootOrder }}]
+          target=[{{ bootOrder }}]
+          action=[{{ 'apply' if _cboCurrentBootOrder != bootOrder else 'skip (already matches)' }}]
+      when: debugFlag | default(0) | int == 1
+
+    - when: _cboCurrentBootOrder != bootOrder
+      block:
+
+        - name: "Write new EEPROM config to /tmp"
+          ansible.builtin.copy:
+            dest:    /tmp/rpi-eeprom-new.conf
+            content: |
+              {{ _cboCurrentConfig.stdout | regex_replace('^BOOT_ORDER=.*$', 'BOOT_ORDER=' + bootOrder, multiline=True) }}
+              {% if 'BOOT_ORDER=' not in _cboCurrentConfig.stdout %}
+              BOOT_ORDER={{ bootOrder }}
+              {% endif %}
+            owner:   root
+            group:   root
+            mode:    '0644'
+
+        - name: "Apply new EEPROM config"
+          ansible.builtin.command:
+            cmd: /usr/bin/rpi-eeprom-config --apply /tmp/rpi-eeprom-new.conf
+
+        - name: "Remove temp EEPROM config"
+          ansible.builtin.file:
+            path:  /tmp/rpi-eeprom-new.conf
+            state: absent
+
+- name: "Note: rpi-eeprom-config not installed -- BOOT_ORDER step skipped"
+  ansible.builtin.debug:
+    msg: >-
+      [INFO] *** rpi-eeprom-config not found; BOOT_ORDER not configured.
+      Likely a pre-RPi-4 board with SD-only boot.
+  when: not _cboEepromBin.stat.exists

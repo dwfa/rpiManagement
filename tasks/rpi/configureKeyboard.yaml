@@ -1,0 +1,45 @@
+##############################################################################
+# Configure the RPi keyboard layout
+#
+# USAGE:
+#   include_tasks from roles/configureBaseRPi/tasks/main.yaml (after
+#   baseConfig.yaml has been loaded).
+#
+# REQUIRED VARIABLES:
+#   - keyboard: XKBLAYOUT code, e.g. "us"
+#
+# OPTIONAL VARIABLES:
+#   - debugFlag: enable debug output
+#
+# NOTES:
+#   - Idempotent: reads /etc/default/keyboard first and only invokes
+#     raspi-config when the active layout differs.
+#
+# Copyright 2026 Douglas WF Acheson (dwfa@dwfa.ca)
+# Licensed under Apache License 2.0. See LICENSE.md for details.
+#
+# Version: 1.0
+# Date: May 16, 2026
+##############################################################################
+---                                                   # identifies a YAML file
+
+- name: "Read current keyboard layout"
+  ansible.builtin.slurp:
+    src: /etc/default/keyboard
+  register: _ckKeyboardFile
+
+- name: "Extract XKBLAYOUT"
+  ansible.builtin.set_fact:
+    _ckCurrentLayout: "{{ ((_ckKeyboardFile.content | b64decode | regex_search('XKBLAYOUT=\"[^\"]+\"')) or '') | regex_replace('^XKBLAYOUT=\"', '') | regex_replace('\"$', '') }}"
+
+- name: "Set keyboard layout to [{{ keyboard }}]"
+  ansible.builtin.command:
+    cmd: "/usr/bin/raspi-config nonint do_configure_keyboard {{ keyboard }}"
+  when: _ckCurrentLayout != keyboard
+
+- name: "Debug: keyboard"
+  ansible.builtin.debug:
+    msg: >-
+      [DEBUG] *** keyboard before=[{{ _ckCurrentLayout }}]
+      target=[{{ keyboard }}]
+  when: debugFlag | default(0) | int == 1

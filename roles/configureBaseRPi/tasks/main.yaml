@@ -1,0 +1,108 @@
+##############################################################################
+# Configure base RPi settings (TZ, locale, keyboard, Wi-Fi country,
+# console video, graphics, GPU memory, EEPROM BOOT_ORDER) -- thin
+# role wrapper.
+#
+# USAGE:
+#   Online-only role: runs against a booted RPi to apply project-wide
+#   base configuration. Typically called once per host shortly after
+#   first-boot user creation, before any service-specific roles.
+#
+# REQUIRED VARIABLES:
+#   None at the call site. All values come from
+#   data/rpi/baseConfig.yaml.
+#
+# OPTIONAL VARIABLES:
+#   - debugFlag: enable debug output
+#
+# EXAMPLE:
+#   - hosts:  "{{ nodes }}"
+#     become: true
+#     roles:
+#       - role: createUsers
+#       - role: configureBaseRPi
+#
+# WORKFLOW:
+#   1. Load data/rpi/baseConfig.yaml (TZ, locale, keyboard, ...)
+#   2. configureTZ      -- timezone
+#   3. configureLocale  -- system locale
+#   4. configureKeyboard -- keyboard layout
+#   5. configureWiFiCC  -- Wi-Fi country code
+#   6. configureMemory  -- gpu_mem in config.txt
+#   7. configureGraphics -- HDMI mode + framebuffer
+#   8. configureConsole -- cmdline.txt video= mode
+#   9. configureBootOrder -- EEPROM BOOT_ORDER (RPi 4/5 only)
+#  10. Reboot the target and wait for it to come back -- locale,
+#      gpu_mem, framebuffer, video= and BOOT_ORDER all need a reboot
+#      to take effect. One reboot at the end covers them all.
+#
+# NOTES:
+#   - All sub-tasks are idempotent: they read current state first and
+#     only apply changes when needed. A second run is a no-op.
+#   - The reboot is unconditional today. If you want to avoid it on
+#     no-op runs, gate on registered .changed facts from the sub-task
+#     includes -- not done here because the boot-file edits don't
+#     always surface a clean changed signal, and a 90-second reboot
+#     on an otherwise no-op run is cheap insurance.
+#
+# Copyright 2026 Douglas WF Acheson (dwfa@dwfa.ca)
+# Licensed under Apache License 2.0. See LICENSE.md for details.
+#
+# Version: 1.0
+# Date: May 16, 2026
+##############################################################################
+---                                                   # identifies a YAML file
+
+##############################################################################
+# Load the base-config manifest
+##############################################################################
+- name: Load base RPi configuration manifest
+  ansible.builtin.include_vars:
+    file: "{{ dataDir }}/rpi/baseConfig.yaml"
+
+##############################################################################
+# Apply each sub-configuration in order
+##############################################################################
+- name: Configure timezone
+  ansible.builtin.include_tasks:
+    file: "{{ taskDir }}/rpi/configureTZ.yaml"
+
+- name: Configure locale
+  ansible.builtin.include_tasks:
+    file: "{{ taskDir }}/rpi/configureLocale.yaml"
+
+- name: Configure keyboard
+  ansible.builtin.include_tasks:
+    file: "{{ taskDir }}/rpi/configureKeyboard.yaml"
+
+- name: Configure Wi-Fi country code
+  ansible.builtin.include_tasks:
+    file: "{{ taskDir }}/rpi/configureWiFiCC.yaml"
+
+- name: Configure GPU memory
+  ansible.builtin.include_tasks:
+    file: "{{ taskDir }}/rpi/configureMemory.yaml"
+
+- name: Configure graphics
+  ansible.builtin.include_tasks:
+    file: "{{ taskDir }}/rpi/configureGraphics.yaml"
+
+- name: Configure console video mode
+  ansible.builtin.include_tasks:
+    file: "{{ taskDir }}/rpi/configureConsole.yaml"
+
+- name: Configure EEPROM BOOT_ORDER
+  ansible.builtin.include_tasks:
+    file: "{{ taskDir }}/rpi/configureBootOrder.yaml"
+
+##############################################################################
+# Reboot once so all the above (locale, gpu_mem, framebuffer, video=,
+# BOOT_ORDER) take effect. Ansible reboot module handles the wait-for-
+# come-back so subsequent roles in the play resume cleanly.
+##############################################################################
+- name: Reboot to apply base configuration
+  ansible.builtin.reboot:
+    msg:                "Reboot triggered by configureBaseRPi role"
+    reboot_timeout:     300
+    connect_timeout:    20
+    post_reboot_delay:  10

@@ -1,0 +1,59 @@
+##############################################################################
+# Configure RPi console video mode via /boot/firmware/cmdline.txt
+#
+# USAGE:
+#   include_tasks from roles/configureBaseRPi/tasks/main.yaml (after
+#   baseConfig.yaml has been loaded).
+#
+# REQUIRED VARIABLES:
+#   - videoMode:       full video= kernel-cmdline tokens to inject
+#                      (e.g. "video=HDMI-A-1:1920x1080M@60e ...")
+#   - bootCmdlinePath: usually /boot/firmware/cmdline.txt on Bookworm
+#
+# OPTIONAL VARIABLES:
+#   - debugFlag: enable debug output
+#
+# NOTES:
+#   - cmdline.txt MUST be a single line; any newline in the middle
+#     bricks boot. Ansible's lineinfile preserves that.
+#   - Backs up the original to <path>.org before first modification.
+#   - Also tells the firmware NOT to poll EDID -- saves a few seconds
+#     on headless boots wired to a KVM (the KVM lies about EDID
+#     anyway).
+#
+# Copyright 2026 Douglas WF Acheson (dwfa@dwfa.ca)
+# Licensed under Apache License 2.0. See LICENSE.md for details.
+#
+# Version: 1.0
+# Date: May 16, 2026
+##############################################################################
+---                                                   # identifies a YAML file
+
+- name: "Backup cmdline.txt (first run only)"
+  ansible.builtin.copy:
+    src:         "{{ bootCmdlinePath }}"
+    dest:        "{{ bootCmdlinePath }}.org"
+    remote_src:  true
+    force:       false
+    owner:       root
+    group:       root
+    mode:        '0644'
+
+- name: "Inject video= mode into cmdline.txt if not already present"
+  ansible.builtin.lineinfile:
+    path:     "{{ bootCmdlinePath }}"
+    regexp:   '^(?!.*video=)(.+)$'
+    line:     '{{ videoMode }} \1'
+    backrefs: true
+
+- name: "Suppress firmware EDID polling (kms setup)"
+  ansible.builtin.command:
+    cmd: "/usr/bin/raspi-config nonint set_config_var disable_fw_kms_setup 1 {{ bootConfigPath }}"
+  changed_when: false
+
+- name: "Debug: console"
+  ansible.builtin.debug:
+    msg: >-
+      [DEBUG] *** console videoMode applied=[{{ videoMode }}]
+      cmdline=[{{ bootCmdlinePath }}]
+  when: debugFlag | default(0) | int == 1

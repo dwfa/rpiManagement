@@ -1,0 +1,56 @@
+##############################################################################
+# Configure RPi graphics: console boot (no X11), HDMI mode, framebuffer
+#
+# USAGE:
+#   include_tasks from roles/configureBaseRPi/tasks/main.yaml (after
+#   baseConfig.yaml has been loaded).
+#
+# REQUIRED VARIABLES:
+#   - hdmiGroup, hdmiMode:                HDMI mode selection
+#   - framebufferWidth, framebufferHeight: framebuffer geometry
+#   - bootConfigPath:                     usually /boot/firmware/config.txt
+#
+# OPTIONAL VARIABLES:
+#   - debugFlag: enable debug output
+#
+# NOTES:
+#   - B1 = console boot, no auto-login. We want a console-only headless
+#     server with login required.
+#   - All raspi-config nonint set_config_var calls are idempotent at
+#     the file level -- they replace the relevant line in config.txt.
+#
+# Copyright 2026 Douglas WF Acheson (dwfa@dwfa.ca)
+# Licensed under Apache License 2.0. See LICENSE.md for details.
+#
+# Version: 1.0
+# Date: May 16, 2026
+##############################################################################
+---                                                   # identifies a YAML file
+
+- name: "Set boot behaviour: console, no auto-login (B1)"
+  ansible.builtin.command:
+    cmd: /usr/bin/raspi-config nonint do_boot_behaviour B1
+  changed_when: false
+
+- name: "Set HDMI mode (group [{{ hdmiGroup }}], mode [{{ hdmiMode }}])"
+  ansible.builtin.command:
+    cmd: "/usr/bin/raspi-config nonint do_resolution {{ hdmiGroup }} {{ hdmiMode }}"
+  changed_when: false
+
+- name: "Set framebuffer height [{{ framebufferHeight }}]"
+  ansible.builtin.command:
+    cmd: "/usr/bin/raspi-config nonint set_config_var framebuffer_height {{ framebufferHeight }} {{ bootConfigPath }}"
+  changed_when: false
+
+- name: "Set framebuffer width [{{ framebufferWidth }}]"
+  ansible.builtin.command:
+    cmd: "/usr/bin/raspi-config nonint set_config_var framebuffer_width {{ framebufferWidth }} {{ bootConfigPath }}"
+  changed_when: false
+
+- name: "Debug: graphics"
+  ansible.builtin.debug:
+    msg: >-
+      [DEBUG] *** graphics hdmiGroup=[{{ hdmiGroup }}]
+      hdmiMode=[{{ hdmiMode }}]
+      framebuffer=[{{ framebufferWidth }}x{{ framebufferHeight }}]
+  when: debugFlag | default(0) | int == 1

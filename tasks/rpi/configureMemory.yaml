@@ -1,0 +1,48 @@
+##############################################################################
+# Configure RPi GPU memory split via /boot/firmware/config.txt
+#
+# USAGE:
+#   include_tasks from roles/configureBaseRPi/tasks/main.yaml (after
+#   baseConfig.yaml has been loaded).
+#
+# REQUIRED VARIABLES:
+#   - gpuMem:         GPU memory in MB (16-944, depending on model)
+#   - bootConfigPath: usually /boot/firmware/config.txt
+#
+# OPTIONAL VARIABLES:
+#   - debugFlag: enable debug output
+#
+# NOTES:
+#   - Old code used `raspi-config nonint do_memory_split` -- that path
+#     was removed in newer raspi-config (see old role's TODO comment).
+#     We write the `gpu_mem=N` line directly into config.txt instead,
+#     which is what raspi-config used to do internally.
+#   - Idempotent: lineinfile replaces or inserts a single line.
+#   - Effective only after reboot (kernel reads config.txt at boot).
+#
+# Copyright 2026 Douglas WF Acheson (dwfa@dwfa.ca)
+# Licensed under Apache License 2.0. See LICENSE.md for details.
+#
+# Version: 1.0
+# Date: May 16, 2026
+##############################################################################
+---                                                   # identifies a YAML file
+
+##############################################################################
+# No `backup: true` here -- /boot/firmware is FAT32, and Ansible's
+# auto-backup filename contains colons (`...@HH:MM:SS~`) that FAT32
+# rejects. configureConsole.yaml takes a one-time deliberate backup
+# to cmdline.txt.org for the same reason.
+##############################################################################
+- name: "Set gpu_mem=[{{ gpuMem }}] in config.txt"
+  ansible.builtin.lineinfile:
+    path:        "{{ bootConfigPath }}"
+    regexp:      '^\s*gpu_mem\s*='
+    line:        "gpu_mem={{ gpuMem }}"
+    insertafter: EOF
+    state:       present
+
+- name: "Debug: gpu_mem"
+  ansible.builtin.debug:
+    msg: "[DEBUG] *** gpu_mem set to [{{ gpuMem }}] in [{{ bootConfigPath }}]"
+  when: debugFlag | default(0) | int == 1

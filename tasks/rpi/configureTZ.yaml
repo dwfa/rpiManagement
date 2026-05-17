@@ -1,0 +1,42 @@
+##############################################################################
+# Configure the RPi timezone
+#
+# USAGE:
+#   include_tasks from roles/configureBaseRPi/tasks/main.yaml (after
+#   baseConfig.yaml has been loaded).
+#
+# REQUIRED VARIABLES:
+#   - timezone: target timezone (e.g. "America/Toronto")
+#
+# OPTIONAL VARIABLES:
+#   - debugFlag: enable debug output
+#
+# NOTES:
+#   - Idempotent: reads the current zone first and only calls
+#     timedatectl when it differs.
+#
+# Copyright 2026 Douglas WF Acheson (dwfa@dwfa.ca)
+# Licensed under Apache License 2.0. See LICENSE.md for details.
+#
+# Version: 1.0
+# Date: May 16, 2026
+##############################################################################
+---                                                   # identifies a YAML file
+
+- name: "Read current timezone"
+  ansible.builtin.command:
+    cmd: timedatectl show -p Timezone --value
+  register:     _ctzCurrent
+  changed_when: false
+
+- name: "Set timezone to [{{ timezone }}]"
+  ansible.builtin.command:
+    cmd: "timedatectl set-timezone {{ timezone }}"
+  when: _ctzCurrent.stdout != timezone
+
+- name: "Debug: timezone"
+  ansible.builtin.debug:
+    msg: >-
+      [DEBUG] *** timezone before=[{{ _ctzCurrent.stdout }}]
+      after=[{{ timezone }}]
+  when: debugFlag | default(0) | int == 1

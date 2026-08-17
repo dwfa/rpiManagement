@@ -1,5 +1,5 @@
 ##############################################################################
-# Reconfigure an already-provisioned DNS server
+# Update an already-provisioned DNS server
 #
 # Pushes fresh DNS / DHCP / pi-hole configuration to a host where
 # bind9, isc-dhcp-server, and pi-hole are already installed. Use this
@@ -9,11 +9,11 @@
 #
 # PREREQUISITES:
 #   - The target DNS server already provisioned via
-#     playbooks/createDNSServer-pb.yaml
+#     playbooks/buildDNSServer-pb.yaml
 #   - Target reachable on the network at the inventory address
 #
-# DIFFERENCE FROM createDNSServer-pb.yaml:
-#   createDNSServer-pb.yaml installs base packages, sets up users, and
+# DIFFERENCE FROM buildDNSServer-pb.yaml:
+#   buildDNSServer-pb.yaml installs base packages, sets up users, and
 #   then configures. This playbook skips install entirely and runs
 #   only the configure phase of bind9, isc-dhcp-server, and pi-hole.
 #
@@ -48,7 +48,7 @@
 
   # Load remote connection vars (connectionKey.yaml or connectionPWD.yaml)
   vars_files:
-    - "{{ playbook_dir }}/vars/connection{{ hostvars['localhost'].userData.file }}.yaml"
+    - "{{ pbPath }}/vars/connection{{ hostvars['localhost'].userData.file }}.yaml"
 
   roles:
     - role: reconfigureDNSServer

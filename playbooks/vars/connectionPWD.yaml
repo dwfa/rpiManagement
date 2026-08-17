@@ -23,15 +23,13 @@
 #     - "{{ playbook_dir }}/vars/connectionPWD.yaml"
 #
 # NOTES:
-#   - Uses playbook_dir (not dataDir) — connection variables are evaluated
-#     before role vars (including dataDir) are loaded
 #   - Requires sshpass on the control node
 #
 # Copyright 2026 Douglas WF Acheson (dwfa@dwfa.ca)
 # Licensed under Apache License 2.0. See LICENSE.md for details.
 #
-# Version: 1.1
-# Date: March 21, 2026
+# Version: 1.2
+# Date: August 15, 2026
 ##############################################################################
 
 ---                                            # identifies a YAML config file
@@ -40,7 +38,7 @@
 userData: "{{ hostvars['localhost'].userData }}"
 
 # SSH connection configuration
-ansible_ssh_common_args: "-o UserKnownHostsFile={{ playbook_dir }}/../data/ssh/knownHosts"
+ansible_ssh_common_args: "-o UserKnownHostsFile={{ dataDir }}/ssh/knownHosts"
 ansible_ssh_pass:        "{{ userData.pwd }}"
 ansible_user:            "{{ userData.uName }}"
 

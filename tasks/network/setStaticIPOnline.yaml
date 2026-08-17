@@ -120,9 +120,10 @@
     # Generate UUID for the new NM connection (custom module on controller)
     ##########################################################################
     - name: Generate UUID for NM connection
-      local_action:
-        module: generateUUID
-      register: _ssipnUUID
+      generateUUID:
+      delegate_to: localhost
+      become:      false
+      register:    _ssipnUUID
 
     ##########################################################################
     # Template the eth0-manual .nmconnection file onto the running target

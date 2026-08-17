@@ -66,5 +66,5 @@
         msg: "[DEBUG] *** Created backup: [{{ _backupDir }}/{{ filePath | basename }}.{{ _timestamp }}.bak]"
       when: debugFlag is defined
   vars:
-    _timestamp: "{{ ansible_date_time.year }}{{ ansible_date_time.month }}{{ ansible_date_time.day }}-{{ ansible_date_time.hour }}{{ ansible_date_time.minute }}{{ ansible_date_time.second }}"
+    _timestamp: "{{ ansible_facts['date_time'].year }}{{ ansible_facts['date_time'].month }}{{ ansible_facts['date_time'].day }}-{{ ansible_facts['date_time'].hour }}{{ ansible_facts['date_time'].minute }}{{ ansible_facts['date_time'].second }}"
     _backupDir: "{{ backupDir | default(filePath | dirname) }}"

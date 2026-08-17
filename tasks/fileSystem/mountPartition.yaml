@@ -72,16 +72,49 @@
 
     - name: Validate platform is supported
       fail:
-        msg: "[ERROR] *** Unsupported platform [{{ ansible_system }}]. Only Darwin (macOS) and Linux are supported."
-      when: ansible_system not in ['Darwin', 'Linux']
+        msg: "[ERROR] *** Unsupported platform [{{ ansible_facts['system'] }}]. Only Darwin (macOS) and Linux are supported."
+      when: ansible_facts['system'] not in ['Darwin', 'Linux']
 
 ##############################################################################
-# Normalize partition path for platform (Unix-style to macOS if needed)
+# Validate partitionDevice descriptor (macOS).
+#
+# On macOS the incoming value may be a diskutil-style descriptor with an
+# appended partition suffix ("/dev/diskN (external, physical):sM"). Refuse
+# to mount unless all four markers are present, then extract just
+# /dev/diskNsM. Partition suffix is required — mount always targets a
+# partition, not a whole disk.
+##############################################################################
+- name: Validate partitionDevice descriptor (macOS)
+  ansible.builtin.fail:
+    msg: >-
+      [ERROR] *** Refusing to mount [{{ partitionDevice }}] — not a valid
+      macOS external physical partition descriptor.
+      Missing checks: {{ _missing | join(', ') }}.
+      Expected shape: "/dev/diskN (external, physical):sM"
+  vars:
+    _lower:    "{{ partitionDevice | lower }}"
+    _hasDisk:  "{{ partitionDevice is match('.*/dev/disk\\d+.*') }}"
+    _hasPart:  "{{ partitionDevice is search('s\\d+$') }}"
+    _hasExt:   "{{ 'external' in _lower }}"
+    _hasPhys:  "{{ 'physical' in _lower }}"
+    _missing: >-
+      {{ (['/dev/diskN'] if not _hasDisk else [])
+         + (['sM suffix'] if not _hasPart else [])
+         + (['external']  if not _hasExt  else [])
+         + (['physical']  if not _hasPhys else []) }}
+  when:
+    - ansible_facts['system'] == 'Darwin'
+    - not (_hasDisk and _hasPart and _hasExt and _hasPhys)
+
+##############################################################################
+# Normalize partition path for platform (Unix-style to macOS if needed).
+# On macOS, extract /dev/diskN and the trailing sM separately from the
+# validated descriptor, then join. On other platforms, keep the existing
+# Unix→macOS conversion path.
 ##############################################################################
 - name: Normalize partition path for platform
   set_fact:
-    _normalizedPartitionPath: "{{ partitionDevice if ansible_system != 'Darwin' else
-                                 (partitionDevice | regex_replace('^(/dev/disk\\d+)(\\d+)$', '\\1s\\2')) }}"
+    _normalizedPartitionPath: "{{ ((partitionDevice | regex_search('/dev/disk\\d+')) + (partitionDevice | regex_search('s\\d+$'))) if ansible_facts['system'] == 'Darwin' else (partitionDevice | regex_replace('^(/dev/disk\\d+)(\\d+)$', '\\1s\\2')) }}"
 
 ##############################################################################
 # Create mount point directory
@@ -146,14 +179,14 @@
     cmd: "diskutil mount -mountPoint {{ mountPoint }} {{ _normalizedPartitionPath }}"
   register: _mountPartitionResult
   failed_when: _mountPartitionResult.rc not in [0]
-  when: ansible_system == 'Darwin'
+  when: ansible_facts['system'] == 'Darwin'
 
 - name: Mount partition (Linux)
   ansible.builtin.command:
     cmd: "mount {{ _normalizedPartitionPath }} {{ mountPoint }}"
   register: _mountPartitionResult
   failed_when: _mountPartitionResult.rc not in [0]
-  when: ansible_system == 'Linux'
+  when: ansible_facts['system'] == 'Linux'
 
 - name: Display mount status
   debug:

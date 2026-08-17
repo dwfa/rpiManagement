@@ -179,9 +179,10 @@
 
     - name: Prompt user for fallback decision
       include_tasks:
-        file: "{{ taskDir }}/misc/waitForInput.yaml"
+        file: "{{ taskDir }}/misc/niceWait.yaml"
       vars:
-        waitMsg: |
+        title: "Use last known good image"
+        data: |
 
           ============================================================
           WARNING: Cannot fetch latest RPi OS image from API

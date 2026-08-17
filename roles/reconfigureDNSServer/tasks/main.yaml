@@ -8,7 +8,7 @@
 #   pi-hole settings (setupVars.conf, pihole.toml) without
 #   reinstalling anything.
 #
-#   Each step calls the SAME configure.yaml that createDNSServer-pb.yaml
+#   Each step calls the SAME configure.yaml that buildDNSServer-pb.yaml
 #   uses on first provision -- no divergence. The configure tasks
 #   re-parse data/network/inventory.xlsx via netGen on every run, so
 #   inventory edits flow straight through.

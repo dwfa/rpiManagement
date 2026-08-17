@@ -1,5 +1,5 @@
 ##############################################################################
-# Create DNS / DHCP RPi server
+# Build DNS / DHCP RPi server
 #
 # Provisions a freshly-imaged RPi (already bootstrapped via
 # postCreate-pb.yaml) into the project's DNS / DHCP server. Layered:
@@ -20,13 +20,13 @@
 #                               via installPackages' auto-discovery.
 #                               Webmin is intentionally last so its
 #                               module-detection picks up bind/dhcp.
-#     - pihole               -- native install + configure; nginx
-#                               reverse-proxies /pihole/ -> FTL:8080
-#                               (pi-hole is not an apt package, so it
-#                               lives outside installPackages)
-#
-#   post_tasks:
-#     - restart webmin       -- belt-and-suspenders module re-scan
+#     - installPihole        -- native install + configure pi-hole;
+#                               nginx reverse-proxies /pihole/ to
+#                               FTL:8080; restarts webmin at the end
+#                               so its module-detection picks up the
+#                               final state on disk (pi-hole is not
+#                               an apt package, so it lives outside
+#                               installPackages).
 #
 #   Play 3 (localhost) -- cleanup materialized SSH keys.
 #
@@ -41,7 +41,7 @@
 # Copyright 2026 Douglas WF Acheson (dwfa@dwfa.ca)
 # Licensed under Apache License 2.0. See LICENSE.md for details.
 #
-# Version: 3.0
+# Version: 3.1
 # Date: May 17, 2026
 ##############################################################################
 ---                                            # identifies a YAML config file
@@ -83,46 +83,36 @@
 # Play 2: Provision DNS server services on the target host
 ##############################################################################
 - name: Provision DNS server services
-  hosts:        "{{ nodes }}"
+  hosts:        "{{ nodes | default('localhost') }}"
   become:       true
   gather_facts: true
 
   # Load remote connection vars (connectionKey.yaml or connectionPWD.yaml)
   vars_files:
-    - "{{ playbook_dir }}/vars/connection{{ hostvars['localhost'].userData.file }}.yaml"
+    - "{{ pbPath }}/vars/connection{{ hostvars['localhost'].userData.file }}.yaml"
 
   roles:
-    # - role: createUsers
-    #   vars:
-    #     userNames:
-    #       - dwfa
-    #       - wwwAdmin
+    - role: createUsers
+      vars:
+        userNames:
+          - dwfa
+          - wwwAdmin
     - role: configureBaseRPi
-    # - role: installPackages
-    # - role: installPackages
-    #   vars:
-    #     packageList:
-    #       - nginx-core
-    #       - nginx
-    #       - bind9
-    #       - bind9utils
-    #       - dnsutils
-    #       - isc-dhcp-server
-    #       - webmin
+    - role: installPackages
+    - role: installPackages
+      vars:
+        packageList:
+          - nginx-core
+          - nginx
+          - bind9
+          - bind9utils
+          - dnsutils
+          - isc-dhcp-server
+          - webmin
     # Pi-hole is native (see BACKLOG "Revisit containerized pi-hole").
     # Not an apt package, so it does not flow through installPackages.
-    # - role: pihole
-
-  post_tasks:
-    ##########################################################################
-    # Once all manageable services have been installed and configured,
-    # restart webmin so its module-detection re-scan picks up newcomers
-    # (e.g., the BIND DNS Server module after bind9 lands).
-    ##########################################################################
-    - name: Restart webmin so it auto-detects newly-installed modules
-      ansible.builtin.systemd:
-        name:  webmin
-        state: restarted
+    # The role also restarts webmin at the end as a final module-rescan.
+    - role: installPihole
 
 ##############################################################################
 # Play 3: Cleanup materialized SSH keys on the controller

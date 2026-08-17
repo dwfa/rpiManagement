@@ -87,9 +87,10 @@
 # Generate UUID for connection
 ##############################################################################
 - name: Generate UUID for NM connection
-  local_action:
-    module: generateUUID
-  register: _ssipoUUID
+  generateUUID:
+  delegate_to: localhost
+  become:      false
+  register:    _ssipoUUID
 
 ##############################################################################
 # Write .nmconnection file using template

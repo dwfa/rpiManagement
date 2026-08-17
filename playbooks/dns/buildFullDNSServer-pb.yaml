@@ -1,0 +1,52 @@
+##############################################################################
+# Full DNS server build
+#
+# USAGE:
+#   Builds a full DNS server workflow as one Ansible playbook.
+#
+# WORKFLOW:
+#   1. Build the Raspberry Pi image.
+#   2. Pause for the user to move the storage device and power on the target.
+#   3. Run post-create bootstrap.
+#   4. Build DNS server services.
+#
+# REQUIRED VARIABLES:
+#   - buildRPiImageNode: Inventory group/node used by buildRPiImage-pb.yaml.
+#   - postCreateNode: Inventory group/node used by postCreate-pb.yaml.
+#   - buildDNSServerNode: Inventory group/node used by buildDNSServer-pb.yaml.
+#
+# Copyright 2026 Douglas WF Acheson (dwfa@dwfa.ca)
+# Licensed under Apache License 2.0. See LICENSE.md for details.
+#
+# Version: 1.0
+# Date: July 23, 2026
+##############################################################################
+---                                            # identifies a YAML config file
+
+- ansible.builtin.import_playbook: buildRPiImage-pb.yaml
+  vars:
+    buildRPiImageNode: preinstaller
+
+##############################################################################
+# Pause for physical handoff between image build and target bootstrap.
+##############################################################################
+- name: Wait for target boot
+  hosts:        localhost
+  connection:   local
+  gather_facts: false
+
+  roles:
+    - role: pause
+      vars:
+        title: "Wait for target boot"
+        data: >-
+          Insert the storage device into the target RPi, power it on, wait for
+          it to appear on the network at the installer IP, then press Enter.
+
+- ansible.builtin.import_playbook: postCreate-pb.yaml
+  vars:
+    postCreateNode: installer
+
+- ansible.builtin.import_playbook: buildDNSServer-pb.yaml
+  vars:
+    buildDNSServerNode: installer

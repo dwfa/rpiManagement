@@ -64,7 +64,7 @@
   roles:
     - role: getTargetHostIP
       vars:
-        targetHost: "{{ groups[nodes] | first }}"
+        targetHost: "{{ groups[nodes | default('localhost')] | first }}"
     - role: prepareRemoteCredentials
       vars:
         userDataPath: "{{ dataDir }}/users/installer/user.yaml"
@@ -81,7 +81,7 @@
 
 # Load remote connection vars (connectionKey.yaml or connectionPWD.yaml)
   vars_files:
-    - "{{ playbook_dir }}/vars/connection{{ hostvars['localhost'].userData.file }}.yaml"
+    - "{{ pbPath }}/vars/connection{{ hostvars['localhost'].userData.file }}.yaml"
 
   roles:
     - role: setStaticIP
@@ -99,7 +99,7 @@
 
 # Load remote connection vars (connectionKey.yaml or connectionPWD.yaml)
   vars_files:
-    - "{{ playbook_dir }}/vars/connection{{ hostvars['localhost'].userData.file }}.yaml"
+    - "{{ pbPath }}/vars/connection{{ hostvars['localhost'].userData.file }}.yaml"
 
   roles:
     - role: createUsers
@@ -133,7 +133,7 @@
 
 # Load remote connection vars (connectionKey.yaml or connectionPWD.yaml)
   vars_files:
-    - "{{ playbook_dir }}/vars/connection{{ hostvars['localhost'].userData.file }}.yaml"
+    - "{{ pbPath }}/vars/connection{{ hostvars['localhost'].userData.file }}.yaml"
 
   roles:
     - role: removeUsers

@@ -28,7 +28,19 @@
 #   2. Call the networkInventory custom module (delegated to localhost
 #      -- it imports netGen's Python package). --strict so data-quality
 #      issues fail the play fast.
-#   3. Emit a one-line parse summary when debugFlag is on.
+#   3. Promote the module result to a play-scoped `netInventory` fact
+#      via set_fact (NOT register -- see CACHING note below).
+#   4. Emit a one-line parse summary when debugFlag is on.
+#
+# CACHING:
+#   The module is registered into a transient `_piRaw` and then promoted
+#   to `netInventory` via set_fact. This split matters: `register:` fires
+#   even on SKIPPED tasks (it assigns a skip placeholder), so naively
+#   using `register: netInventory` here would overwrite a previously-
+#   cached netInventory with `{"skipped": true}` on the second include
+#   -- exactly the bug we hit on 2026-05-17. set_fact only runs when
+#   the task actually executes, so the cache survives subsequent
+#   skipped invocations from other services in the same play.
 #
 # NOTES:
 #   - Naming: `netInventory` (no underscore) is intentional. The
@@ -39,7 +51,7 @@
 # Copyright 2026 Douglas WF Acheson (dwfa@dwfa.ca)
 # Licensed under Apache License 2.0. See LICENSE.md for details.
 #
-# Version: 1.0
+# Version: 2.0
 # Date: May 17, 2026
 ##############################################################################
 ---                                                   # identifies a YAML file
@@ -54,12 +66,16 @@
         netGenPath: "{{ netGenPath }}"
         strict:     true
       delegate_to: localhost
-      register:    netInventory
+      register:    _piRaw
+
+    - name: Cache parsed inventory as play-scoped fact
+      ansible.builtin.set_fact:
+        netInventory: "{{ _piRaw }}"
 
     - name: "Debug: inventory parse"
       ansible.builtin.debug:
         msg: >-
-          [DEBUG] *** parsed [{{ netInventory.host_count }}] hosts;
+          🌐 [DEBUG] *** parsed [{{ netInventory.host_count }}] hosts;
           dhcpManaged=[{{ netInventory.metadata.statistics.dhcpManaged }}];
           warnings=[{{ netInventory.metadata.warnings | length }}]
       when: debugFlag | default(0) | int == 1

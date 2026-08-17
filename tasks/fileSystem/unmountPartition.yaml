@@ -82,8 +82,8 @@
 
     - name: Validate platform is supported
       fail:
-        msg: "[ERROR] *** Unsupported platform [{{ ansible_system }}]. Only Darwin (macOS) and Linux are supported."
-      when: ansible_system not in ['Darwin', 'Linux']
+        msg: "[ERROR] *** Unsupported platform [{{ ansible_facts['system'] }}]. Only Darwin (macOS) and Linux are supported."
+      when: ansible_facts['system'] not in ['Darwin', 'Linux']
 
 ##############################################################################
 # Unmount partition (platform-specific)
@@ -94,7 +94,7 @@
   register: _unmountPartitionResult
   failed_when: false
   changed_when: _unmountPartitionResult.rc == 0
-  when: ansible_system == 'Darwin'
+  when: ansible_facts['system'] == 'Darwin'
 
 - name: Unmount partition (Linux)
   ansible.builtin.command:
@@ -102,7 +102,7 @@
   register: _unmountPartitionResult
   failed_when: false
   changed_when: _unmountPartitionResult.rc == 0
-  when: ansible_system == 'Linux'
+  when: ansible_facts['system'] == 'Linux'
 
 ##############################################################################
 # Handle unmount errors (distinguish "not mounted" from real errors)
@@ -128,7 +128,7 @@
   register: _forceUnmountPartitionResult
   failed_when: _forceUnmountPartitionResult.rc != 0
   when:
-    - ansible_system == 'Darwin'
+    - ansible_facts['system'] == 'Darwin'
     - forceUnmount is defined and forceUnmount
     - _unmountPartitionResult is defined
     - _unmountPartitionResult is not none
@@ -143,7 +143,7 @@
   register: _forceUnmountPartitionResult
   failed_when: _forceUnmountPartitionResult.rc != 0
   when:
-    - ansible_system == 'Linux'
+    - ansible_facts['system'] == 'Linux'
     - forceUnmount is defined and forceUnmount
     - _unmountPartitionResult is defined
     - _unmountPartitionResult is not none

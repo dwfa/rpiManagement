@@ -1,0 +1,36 @@
+##############################################################################
+# Ansible task to wait for user confirmation before continuing
+#
+# USAGE:
+#   Pauses playbook execution, displays a custom message, and waits for
+#   the user to press Enter to continue.
+#
+# VARIABLES:
+#   - title: Optional short prompt title shown by ansibleRunner
+#   - data: Optional prompt message shown by Ansible and ansibleRunner
+#
+# EXAMPLE:
+#   - name: Prompt user to insert storage device
+#     include_tasks:
+#       file: "{{ taskDir }}/misc/niceWait.yaml"
+#     vars:
+#       title: "Attach storage device"
+#       data: "Attach the storage device and press Enter to continue."
+#
+# NOTES:
+#   - This wrapper is detected by ansibleRunner as a continue prompt.
+#   - Use title for the panel heading and data for the prompt body.
+#   - Multiline data is supported.
+#
+# Copyright 2025 Douglas WF Acheson (dwfa@dwfa.ca)
+# Licensed under Apache License 2.0. See LICENSE.md for details.
+#
+# Version: 3.2
+# Date: August 15, 2026
+##############################################################################
+---                                            # identifies a YAML config file
+
+- name: "niceWait: {{ title | default('Wait for user input') }}"
+  ansible.builtin.pause:
+    echo:   true
+    prompt: "{{ data | default('Press Enter to continue.') }}"

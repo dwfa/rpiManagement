@@ -16,16 +16,11 @@
 #     - "{{ playbook_dir }}/vars/connection\
 #        {{ hostvars['localhost'].userData.file }}.yaml"
 #
-# NOTES:
-#   - Uses playbook_dir (not dataDir) for SSH key path — connection
-#     variables are evaluated before role vars (including dataDir) are
-#     loaded, so playbook_dir magic variable must be used here
-#
 # Copyright 2026 Douglas WF Acheson (dwfa@dwfa.ca)
 # Licensed under Apache License 2.0. See LICENSE.md for details.
 #
-# Version: 1.1
-# Date: March 21, 2026
+# Version: 1.2
+# Date: August 15, 2026
 ##############################################################################
 
 ---                                            # identifies a YAML config file
@@ -34,8 +29,8 @@
 userData: "{{ hostvars['localhost'].userData }}"
 
 # SSH connection configuration
-ansible_ssh_common_args:      "-o UserKnownHostsFile={{ playbook_dir }}/../data/ssh/knownHosts"
-ansible_ssh_private_key_file: "{{ playbook_dir }}/../data/ssh/key.prv"
+ansible_ssh_common_args:      "-o UserKnownHostsFile={{ dataDir }}/ssh/knownHosts"
+ansible_ssh_private_key_file: "{{ dataDir }}/ssh/key.prv"
 ansible_user:                 "{{ userData.uName }}"
 
 # Privilege escalation configuration

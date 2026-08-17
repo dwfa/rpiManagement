@@ -1,16 +1,16 @@
 ##############################################################################
-# Create Raspberry Pi image
+# Build Raspberry Pi image
 #
 # USAGE:
-#   Creates RPi OS images on removable media (SD cards, USB drives).
+#   Builds RPi OS images onto removable storage (SD cards, USB drives).
 #   Supports both local (macOS) and remote (Linux) target hosts.
 #
 # EXAMPLE:
 #   ./createImage.sh                                    # localhost (macOS)
 #   ./createImage.sh -n installer                       # remote Linux host
 #   # or directly:
-#   ansible-playbook --extra-vars "nodes=localhost" playbooks/createImage-pb.yaml
-#   ansible-playbook --extra-vars "nodes=installer" playbooks/createImage-pb.yaml
+#   ansible-playbook --extra-vars "nodes=localhost" playbooks/buildRPiImage-pb.yaml
+#   ansible-playbook --extra-vars "nodes=installer" playbooks/buildRPiImage-pb.yaml
 #
 # WORKFLOW:
 #   Play 1 (localhost):
@@ -42,22 +42,40 @@
   gather_facts: false
 
   roles:
+    - role: bootstrap
     - role: prepareRemoteCredentials
       vars:
         userDataPath: "{{ dataDir }}/users/dwfa/user.yaml"
-    - updateRPiImage
+    - role: updateRPiImage
 
 ##############################################################################
 # Play 2: Execute on target hosts
 ##############################################################################
 - name: Create RPi Image
-  hosts:        "{{ nodes }}"
+  hosts:        "{{ nodes | default('localhost') }}"
   become:       true
-  gather_facts: true
+  gather_facts: false                      # explicit setup below so it
+                                           # runs AFTER include_vars
 
-# Load remote connection vars (connectionKey.yaml or connectionPWD.yaml)
-  vars_files:
-    - "{{ playbook_dir }}/vars/connection{{ hostvars['localhost'].userData.file }}.yaml"
+  pre_tasks:
+    ##########################################################################
+    # Load remote connection vars (connectionKey.yaml or connectionPWD.yaml)
+    # at task time -- AFTER Play 1 has set hostvars['localhost'].userData.
+    # Replaces the play-level `vars_files:` form, which ansible-core 2.21+
+    # validates at parse time (before Play 1 runs) and warns loudly when
+    # the templated path references an undefined var.
+    #
+    # include_vars is a controller-side action -- no SSH needed -- so
+    # gather_facts (explicit setup, next) is the first task to actually
+    # connect to the target. By then, ansible_user / ansible_ssh_* /
+    # ansible_become_password are all in play scope.
+    ##########################################################################
+    - name: Load remote connection vars
+      ansible.builtin.include_vars:
+        file: "{{ pbPath }}/vars/connection{{ hostvars['localhost'].userData.file }}.yaml"
+
+    - name: Gather facts now that connection vars are loaded
+      ansible.builtin.setup:
 
   roles:
     - role: getInstallDevice
@@ -75,4 +93,4 @@
   gather_facts: false
 
   roles:
-    - clearLocal
+    - role: clearLocal

@@ -101,28 +101,61 @@
     _imageExt: "{{ useImagePath | basename | splitext | last }}"
 
 #############################################################################
+# Validate useDevice descriptor (macOS only).
+#
+# Same defence-in-depth check we do in unmountDevice.yaml. On macOS the
+# incoming value may be a diskutil-style descriptor
+# ("/dev/diskN (external, physical):") — refuse to run destructive ops
+# unless all three markers are present, then extract just /dev/diskN.
+##############################################################################
+- name: Validate useDevice descriptor (macOS)
+  ansible.builtin.fail:
+    msg: >-
+      [ERROR] *** Refusing to write to [{{ useDevice }}] — not a valid
+      macOS external physical device descriptor.
+      Missing checks: {{ _missing | join(', ') }}.
+      Expected shape: "/dev/diskN (external, physical):"
+  vars:
+    _lower:    "{{ useDevice | lower }}"
+    _hasPath:  "{{ useDevice is match('.*/dev/disk\\d+.*') }}"
+    _hasExt:   "{{ 'external' in _lower }}"
+    _hasPhys:  "{{ 'physical' in _lower }}"
+    _missing: >-
+      {{ (['/dev/diskN'] if not _hasPath else [])
+         + (['external']  if not _hasExt  else [])
+         + (['physical']  if not _hasPhys else []) }}
+  when:
+    - ansible_facts['system'] == 'Darwin'
+    - not (_hasPath and _hasExt and _hasPhys)
+
+#############################################################################
 # Write image to device
+# _devicePath is extracted from the validated descriptor at task scope so it
+# does not leak past this task; falls back to useDevice on non-macOS.
 ##############################################################################
 - name: Write image to device
   block:
     - name: confirm write operation
       include_tasks:
-        file: "{{ taskDir }}/misc/waitForInput.yaml"
+        file: "{{ taskDir }}/misc/niceWait.yaml"
       vars:
-        waitMsg: "WARNING: About to write [{{ useImagePath }}] to [{{ useDevice }}]. This will DESTROY all data on the device. Press Enter to continue or Ctrl+C then 'A' to abort..."
+        title: "Confirm write operation"
+        data: "WARNING: About to write [{{ useImagePath }}] to [{{ _devicePath }}]. This will DESTROY all data on the device. Press Enter to continue or Ctrl+C then 'A' to abort..."
 
     - name: write image to device
       ansible.builtin.shell:
-        cmd: "{{ _decompressUtil }} {{ useImagePath }} | dd bs=4M of={{ useDevice }} {{ _ddStatus }}"
+        cmd: "{{ _decompressUtil }} {{ useImagePath }} | dd bs=4M of={{ _devicePath }} {{ _ddStatus }}"
       register: _writeResult
 
     - name: debug message for write image to device
       debug:
         msg:
-          - "[DEBUG] *** wrote image [{{ useImagePath }}] to device [{{ useDevice }}]..."
+          - "[DEBUG] *** wrote image [{{ useImagePath }}] to device [{{ _devicePath }}]..."
           - "[DEBUG] *** result is: [{{ _writeResult }}]"
       when:
         - debugFlag is defined
+  vars:
+    _devicePath: "{{ (useDevice | regex_search('/dev/disk\\d+')) if ansible_facts['system'] == 'Darwin' else useDevice }}"
 
 ##############################################################################
 # Cleanup temporary facts (file-scoped set_fact variables)

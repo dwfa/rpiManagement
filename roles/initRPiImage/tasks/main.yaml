@@ -44,8 +44,8 @@
 # Copyright 2025 Douglas WF Acheson (dwfa@dwfa.ca)
 # Licensed under Apache License 2.0. See LICENSE.md for details.
 #
-# Version: 2.5
-# Date: March 23, 2026
+# Version: 2.6
+# Date: June 22, 2026
 ##############################################################################
 ---
 
@@ -55,16 +55,22 @@
 # Linux: Mount to /mnt/boot
 ##############################################################################
 - name: Wait for macOS to auto-mount boot partition
-  ansible.builtin.pause:
-    prompt: "Waiting for macOS to mount boot partition. Press Enter when ready"
-  when: ansible_system == 'Darwin'
+  ansible.builtin.include_tasks:
+    file: "{{ taskDir }}/misc/niceWait.yaml"
+  vars:
+    title: "Wait for boot partition mount"
+    data: >-
+      Waiting for macOS to mount boot partition.
+      Press Enter when ready
+  when: ansible_facts['system'] == 'Darwin'
+# TODO shouldn't the above task be converted to include role?
 
 - name: Unmount auto-mounted boot partition (macOS)
   include_tasks:
     file: "{{ taskDir }}/fileSystem/unmountPartition.yaml"
   vars:
     mountPoint: "{{ _bootPartitionDevice }}"
-  when: ansible_system == 'Darwin'
+  when: ansible_facts['system'] == 'Darwin'
 
 - name: Mount boot partition
   include_tasks:
@@ -121,4 +127,4 @@
   vars:
     partitionDevice:  "{{ _rootPartitionDevice }}"
     staticIPDataPath: "{{ dataDir }}/network/staticIP/installer.yaml"
-  when: ansible_system != 'Darwin'
+  when: ansible_facts['system'] != 'Darwin'

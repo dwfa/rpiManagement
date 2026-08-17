@@ -25,6 +25,12 @@ setupInstaller.sh
 setupRPiDNS.sh
 writeDiskPartitions.sh
 
+# ansibleRunner project-local launcher + installer (per-machine, not
+# committed — install via `python3 install.py` from a downloaded copy)
+ar.py
+install.py
+.ansibleRunner/
+
 # Custom modules (not ready for public release)
 library/
 
@@ -67,7 +73,8 @@ __pycache__/
 *.backup
 
 # Log files
-*.log
+logs/
+.log
 
 # Temporary files
 *.tmp

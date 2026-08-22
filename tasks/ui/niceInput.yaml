@@ -1,0 +1,46 @@
+##############################################################################
+# Ansible task to prompt the user for input and capture the response
+#
+# USAGE:
+#   Pauses playbook execution, displays a custom prompt, and stores the
+#   user's response as a trimmed fact for the caller to consume.
+#
+# VARIABLES:
+#   - title: Optional short prompt title shown by ansibleRunner
+#   - data: Optional prompt message shown by Ansible and ansibleRunner
+#
+# OUTPUT VARIABLES:
+#   - promptValue: The user's response, whitespace-trimmed
+#
+# EXAMPLE:
+#   - name: Ask user for DHCP-assigned IP
+#     include_tasks:
+#       file: "{{ taskPath }}/ui/niceInput.yaml"
+#     vars:
+#       title: "Enter DHCP address"
+#       data: "Enter the DHCP-assigned IP for this host."
+#
+# NOTES:
+#   - User input is echoed to the console. Do not use this task for secrets;
+#     use vault-encrypted variables for sensitive data.
+#   - This wrapper is detected by ansibleRunner as a text input prompt.
+#   - Use title for the panel heading and data for the prompt body.
+#   - Multiline data is supported.
+#
+# Copyright 2026 Douglas WF Acheson (dwfa@dwfa.ca)
+# Licensed under Apache License 2.0. See LICENSE.md for details.
+#
+# Version: 1.1
+# Date: August 15, 2026
+##############################################################################
+---                                            # identifies a YAML config file
+
+- name: "niceInput: {{ title | default('Prompt user for input.') }}"
+  ansible.builtin.pause:
+    echo:   true
+    prompt: "{{ data | default('Enter value ...') }}"
+  register: promptInput
+
+- name: "set prompted value"
+  ansible.builtin.set_fact:
+    promptValue: "{{ promptInput.user_input | default('') | trim }}"

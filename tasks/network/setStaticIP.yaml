@@ -48,7 +48,7 @@
 #   # Online (running host already reachable at currentAddress)
 #   - include_tasks: "{{ taskPath }}/network/setStaticIP.yaml"
 #     vars:
-#       currentAddress:   "{{ hostvars['localhost'].newTarget }}"
+#       currentAddress:   "{{ hostvars['localhost'].currentIP }}"
 #       staticIPDataPath: "{{ dataPath }}/network/staticIP/installer.yaml"
 #
 # NOTES:
@@ -58,7 +58,7 @@
 #   - Both strategies produce an identical eth0-manual.nmconnection file
 #     (shared template at data/network/nm/eth.conf).
 #   - Project-specific consequences of an online switch (updating the
-#     getTargetHostIP `newTarget` fact, registering the new IP in
+#     getTargetHostIP `currentIP` fact, registering the new IP in
 #     runtime inventory) live in roles/setStaticIP, not in either
 #     strategy file.
 #

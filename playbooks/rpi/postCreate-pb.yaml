@@ -4,7 +4,7 @@
 # USAGE:
 #   Configures a freshly booted RPi: normalizes installer IP to a known
 #   static address (handles macOS-imaged hosts that boot via DHCP),
-#   creates the main user, and removes the installer.
+#   creates the builder user, and removes the installer.
 #
 # EXAMPLE:
 #   ansible-playbook --extra-vars "nodes=installer" playbooks/postCreate-pb.yaml
@@ -22,11 +22,11 @@
 #        groups exist, installs SSH keys)
 #   Play 4 (localhost — switch credentials):
 #     5. clearLocal: Remove installer's materialized SSH keys
-#     6. prepareRemoteCredentials: Load main user (dwfa) credentials
-#   Play 5 (target - as main user):
+#     6. prepareRemoteCredentials: Load builder user credentials
+#   Play 5 (target - as builder user):
 #     7. removeUsers: Remove installer user
 #   Play 6 (localhost):
-#     8. clearLocal: Remove dwfa's materialized SSH keys
+#     8. clearLocal: Remove builder user's materialized SSH keys
 #
 # NOTES:
 #   - RPi must be freshly imaged with installer user configured
@@ -34,15 +34,15 @@
 #     (macOS-imaged RPi without preconfigured static IP), user is
 #     prompted for the DHCP-assigned address
 #   - Play 2's setStaticIP normalizes the host onto the installer's
-#     static IP and updates `newTarget` so subsequent plays connect
+#     static IP and updates `currentIP` so subsequent plays connect
 #     there. If the host is already on the static IP (Linux-imaged
 #     path), the role's online strategy short-circuits.
 #   - After completion, RPi has default user and installer is removed
 #   - Play 4 runs clearLocal BEFORE prepareRemoteCredentials so the
 #     new user's SSH keys do not collide with (or get wiped by) the
 #     installer's keys on disk
-#   - getTargetHostIP sets the localhost fact `newTarget`; Plays 2, 3,
-#     and 5 reference it via `hosts: "{{ hostvars['localhost'].newTarget }}"`
+#   - getTargetHostIP sets the localhost fact `currentIP`; Plays 2, 3,
+#     and 5 reference it via `hosts: "{{ hostvars['localhost'].currentIP }}"`
 #
 # Copyright 2026 Douglas WF Acheson (dwfa@dwfa.ca)
 # Licensed under Apache License 2.0. See LICENSE.md for details.
@@ -62,20 +62,38 @@
   gather_facts: false
 
   roles:
+    - role: bootstrap
     - role: getTargetHostIP
       vars:
         targetHost: "{{ groups[nodes | default('localhost')] | first }}"
     - role: prepareRemoteCredentials
       vars:
-        userDataPath: "{{ dataPath }}/users/installer/user.yaml"
+        userDataPath: "{{ dataPath }}/users/{{ installerUser }}/user.yaml"
+
+  post_tasks:
+    # Read the installer's target static IP into a localhost fact so Play 2
+    # can gate on it (and skip entirely when the host is already there).
+    - name: Load target static IP for gating Play 2
+      ansible.builtin.set_fact:
+        targetIP: "{{ (lookup('file', dataPath ~ '/network/staticIP/installer.yaml') | from_yaml).ipDetails.address }}"
 
 ##############################################################################
 # Play 2: Normalize installer to known static IP (online strategy).
-# Skips internally if the host is already on the static address.
-# After this play, hostvars['localhost'].newTarget == installer's static IP.
+#
+# Skip condition (role-level `when:` on setStaticIP):
+#   _currentIP != _targetIP
+#     - _currentIP: where getTargetHostIP found the host reachable
+#                   (localhost fact currentIP, aliased)
+#     - _targetIP:  where installer.yaml says the host should live
+#                   (localhost fact targetIP, aliased)
+#   Equal → setStaticIP's tasks all skip. Different → setStaticIP runs
+#   and switches the host onto the target address.
+#
+# The play still opens an SSH connection to the target regardless —
+# only the role's tasks are gated by the when.
 ##############################################################################
 - name: Normalize installer to static IP
-  hosts:        "{{ hostvars['localhost'].newTarget }}"
+  hosts:        "{{ _currentIP }}"
   become:       true
   gather_facts: false
 
@@ -85,15 +103,20 @@
 
   roles:
     - role: setStaticIP
+      when: _currentIP != _targetIP
       vars:
-        currentAddress:   "{{ hostvars['localhost'].newTarget }}"
+        currentAddress:   "{{ _currentIP }}"
         staticIPDataPath: "{{ dataPath }}/network/staticIP/installer.yaml"
 
+  vars:
+    _currentIP: "{{ hostvars['localhost'].currentIP }}"
+    _targetIP:  "{{ hostvars['localhost'].targetIP }}"
+
 ##############################################################################
-# Play 3: Connect as installer, create main user (groups + SSH keys)
+# Play 3: Connect as installer, create builder user (groups + SSH keys)
 ##############################################################################
 - name: Create 1st real users
-  hosts:        "{{ hostvars['localhost'].newTarget }}"
+  hosts:        "{{ _targetIP }}"
   become:       true
   gather_facts: true
 
@@ -104,15 +127,18 @@
   roles:
     - role: createUsers
       vars:
-        userDataPath: "{{ dataPath }}/users/dwfa/user.yaml"
+        userDataPath: "{{ dataPath }}/users/{{ builderUser }}/user.yaml"
+
+  vars:
+    _targetIP: "{{ hostvars['localhost'].targetIP }}"
 
 ##############################################################################
 # Play 4: Switch credentials on localhost
 #   - clearLocal removes installer's materialized SSH keys first
-#   - prepareRemoteCredentials then loads dwfa (materializes dwfa's keys)
+#   - prepareRemoteCredentials then loads the builder user (materializes their keys)
 # Role order matters: cleanup MUST precede new materialization.
 ##############################################################################
-- name: Switch credentials (cleanup installer keys, load main user)
+- name: Switch credentials (cleanup installer keys, load builder user)
   hosts:        localhost
   connection:   local
   gather_facts: false
@@ -121,13 +147,13 @@
     - role: clearLocal
     - role: prepareRemoteCredentials
       vars:
-        userDataPath: "{{ dataPath }}/users/dwfa/user.yaml"
+        userDataPath: "{{ dataPath }}/users/{{ builderUser }}/user.yaml"
 
 ##############################################################################
-# Play 5: Connect as main user, remove installer
+# Play 5: Connect as builder user, remove installer
 ##############################################################################
-- name: Remove installer user (as main user)
-  hosts:        "{{ hostvars['localhost'].newTarget }}"
+- name: Remove installer user (as builder user)
+  hosts:        "{{ _targetIP }}"
   become:       true
   gather_facts: true
 
@@ -138,7 +164,10 @@
   roles:
     - role: removeUsers
       vars:
-        userDataPath: "{{ dataPath }}/users/installer/user.yaml"
+        userDataPath: "{{ dataPath }}/users/{{ installerUser }}/user.yaml"
+
+  vars:
+    _targetIP: "{{ hostvars['localhost'].targetIP }}"
 
 ##############################################################################
 # Play 6: Final cleanup of materialized SSH keys

@@ -36,7 +36,7 @@
   gather_facts: false
 
   roles:
-    - role: pause
+    - role: niceWait
       vars:
         title: "Wait for target boot"
         data: >-

@@ -26,7 +26,7 @@
 #
 # SUDO HANDLING:
 #   trustInternalCA tasks use become: true. Rather than prompt, the
-#   pre_tasks below load data/users/dwfa/user.yaml (vault-decrypted on
+#   pre_tasks below load data/users/{{ builderUser }}/user.yaml (vault-decrypted on
 #   the fly) and set ansible_become_password from userData.sudoPWD via
 #   set_fact. The set_fact must come AFTER include_vars (play-level
 #   `vars:` are evaluated before pre_tasks, which is why we don't put
@@ -58,7 +58,7 @@
     ##########################################################################
     - name: Load local user secrets
       ansible.builtin.include_vars:
-        file: "{{ dataPath }}/users/dwfa/user.yaml"
+        file: "{{ dataPath }}/users/{{ builderUser }}/user.yaml"
 
     ##########################################################################
     # Set ansible_become_password from the loaded userData. Done via
@@ -72,5 +72,6 @@
       no_log: true
 
   roles:
-    - installInternalCA
-    - trustInternalCA
+    - role: bootstrap
+    - role: installInternalCA
+    - role: trustInternalCA

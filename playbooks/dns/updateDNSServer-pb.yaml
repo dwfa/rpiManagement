@@ -34,9 +34,10 @@
   gather_facts: false
 
   roles:
+    - role: bootstrap
     - role: prepareRemoteCredentials
       vars:
-        userDataPath: "{{ dataPath }}/users/dwfa/user.yaml"
+        userDataPath: "{{ dataPath }}/users/{{ builderUser }}/user.yaml"
 
 ##############################################################################
 # Play 2: Push fresh config to the target host

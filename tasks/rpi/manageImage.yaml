@@ -179,7 +179,7 @@
 
     - name: Prompt user for fallback decision
       include_tasks:
-        file: "{{ taskPath }}/misc/niceWait.yaml"
+        file: "{{ taskPath }}/ui/niceWait.yaml"
       vars:
         title: "Use last known good image"
         data: |

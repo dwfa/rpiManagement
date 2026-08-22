@@ -9,10 +9,14 @@
 #   None (all have defaults)
 #
 # OPTIONAL VARIABLES:
-#   - sshPort: SSH port to check (default: 22)
-#   - waitDelay: Seconds before first check (default: 10)
+#   - waitHost:    Hostname or IP to probe (default: inventory_hostname)
+#   - waitPort:    TCP port to probe (default: sshPort, then 22)
 #   - waitTimeout: Max seconds to wait (default: 300)
-#   - debugFlag: Enable debug output
+#   - debugFlag:   Enable debug output
+#
+# OUTPUT VARIABLES:
+#   - hostReachable: bool — true if the host accepted a connection within
+#                    the timeout, false otherwise.
 #
 # EXAMPLE:
 #   - name: Wait for RPi to boot
@@ -34,25 +38,63 @@
 ---                                                   # identifies a YAML file
 
 ##############################################################################
-# Wait for host SSH to become available
+# Wait for host to accept TCP connections on the target port.
+#
+# NOTE: uses `nc -z` via the command module rather than
+# ansible.builtin.wait_for. On this controller (ansible-core 2.21 +
+# Python 3.14) wait_for hangs the full timeout even when the socket is
+# trivially reachable — verified by shell `nc` and a raw venv-Python
+# socket both connecting to the same target in <10ms during the same
+# window that wait_for timed out at 30s. nc via command is a small
+# dependency (present by default on macOS + all Debian-family targets
+# we care about) and behaves reliably. Revisit if/when we downgrade
+# Python or upgrade past a wait_for fix — the commented-out block
+# below preserves the original implementation for easy restoration.
 ##############################################################################
-- name: Wait for host SSH to be available
-  ansible.builtin.wait_for:
-    delay:   "{{ waitDelay   | default(10) }}"
-    host:    "{{ inventory_hostname }}"
-    port:    "{{ sshPort     | default(22) }}"
-    timeout: "{{ waitTimeout | default(300) }}"
-  delegate_to: localhost
-  register: _waitForHostResult
+- name: Wait for host [{{ waitHost | default(inventory_hostname) }}:{{ waitPort | default(sshPort | default(22)) }}]
+  ansible.builtin.command:
+    argv:
+      - nc
+      - -z
+      - -w
+      - "{{ waitTimeout | default(300) }}"
+      - "{{ waitHost | default(inventory_hostname) }}"
+      - "{{ waitPort | default(sshPort | default(22)) }}"
+  register:     _wfhResult
+  changed_when: false
+  failed_when:  false
+  delegate_to:  localhost
+
+- name: Set hostReachable fact
+  ansible.builtin.set_fact:
+    hostReachable: "{{ _wfhResult.rc == 0 }}"
 
 - name: Debug wait for host result
   ansible.builtin.debug:
-    msg: "[DEBUG] *** Host [{{ inventory_hostname }}] available on port [{{ sshPort | default(22) }}]"
+    msg: >-
+      [DEBUG] *** Host [{{ waitHost | default(inventory_hostname) }}]
+      probe on port [{{ waitPort | default(sshPort | default(22)) }}]
+      → hostReachable=[{{ hostReachable }}]
   when: debugFlag | default(0) | int == 1
+
+##############################################################################
+# Original wait_for implementation — preserved for easy restoration if
+# the Python 3.14 / ansible-core 2.21 wait_for behaviour is fixed.
+# Do NOT delete without confirming the replacement above is no longer
+# needed.
+##############################################################################
+# - name: Wait for host SSH to be available
+#   ansible.builtin.wait_for:
+#     delay:   "{{ waitDelay   | default(10) }}"
+#     host:    "{{ inventory_hostname }}"
+#     port:    "{{ sshPort     | default(22) }}"
+#     timeout: "{{ waitTimeout | default(300) }}"
+#   delegate_to: localhost
+#   register: _waitForHostResult
 
 ##############################################################################
 # Cleanup temporary facts
 ##############################################################################
 - name: Cleanup temporary facts
   ansible.builtin.set_fact:
-    _waitForHostResult: null
+    _wfhResult: null

@@ -75,9 +75,10 @@
       when: not _cdsWildcardKeyStat.stat.exists
 
   roles:
+    - role: bootstrap
     - role: prepareRemoteCredentials
       vars:
-        userDataPath: "{{ dataPath }}/users/dwfa/user.yaml"
+        userDataPath: "{{ dataPath }}/users/{{ builderUser }}/user.yaml"
 
 ##############################################################################
 # Play 2: Provision DNS server services on the target host

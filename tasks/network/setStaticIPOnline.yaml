@@ -9,7 +9,7 @@
 #
 #   Pure mechanism: this task only switches the IP and verifies the new
 #   address is reachable. Project-specific conventions (updating the
-#   getTargetHostIP `newTarget` fact, registering the new IP in runtime
+#   getTargetHostIP `currentIP` fact, registering the new IP in runtime
 #   inventory for `hosts:` matching) live in the wrapping role
 #   (roles/setStaticIP), not here.
 #
@@ -168,11 +168,16 @@
     # Confirm the new IP is reachable before letting the play continue
     ##########################################################################
     - name: Wait for new static IP to be reachable
-      ansible.builtin.wait_for:
-        host:    "{{ _ssipnLoaded.ipDetails.address }}"
-        port:    22
-        timeout: 60
-      delegate_to: localhost
+      include_tasks: "{{ taskPath }}/system/waitForHost.yaml"
+      vars:
+        waitHost:    "{{ _ssipnLoaded.ipDetails.address }}"
+        waitPort:    22
+        waitTimeout: 60
+
+    - name: Fail if new static IP not reachable
+      ansible.builtin.fail:
+        msg: "[ERROR] *** New static IP [{{ _ssipnLoaded.ipDetails.address }}] not reachable on port 22 after switch."
+      when: not hostReachable
 
 ##############################################################################
 # Cleanup temporary facts (note: _ssipnChanged is left in place — the

@@ -45,7 +45,7 @@
     - role: bootstrap
     - role: prepareRemoteCredentials
       vars:
-        userDataPath: "{{ dataPath }}/users/dwfa/user.yaml"
+        userDataPath: "{{ dataPath }}/users/{{ builderUser }}/user.yaml"
     - role: updateRPiImage
 
 ##############################################################################
@@ -82,7 +82,7 @@
     - role: createRPiImage
     - role: initRPiImage
       vars:
-        userDataPath: "{{ dataPath }}/users/installer/user.yaml"
+        userDataPath: "{{ dataPath }}/users/{{ installerUser }}/user.yaml"
 
 ##############################################################################
 # Play 3: Cleanup materialized SSH keys

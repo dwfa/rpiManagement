@@ -8,8 +8,8 @@
 # REQUIRED VARIABLES:
 #   - installDevice: Target device path (e.g., /dev/disk4, /dev/sdb)
 #       Must be set by getInstallDevice role before calling this role
-#   - dataDir: Path to data directory (inherited from common role)
-#   - taskDir: Path to tasks directory (inherited from common role)
+#   - dataPath: Path to data directory (inherited from common role)
+#   - taskPath: Path to tasks directory (inherited from common role)
 #   - debugFlag: (optional) Enable debug output
 #
 # WORKFLOW:
@@ -47,12 +47,12 @@
 ##############################################################################
 # Set image path based on execution context
 # Note: Image filename is always currentRPiImage.img
-#       - local connection: {{ dataDir }}/images/currentRPiImage.img
+#       - local connection: {{ dataPath }}/images/currentRPiImage.img
 #       - remote connection: /tmp/currentRPiImage.img (copied from localhost)
 ##############################################################################
 - name: Set image path (local)
   ansible.builtin.set_fact:
-    _imagePath: "{{ dataDir }}/images/currentRPiImage.img"
+    _imagePath: "{{ dataPath }}/images/currentRPiImage.img"
   when: ansible_connection == 'local'
 
 - name: Set image path (remote)
@@ -66,7 +66,7 @@
 ##############################################################################
 - name: Copy image to remote host
   ansible.builtin.copy:
-    src:  "{{ dataDir }}/images/currentRPiImage.img"
+    src:  "{{ dataPath }}/images/currentRPiImage.img"
     dest: "{{ _imagePath }}"
     mode: '0644'
   when: ansible_connection != 'local'
@@ -77,7 +77,7 @@
 ##############################################################################
 - name: Unmount all partitions on target device
   include_tasks:
-    file: "{{ taskDir }}/fileSystem/unmountDevice.yaml"
+    file: "{{ taskPath }}/fileSystem/unmountDevice.yaml"
   vars:
     device: "{{ installDevice }}"
 
@@ -86,7 +86,7 @@
 ##############################################################################
 - name: include task to write RPi Image to device
   include_tasks:
-    file: "{{ taskDir }}/fileSystem/writeImage.yaml"
+    file: "{{ taskPath }}/fileSystem/writeImage.yaml"
   vars:
     useDevice:    "{{ installDevice }}"
     useImagePath: "{{ _imagePath }}"

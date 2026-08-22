@@ -25,7 +25,7 @@
 # EXAMPLE:
 #   - name: Mount boot partition
 #     include_tasks:
-#       file: "{{ taskDir }}/fileSystem/mountPartition.yaml"
+#       file: "{{ taskPath }}/fileSystem/mountPartition.yaml"
 #     vars:
 #       partitionDevice: "/dev/disk41"  # Unix-style (auto-converted to /dev/disk4s1 on macOS)
 #       mountPoint: "/mnt/boot"
@@ -144,7 +144,7 @@
 
     - name: Unmount partition
       include_tasks:
-        file: "{{ taskDir }}/fileSystem/unmountPartition.yaml"
+        file: "{{ taskPath }}/fileSystem/unmountPartition.yaml"
       vars:
         mountPoint: "{{ _normalizedPartitionPath }}"
   when: _partitionMountCheck.rc == 0
@@ -168,7 +168,7 @@
 
     - name: Unmount mount point
       include_tasks:
-        file: "{{ taskDir }}/fileSystem/unmountPartition.yaml"
+        file: "{{ taskPath }}/fileSystem/unmountPartition.yaml"
   when: _mountPointCheck.rc == 0
 
 ##############################################################################

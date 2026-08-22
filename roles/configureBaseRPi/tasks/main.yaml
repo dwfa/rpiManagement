@@ -58,42 +58,42 @@
 ##############################################################################
 - name: Load base RPi configuration manifest
   ansible.builtin.include_vars:
-    file: "{{ dataDir }}/rpi/baseConfig.yaml"
+    file: "{{ dataPath }}/rpi/baseConfig.yaml"
 
 ##############################################################################
 # Apply each sub-configuration in order
 ##############################################################################
 - name: Configure timezone
   ansible.builtin.include_tasks:
-    file: "{{ taskDir }}/rpi/configureTZ.yaml"
+    file: "{{ taskPath }}/rpi/configureTZ.yaml"
 
 - name: Configure locale
   ansible.builtin.include_tasks:
-    file: "{{ taskDir }}/rpi/configureLocale.yaml"
+    file: "{{ taskPath }}/rpi/configureLocale.yaml"
 
 - name: Configure keyboard
   ansible.builtin.include_tasks:
-    file: "{{ taskDir }}/rpi/configureKeyboard.yaml"
+    file: "{{ taskPath }}/rpi/configureKeyboard.yaml"
 
 - name: Configure Wi-Fi country code
   ansible.builtin.include_tasks:
-    file: "{{ taskDir }}/rpi/configureWiFiCC.yaml"
+    file: "{{ taskPath }}/rpi/configureWiFiCC.yaml"
 
 - name: Configure GPU memory
   ansible.builtin.include_tasks:
-    file: "{{ taskDir }}/rpi/configureMemory.yaml"
+    file: "{{ taskPath }}/rpi/configureMemory.yaml"
 
 - name: Configure graphics
   ansible.builtin.include_tasks:
-    file: "{{ taskDir }}/rpi/configureGraphics.yaml"
+    file: "{{ taskPath }}/rpi/configureGraphics.yaml"
 
 - name: Configure console video mode
   ansible.builtin.include_tasks:
-    file: "{{ taskDir }}/rpi/configureConsole.yaml"
+    file: "{{ taskPath }}/rpi/configureConsole.yaml"
 
 - name: Configure EEPROM BOOT_ORDER
   ansible.builtin.include_tasks:
-    file: "{{ taskDir }}/rpi/configureBootOrder.yaml"
+    file: "{{ taskPath }}/rpi/configureBootOrder.yaml"
 
 ##############################################################################
 # Reboot once so all the above (locale, gpu_mem, framebuffer, video=,

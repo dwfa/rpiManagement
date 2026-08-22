@@ -29,7 +29,7 @@
 # EXAMPLE:
 #   - name: Write RPi OS image to device
 #     include_tasks:
-#       file: "{{ taskDir }}/fileSystem/writeImage.yaml"
+#       file: "{{ taskPath }}/fileSystem/writeImage.yaml"
 #     vars:
 #       useImagePath: "/path/to/image.xz"
 #       useDevice: "/dev/disk4"
@@ -137,7 +137,7 @@
   block:
     - name: confirm write operation
       include_tasks:
-        file: "{{ taskDir }}/misc/niceWait.yaml"
+        file: "{{ taskPath }}/misc/niceWait.yaml"
       vars:
         title: "Confirm write operation"
         data: "WARNING: About to write [{{ useImagePath }}] to [{{ _devicePath }}]. This will DESTROY all data on the device. Press Enter to continue or Ctrl+C then 'A' to abort..."

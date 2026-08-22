@@ -2,7 +2,7 @@
 # Ansible role metadata for initRPiImage role
 #
 # Dependencies:
-#   - common: Provides taskDir, dataDir variables
+#   - common: Provides taskPath, dataPath variables
 #
 # REQUIRED INPUT FACTS:
 #   - bootMountPoint: Mount path for boot partition (set by createRPiImage role)

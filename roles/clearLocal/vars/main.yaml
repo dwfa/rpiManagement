@@ -1,7 +1,7 @@
 ##############################################################################
 # Ansible role variables for clearLocal role
 #
-# Note: Global variables (taskDir, dataDir, ansible_* connection settings)
+# Note: Global variables (taskPath, dataPath, ansible_* connection settings)
 #       are inherited from common role via role dependency (see meta/main.yaml)
 #
 # Copyright 2025 Douglas WF Acheson (dwfa@dwfa.ca)

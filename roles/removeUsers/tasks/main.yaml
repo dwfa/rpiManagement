@@ -25,13 +25,13 @@
 #   roles:
 #     - role: removeUsers
 #       vars:
-#         userDataPath: "{{ dataDir }}/users/installer/user.yaml"
+#         userDataPath: "{{ dataPath }}/users/installer/user.yaml"
 #
 #   # Multiple users from a directory
 #   roles:
 #     - role: removeUsers
 #       vars:
-#         userDataDir: "{{ dataDir }}/users/default"
+#         userDataDir: "{{ dataPath }}/users/default"
 #
 # NOTES:
 #   - Scalar mode and vector mode are mutually exclusive — provide one
@@ -65,7 +65,7 @@
 ##############################################################################
 - name: Remove single user
   ansible.builtin.include_tasks:
-    file: "{{ taskDir }}/users/removeUser.yaml"
+    file: "{{ taskPath }}/users/removeUser.yaml"
   when: userDataPath is defined
 
 ##############################################################################
@@ -73,5 +73,5 @@
 ##############################################################################
 - name: Remove users from directory
   ansible.builtin.include_tasks:
-    file: "{{ taskDir }}/users/removeUsers.yaml"
+    file: "{{ taskPath }}/users/removeUsers.yaml"
   when: userDataDir is defined

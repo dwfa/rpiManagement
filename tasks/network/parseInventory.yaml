@@ -5,7 +5,7 @@
 #   include_tasks from any role/task that needs the rendered network
 #   inventory. Sets `netInventory` as a play-scoped shared fact:
 #
-#     - include_tasks: "{{ taskDir }}/network/parseInventory.yaml"
+#     - include_tasks: "{{ taskPath }}/network/parseInventory.yaml"
 #     - debug: var=netInventory.hosts
 #
 #   The task is cached: the first caller in a play does the netGen
@@ -17,7 +17,7 @@
 #
 # REQUIRED VARIABLES:
 #   None at the call site. Driven by:
-#     - {{ dataDir }}/network/inventory.xlsx
+#     - {{ dataPath }}/network/inventory.xlsx
 #     - {{ netGenPath }} (controller-side path to the netGen project)
 #
 # OPTIONAL VARIABLES:
@@ -62,7 +62,7 @@
 
     - name: Parse network inventory via netGen
       networkInventory:
-        path:       "{{ dataDir }}/network/inventory.xlsx"
+        path:       "{{ dataPath }}/network/inventory.xlsx"
         netGenPath: "{{ netGenPath }}"
         strict:     true
       delegate_to: localhost

@@ -19,7 +19,7 @@
 #      pre-existing target
 #
 # EXAMPLE:
-#   - include_tasks: "{{ taskDir }}/vim/configure.yaml"
+#   - include_tasks: "{{ taskPath }}/vim/configure.yaml"
 #
 # NOTES:
 #   - Files copied with backup: yes — pre-existing /etc/vim/vimrc.local
@@ -45,7 +45,7 @@
 ##############################################################################
 - name: Load vim configuration manifest
   ansible.builtin.include_vars:
-    file: "{{ dataDir }}/packages/vim/metadata.yaml"
+    file: "{{ dataPath }}/packages/vim/metadata.yaml"
 
 ##############################################################################
 # Copy each declared file to its destination

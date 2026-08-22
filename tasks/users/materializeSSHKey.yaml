@@ -10,12 +10,12 @@
 #
 # OPTIONAL VARIABLES:
 #   - sshKeyPath: Directory to write key files
-#                 (default: "{{ dataDir }}/ssh")
+#                 (default: "{{ dataPath }}/ssh")
 #                 Creates: sshKeyPath/key.prv and sshKeyPath/key.pub
 #
 # PREREQUISITES:
 #   - userData fact must be set (done by prepareRemoteCredentials)
-#   - dataDir must be defined (provided by common role)
+#   - dataPath must be defined (provided by common role)
 #
 # NOTES:
 #   - MUST run on localhost — fails immediately if inventory_hostname
@@ -53,7 +53,7 @@
 - name: Write private SSH key to disk
   ansible.builtin.copy:
     content: "{{ (userData.sshKeys.private.values() | list | first).key }}\n"
-    dest:    "{{ sshKeyPath | default(dataDir ~ '/ssh') }}/key.prv"
+    dest:    "{{ sshKeyPath | default(dataPath ~ '/ssh') }}/key.prv"
     mode:    '0600'
   when:
     - userData.sshKeys is defined
@@ -66,7 +66,7 @@
 - name: Write public SSH key to disk
   ansible.builtin.copy:
     content: "{{ (userData.sshKeys.public.values() | list | first).key }}\n"
-    dest:    "{{ sshKeyPath | default(dataDir ~ '/ssh') }}/key.pub"
+    dest:    "{{ sshKeyPath | default(dataPath ~ '/ssh') }}/key.pub"
     mode:    '0644'
   when:
     - userData.sshKeys is defined

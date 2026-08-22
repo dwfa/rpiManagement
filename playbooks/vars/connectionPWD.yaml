@@ -38,7 +38,7 @@
 userData: "{{ hostvars['localhost'].userData }}"
 
 # SSH connection configuration
-ansible_ssh_common_args: "-o UserKnownHostsFile={{ dataDir }}/ssh/knownHosts"
+ansible_ssh_common_args: "-o UserKnownHostsFile={{ dataPath }}/ssh/knownHosts"
 ansible_ssh_pass:        "{{ userData.pwd }}"
 ansible_user:            "{{ userData.uName }}"
 

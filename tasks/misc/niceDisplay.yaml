@@ -3,7 +3,7 @@
 #
 # USAGE:
 #   - ansible.builtin.include_tasks:
-#       file: "{{ taskDir }}/misc/niceDisplay.yaml"
+#       file: "{{ taskPath }}/misc/niceDisplay.yaml"
 #     vars:
 #       title: "Sample output"
 #       data: "preformatted text"

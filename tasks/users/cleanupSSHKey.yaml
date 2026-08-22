@@ -8,7 +8,7 @@
 #
 # OPTIONAL VARIABLES:
 #   - sshKeyPath: Directory containing the materialized key files
-#                 (default: "{{ dataDir }}/ssh")
+#                 (default: "{{ dataPath }}/ssh")
 #                 Removes: sshKeyPath/key.prv and sshKeyPath/key.pub
 #
 # NOTES:
@@ -43,5 +43,5 @@
     path:  "{{ item }}"
     state: absent
   loop:
-    - "{{ sshKeyPath | default(dataDir ~ '/ssh') }}/key.prv"
-    - "{{ sshKeyPath | default(dataDir ~ '/ssh') }}/key.pub"
+    - "{{ sshKeyPath | default(dataPath ~ '/ssh') }}/key.prv"
+    - "{{ sshKeyPath | default(dataPath ~ '/ssh') }}/key.pub"

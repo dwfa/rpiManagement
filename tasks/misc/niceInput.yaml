@@ -15,7 +15,7 @@
 # EXAMPLE:
 #   - name: Ask user for DHCP-assigned IP
 #     include_tasks:
-#       file: "{{ taskDir }}/misc/niceInput.yaml"
+#       file: "{{ taskPath }}/misc/niceInput.yaml"
 #     vars:
 #       title: "Enter DHCP address"
 #       data: "Enter the DHCP-assigned IP for this host."

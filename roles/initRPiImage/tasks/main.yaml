@@ -8,8 +8,8 @@
 #
 # REQUIRED FACTS:
 #   - installDevice: Target device path (set by getInstallDevice role)
-#   - taskDir: Path to tasks directory (inherited from common role)
-#   - dataDir: Path to data directory (inherited from common role)
+#   - taskPath: Path to tasks directory (inherited from common role)
+#   - dataPath: Path to data directory (inherited from common role)
 #   - userDataPath: Path to vault-encrypted user.yaml for RPi initial user
 #                   (passed as role var from playbook)
 #   - debugFlag: (optional) Enable debug output
@@ -56,7 +56,7 @@
 ##############################################################################
 - name: Wait for macOS to auto-mount boot partition
   ansible.builtin.include_tasks:
-    file: "{{ taskDir }}/misc/niceWait.yaml"
+    file: "{{ taskPath }}/misc/niceWait.yaml"
   vars:
     title: "Wait for boot partition mount"
     data: >-
@@ -67,14 +67,14 @@
 
 - name: Unmount auto-mounted boot partition (macOS)
   include_tasks:
-    file: "{{ taskDir }}/fileSystem/unmountPartition.yaml"
+    file: "{{ taskPath }}/fileSystem/unmountPartition.yaml"
   vars:
     mountPoint: "{{ _bootPartitionDevice }}"
   when: ansible_facts['system'] == 'Darwin'
 
 - name: Mount boot partition
   include_tasks:
-    file: "{{ taskDir }}/fileSystem/mountPartition.yaml"
+    file: "{{ taskPath }}/fileSystem/mountPartition.yaml"
   vars:
     mountPoint:      "{{ _bootMountPoint }}"
     partitionDevice: "{{ _bootPartitionDevice }}"
@@ -84,17 +84,17 @@
 ##############################################################################
 - name: Copy init files to boot partition
   include_tasks:
-    file: "{{ taskDir }}/files/copyFiles.yaml"
+    file: "{{ taskPath }}/files/copyFiles.yaml"
   vars:
     destDir:      "{{ _bootMountPoint }}"
-    metadataPath: "{{ dataDir }}/rpi/imageBuild.yaml"
+    metadataPath: "{{ dataPath }}/rpi/imageBuild.yaml"
 
 ##############################################################################
 # Generate initial user in userconf.txt on boot partition
 ##############################################################################
 - name: Generate initial user on boot partition
   include_tasks:
-    file: "{{ taskDir }}/rpi/writeUserConf.yaml"
+    file: "{{ taskPath }}/rpi/writeUserConf.yaml"
   vars:
     bootMountPoint: "{{ _bootMountPoint }}"
 
@@ -103,7 +103,7 @@
 ##############################################################################
 - name: Update cmdline.txt
   include_tasks:
-    file: "{{ taskDir }}/files/modifyFile.yaml"
+    file: "{{ taskPath }}/files/modifyFile.yaml"
   vars:
     filePath:     "{{ _cmdlineTxtPath }}"
     metadataPath: "{{ _cmdlineTxtModsPath }}"
@@ -113,7 +113,7 @@
 ##############################################################################
 - name: Unmount boot partition
   include_tasks:
-    file: "{{ taskDir }}/fileSystem/unmountPartition.yaml"
+    file: "{{ taskPath }}/fileSystem/unmountPartition.yaml"
   vars:
     mountPoint: "{{ _bootMountPoint }}"
 
@@ -126,5 +126,5 @@
     name: setStaticIP
   vars:
     partitionDevice:  "{{ _rootPartitionDevice }}"
-    staticIPDataPath: "{{ dataDir }}/network/staticIP/installer.yaml"
+    staticIPDataPath: "{{ dataPath }}/network/staticIP/installer.yaml"
   when: ansible_facts['system'] != 'Darwin'

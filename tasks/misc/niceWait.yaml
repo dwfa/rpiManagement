@@ -12,7 +12,7 @@
 # EXAMPLE:
 #   - name: Prompt user to insert storage device
 #     include_tasks:
-#       file: "{{ taskDir }}/misc/niceWait.yaml"
+#       file: "{{ taskPath }}/misc/niceWait.yaml"
 #     vars:
 #       title: "Attach storage device"
 #       data: "Attach the storage device and press Enter to continue."

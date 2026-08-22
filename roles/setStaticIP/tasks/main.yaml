@@ -35,7 +35,7 @@
 #       name: setStaticIP
 #     vars:
 #       partitionDevice:  "{{ _rootPartitionDevice }}"
-#       staticIPDataPath: "{{ dataDir }}/network/staticIP/installer.yaml"
+#       staticIPDataPath: "{{ dataPath }}/network/staticIP/installer.yaml"
 #
 #   # Online (running host)
 #   - hosts: "{{ hostvars['localhost'].newTarget }}"
@@ -43,7 +43,7 @@
 #       - role: setStaticIP
 #         vars:
 #           currentAddress:   "{{ hostvars['localhost'].newTarget }}"
-#           staticIPDataPath: "{{ dataDir }}/network/staticIP/installer.yaml"
+#           staticIPDataPath: "{{ dataPath }}/network/staticIP/installer.yaml"
 #
 # NOTES:
 #   - Strategy selection is performed inside tasks/network/setStaticIP.yaml
@@ -68,7 +68,7 @@
 ##############################################################################
 - name: Apply static IP
   ansible.builtin.include_tasks:
-    file: "{{ taskDir }}/network/setStaticIP.yaml"
+    file: "{{ taskPath }}/network/setStaticIP.yaml"
 
 ##############################################################################
 # Post-conditions for the online strategy — update localhost target fact

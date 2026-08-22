@@ -134,7 +134,7 @@
         group: root
         mode:  '0600'
         owner: root
-        src:   "{{ dataDir }}/network/nm/eth.conf"
+        src:   "{{ dataPath }}/network/nm/eth.conf"
       vars:
         autoconnect: "yes"
         ip4Address:  "address1={{ _ssipnLoaded.ipDetails.address }}/{{ _ssipnLoaded.ipDetails.netmask }},{{ _ssipnLoaded.ipDetails.gateway }}"

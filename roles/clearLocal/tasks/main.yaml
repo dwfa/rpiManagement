@@ -15,8 +15,8 @@
 #   the file naturally.
 #
 # REQUIRED VARIABLES:
-#   - taskDir: Path to tasks directory (from common role)
-#   - dataDir: Path to data directory (from common role)
+#   - taskPath: Path to tasks directory (from common role)
+#   - dataPath: Path to data directory (from common role)
 #
 # OPTIONAL VARIABLES:
 #   - debugFlag: Enable debug output
@@ -52,7 +52,7 @@
 ##############################################################################
 - name: Remove materialized SSH keys
   ansible.builtin.include_tasks:
-    file: "{{ taskDir }}/users/cleanupSSHKey.yaml"
+    file: "{{ taskPath }}/users/cleanupSSHKey.yaml"
 
 ##############################################################################
 # Wipe knownHosts file. state=absent is idempotent — succeeds whether
@@ -60,6 +60,6 @@
 ##############################################################################
 - name: Remove knownHosts file
   ansible.builtin.file:
-    path:  "{{ dataDir }}/ssh/knownHosts"
+    path:  "{{ dataPath }}/ssh/knownHosts"
     state: absent
   delegate_to: localhost

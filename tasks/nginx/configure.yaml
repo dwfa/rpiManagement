@@ -27,7 +27,7 @@
 #   7. Reload nginx (also enables it if not already enabled)
 #
 # EXAMPLE:
-#   - include_tasks: "{{ taskDir }}/nginx/configure.yaml"
+#   - include_tasks: "{{ taskPath }}/nginx/configure.yaml"
 #
 # NOTES:
 #   - nginx.conf references the wwwAdmin user. Validation step will
@@ -55,14 +55,14 @@
 ##############################################################################
 - name: Install wildcard TLS cert
   ansible.builtin.include_tasks:
-    file: "{{ taskDir }}/pki/installWildcardCert.yaml"
+    file: "{{ taskPath }}/pki/installWildcardCert.yaml"
 
 ##############################################################################
 # Load the nginx configuration manifest
 ##############################################################################
 - name: Load nginx configuration manifest
   ansible.builtin.include_vars:
-    file: "{{ dataDir }}/packages/nginx/metadata.yaml"
+    file: "{{ dataPath }}/packages/nginx/metadata.yaml"
 
 ##############################################################################
 # Create the directory structure declared in nginxDirs

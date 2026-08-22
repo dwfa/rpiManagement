@@ -15,13 +15,13 @@
 # EXAMPLE:
 #   - name: Backup cmdline.txt before modification
 #     include_tasks:
-#       file: "{{ taskDir }}/files/backupFile.yaml"
+#       file: "{{ taskPath }}/files/backupFile.yaml"
 #     vars:
 #       filePath: "/mnt/boot/cmdline.txt"
 #
 #   - name: Backup to specific directory
 #     include_tasks:
-#       file: "{{ taskDir }}/files/backupFile.yaml"
+#       file: "{{ taskPath }}/files/backupFile.yaml"
 #     vars:
 #       filePath: "/mnt/boot/cmdline.txt"
 #       backupDir: "/tmp/backups"

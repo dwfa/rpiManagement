@@ -26,7 +26,7 @@
 # EXAMPLE:
 #   - name: Unmount device before writing image
 #     include_tasks:
-#       file: "{{ taskDir }}/fileSystem/unmountDevice.yaml"
+#       file: "{{ taskPath }}/fileSystem/unmountDevice.yaml"
 #     vars:
 #       device: "{{ installDevice }}"
 #
@@ -134,7 +134,7 @@
 
 - name: Unmount each mounted partition (Linux)
   include_tasks:
-    file: "{{ taskDir }}/fileSystem/unmountPartition.yaml"
+    file: "{{ taskPath }}/fileSystem/unmountPartition.yaml"
   vars:
     mountPoint: "/dev/{{ item.name }}"
   loop: "{{ _mountedPartitions }}"

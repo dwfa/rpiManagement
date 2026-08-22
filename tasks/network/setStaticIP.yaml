@@ -40,16 +40,16 @@
 #
 # EXAMPLES:
 #   # Offline (during imaging, partition mounted by caller chain)
-#   - include_tasks: "{{ taskDir }}/network/setStaticIP.yaml"
+#   - include_tasks: "{{ taskPath }}/network/setStaticIP.yaml"
 #     vars:
 #       partitionDevice:  "{{ _rootPartitionDevice }}"
-#       staticIPDataPath: "{{ dataDir }}/network/staticIP/installer.yaml"
+#       staticIPDataPath: "{{ dataPath }}/network/staticIP/installer.yaml"
 #
 #   # Online (running host already reachable at currentAddress)
-#   - include_tasks: "{{ taskDir }}/network/setStaticIP.yaml"
+#   - include_tasks: "{{ taskPath }}/network/setStaticIP.yaml"
 #     vars:
 #       currentAddress:   "{{ hostvars['localhost'].newTarget }}"
-#       staticIPDataPath: "{{ dataDir }}/network/staticIP/installer.yaml"
+#       staticIPDataPath: "{{ dataPath }}/network/staticIP/installer.yaml"
 #
 # NOTES:
 #   - Strategy selection is unambiguous by construction: presence of
@@ -106,7 +106,7 @@
 - name: Apply static IP (offline strategy)
   when: _ssipStrategy == 'offline'
   ansible.builtin.include_tasks:
-    file: "{{ taskDir }}/network/setStaticIPOffline.yaml"
+    file: "{{ taskPath }}/network/setStaticIPOffline.yaml"
 
 ##############################################################################
 # Online strategy — write .nmconnection to a running host via SSH and
@@ -115,7 +115,7 @@
 - name: Apply static IP (online strategy)
   when: _ssipStrategy == 'online'
   ansible.builtin.include_tasks:
-    file: "{{ taskDir }}/network/setStaticIPOnline.yaml"
+    file: "{{ taskPath }}/network/setStaticIPOnline.yaml"
 
 ##############################################################################
 # Cleanup temporary facts

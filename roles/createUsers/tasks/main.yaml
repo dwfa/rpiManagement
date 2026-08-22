@@ -11,7 +11,7 @@
 #   - userDataDir:  Path to a directory containing user subdirectories
 #                   (each subdirectory must contain a user.yaml)
 #   - userNames:    List of usernames. Each is resolved by convention
-#                   to "{{ dataDir }}/users/<uName>/user.yaml". Useful
+#                   to "{{ dataPath }}/users/<uName>/user.yaml". Useful
 #                   when the caller wants to create a specific subset
 #                   of users without scanning a whole directory or
 #                   spelling out full paths.
@@ -31,13 +31,13 @@
 #   roles:
 #     - role: createUsers
 #       vars:
-#         userDataPath: "{{ dataDir }}/users/dwfa/user.yaml"
+#         userDataPath: "{{ dataPath }}/users/dwfa/user.yaml"
 #
 #   # Multiple users from a directory (scan)
 #   roles:
 #     - role: createUsers
 #       vars:
-#         userDataDir: "{{ dataDir }}/users/default"
+#         userDataDir: "{{ dataPath }}/users/default"
 #
 #   # Specific list of users (paths derived by convention)
 #   roles:
@@ -84,7 +84,7 @@
 - name: Create single user
   when: userDataPath is defined
   ansible.builtin.include_tasks:
-    file: "{{ taskDir }}/users/createUser.yaml"
+    file: "{{ taskPath }}/users/createUser.yaml"
 
 ##############################################################################
 # Mode 2 — multiple users discovered from a directory
@@ -92,7 +92,7 @@
 - name: Create users from directory
   when: userDataDir is defined
   ansible.builtin.include_tasks:
-    file: "{{ taskDir }}/users/createUsers.yaml"
+    file: "{{ taskPath }}/users/createUsers.yaml"
 
 ##############################################################################
 # Mode 3 — list of usernames; delegate to createUsers.yaml task which
@@ -104,4 +104,4 @@
 - name: Create users from list of names
   when: userNames is defined
   ansible.builtin.include_tasks:
-    file: "{{ taskDir }}/users/createUsers.yaml"
+    file: "{{ taskPath }}/users/createUsers.yaml"

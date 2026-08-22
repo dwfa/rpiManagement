@@ -1,7 +1,7 @@
 ##############################################################################
 # Ansible role variables for updateRPiImage role
 #
-# Note: Global variables (taskDir, dataDir, ansible_* connection settings)
+# Note: Global variables (taskPath, dataPath, ansible_* connection settings)
 #       are inherited from common role via role dependency (see meta/main.yaml)
 #
 # Copyright 2025 Douglas WF Acheson (dwfa@dwfa.ca)
@@ -14,7 +14,7 @@
 ---                                            # identifies a YAML config file
 
 # RPi Image configuration (role-specific variables)
-imageDir: "{{ dataDir }}/images"
+imageDir: "{{ dataPath }}/images"
 rpiImage: "Raspberry Pi OS Lite (64-bit)"
 imagePath: "{{ imageDir }}/currentRPiImage.img"
 rpiApiUrl: "https://downloads.raspberrypi.org/os_list_imagingutility_v3.json"

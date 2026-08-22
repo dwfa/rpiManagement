@@ -21,4 +21,4 @@
 ##############################################################################
 - name: wait for user input to continue
   include_tasks:
-    file: "{{ taskDir }}/misc/niceWait.yaml"
+    file: "{{ taskPath }}/misc/niceWait.yaml"

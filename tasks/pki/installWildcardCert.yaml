@@ -21,7 +21,7 @@
 #   2. Copy cert (0644) + key (0600), backup any pre-existing files
 #
 # EXAMPLE:
-#   - include_tasks: "{{ taskDir }}/pki/installWildcardCert.yaml"
+#   - include_tasks: "{{ taskPath }}/pki/installWildcardCert.yaml"
 #
 # NOTES:
 #   - The CA root key is NOT copied to targets — only the leaf cert + key
@@ -55,7 +55,7 @@
 - name: Deploy wildcard certificate
   ansible.builtin.copy:
     backup: true
-    src:    "{{ dataDir }}/pki/wildcard.{{ domain }}.crt"
+    src:    "{{ dataPath }}/pki/wildcard.{{ domain }}.crt"
     dest:   /etc/ssl/private/wildcard.{{ domain }}.crt
     owner:  root
     group:  root
@@ -67,7 +67,7 @@
 - name: Deploy wildcard private key
   ansible.builtin.copy:
     backup: true
-    src:    "{{ dataDir }}/pki/wildcard.{{ domain }}.key"
+    src:    "{{ dataPath }}/pki/wildcard.{{ domain }}.key"
     dest:   /etc/ssl/private/wildcard.{{ domain }}.key
     owner:  root
     group:  root

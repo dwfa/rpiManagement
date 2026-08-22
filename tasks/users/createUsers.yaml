@@ -7,7 +7,7 @@
 #     - userDataDir: scan the directory for subdirectories, treat each
 #                    as a username, look for user.yaml inside
 #     - userNames:   take the list as-is; resolve each name to the
-#                    conventional "{{ dataDir }}/users/<uName>/user.yaml"
+#                    conventional "{{ dataPath }}/users/<uName>/user.yaml"
 #
 # REQUIRED VARIABLES (exactly one of):
 #   - userDataDir: Path to a directory containing user subdirectories
@@ -25,12 +25,12 @@
 #
 # EXAMPLE:
 #   # Directory scan
-#   - include_tasks: "{{ taskDir }}/users/createUsers.yaml"
+#   - include_tasks: "{{ taskPath }}/users/createUsers.yaml"
 #     vars:
-#       userDataDir: "{{ dataDir }}/users/default"
+#       userDataDir: "{{ dataPath }}/users/default"
 #
 #   # Explicit list
-#   - include_tasks: "{{ taskDir }}/users/createUsers.yaml"
+#   - include_tasks: "{{ taskPath }}/users/createUsers.yaml"
 #     vars:
 #       userNames:
 #         - dwfa
@@ -70,14 +70,14 @@
 
     - name: Discover user subdirectories
       ansible.builtin.include_tasks:
-        file: "{{ taskDir }}/files/discoverDirs.yaml"
+        file: "{{ taskPath }}/files/discoverDirs.yaml"
       vars:
         searchDir: "{{ userDataDir }}"
 
     - name: Create each discovered user
       when: discoveredDirs | length > 0
       ansible.builtin.include_tasks:
-        file: "{{ taskDir }}/users/createUser.yaml"
+        file: "{{ taskPath }}/users/createUser.yaml"
       vars:
         userDataPath: "{{ userDataDir }}/{{ userIdx }}/user.yaml"
       loop: "{{ discoveredDirs }}"
@@ -98,7 +98,7 @@
 - name: Mode B — explicit list of names
   when: userNames is defined
   ansible.builtin.include_tasks:
-    file: "{{ taskDir }}/users/createUser.yaml"
+    file: "{{ taskPath }}/users/createUser.yaml"
   vars:
     uName: "{{ userIdx }}"
   loop: "{{ userNames }}"

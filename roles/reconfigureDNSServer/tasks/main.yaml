@@ -55,18 +55,18 @@
 ##############################################################################
 - name: Reconfigure bind9
   ansible.builtin.include_tasks:
-    file: "{{ taskDir }}/bind9/configure.yaml"
+    file: "{{ taskPath }}/bind9/configure.yaml"
 
 ##############################################################################
 # Step 2: isc-dhcp-server -- DHCP reservations driven from inventory.xlsx
 ##############################################################################
 - name: Reconfigure isc-dhcp-server
   ansible.builtin.include_tasks:
-    file: "{{ taskDir }}/isc-dhcp-server/configure.yaml"
+    file: "{{ taskPath }}/isc-dhcp-server/configure.yaml"
 
 ##############################################################################
 # Step 3: pi-hole -- setupVars.conf + pihole.toml driven from metadata
 ##############################################################################
 - name: Reconfigure pi-hole
   ansible.builtin.include_tasks:
-    file: "{{ taskDir }}/pihole/configure.yaml"
+    file: "{{ taskPath }}/pihole/configure.yaml"

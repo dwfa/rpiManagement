@@ -16,10 +16,10 @@
 # EXAMPLE:
 #   - name: Generate userconf.txt on boot partition
 #     include_tasks:
-#       file: "{{ taskDir }}/rpi/writeUserConf.yaml"
+#       file: "{{ taskPath }}/rpi/writeUserConf.yaml"
 #     vars:
 #       bootMountPoint: "{{ _bootMountPoint }}"
-#       userDataPath:   "{{ dataDir }}/users/installer/user.yaml"
+#       userDataPath:   "{{ dataPath }}/users/installer/user.yaml"
 #
 # NOTES:
 #   - Requires Python passlib for password_hash('sha512') filter

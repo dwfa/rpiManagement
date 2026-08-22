@@ -7,7 +7,7 @@
 #   `installDevice` fact for downstream tasks (e.g. createRPiImage).
 #
 # REQUIRED VARIABLES:
-#   - taskDir: Path to tasks directory
+#   - taskPath: Path to tasks directory
 #
 # OPTIONAL VARIABLES:
 #   - debugFlag: Enable debug output
@@ -46,12 +46,12 @@
 ##############################################################################
 - name: Include macOS device detection
   ansible.builtin.include_tasks:
-    file: "{{ taskDir }}/macOS/getInstallDevice.yaml"
+    file: "{{ taskPath }}/macOS/getInstallDevice.yaml"
   when: ansible_facts['system'] == "Darwin"
 
 - name: Include Linux device detection
   ansible.builtin.include_tasks:
-    file: "{{ taskDir }}/Linux/getInstallDevice.yaml"
+    file: "{{ taskPath }}/Linux/getInstallDevice.yaml"
   when: ansible_facts['system'] == "Linux"
 
 ##############################################################################

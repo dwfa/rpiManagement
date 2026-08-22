@@ -31,7 +31,7 @@
 #   9. Reload bind9 (graceful — existing connections survive)
 #
 # EXAMPLE:
-#   - include_tasks: "{{ taskDir }}/bind/configure.yaml"
+#   - include_tasks: "{{ taskPath }}/bind/configure.yaml"
 #
 # NOTES:
 #   - Zone files are owned root:bind 0644 so bind can read them
@@ -55,7 +55,7 @@
 ##############################################################################
 - name: Load bind configuration manifest
   ansible.builtin.include_vars:
-    file: "{{ dataDir }}/packages/bind9/metadata.yaml"
+    file: "{{ dataPath }}/packages/bind9/metadata.yaml"
 
 ##############################################################################
 # Step 2: Parse the canonical network inventory on the controller.
@@ -63,7 +63,7 @@
 # service run (bind9 + isc-dhcp + pi-hole) parses the Excel once.
 ##############################################################################
 - name: Ensure network inventory is parsed
-  ansible.builtin.include_tasks: "{{ taskDir }}/network/parseInventory.yaml"
+  ansible.builtin.include_tasks: "{{ taskPath }}/network/parseInventory.yaml"
 
 ##############################################################################
 # Step 3: Alias metadata.subnets as zoneSubnets for the templates
@@ -77,7 +77,7 @@
 ##############################################################################
 - name: Render forward zone
   ansible.builtin.template:
-    src:   "{{ dataDir }}/packages/bind9/templates/forward.j2"
+    src:   "{{ dataPath }}/packages/bind9/templates/forward.j2"
     dest:  "{{ zoneDir }}/db.{{ domain }}"
     owner: root
     group: bind
@@ -91,7 +91,7 @@
 ##############################################################################
 - name: Render reverse zone
   ansible.builtin.template:
-    src:   "{{ dataDir }}/packages/bind9/templates/reverse.j2"
+    src:   "{{ dataPath }}/packages/bind9/templates/reverse.j2"
     dest:  "{{ zoneDir }}/db.{{ zoneSubnets[0].subnetPrefix }}"
     owner: root
     group: bind
@@ -105,7 +105,7 @@
 ##############################################################################
 - name: Render named.conf.local
   ansible.builtin.template:
-    src:    "{{ dataDir }}/packages/bind9/templates/named.conf.local.j2"
+    src:    "{{ dataPath }}/packages/bind9/templates/named.conf.local.j2"
     dest:   /etc/bind/named.conf.local
     owner:  root
     group:  bind
@@ -117,7 +117,7 @@
 ##############################################################################
 - name: Render named.conf.options
   ansible.builtin.template:
-    src:    "{{ dataDir }}/packages/bind9/templates/named.conf.options.j2"
+    src:    "{{ dataPath }}/packages/bind9/templates/named.conf.options.j2"
     dest:   /etc/bind/named.conf.options
     owner:  root
     group:  bind

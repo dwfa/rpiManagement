@@ -62,14 +62,14 @@
     ##########################################################################
     - name: Verify wildcard cert exists
       ansible.builtin.stat:
-        path: "{{ dataDir }}/pki/wildcard.{{ domain }}.key"
+        path: "{{ dataPath }}/pki/wildcard.{{ domain }}.key"
       register: _cdsWildcardKeyStat
 
     - name: Fail if wildcard cert is missing
       ansible.builtin.fail:
         msg: >-
           [ERROR] *** Wildcard cert/key not found at
-          [{{ dataDir }}/pki/wildcard.{{ domain }}.key].
+          [{{ dataPath }}/pki/wildcard.{{ domain }}.key].
           Run [./managePKI.sh] first to generate the internal CA +
           wildcard cert.
       when: not _cdsWildcardKeyStat.stat.exists
@@ -77,7 +77,7 @@
   roles:
     - role: prepareRemoteCredentials
       vars:
-        userDataPath: "{{ dataDir }}/users/dwfa/user.yaml"
+        userDataPath: "{{ dataPath }}/users/dwfa/user.yaml"
 
 ##############################################################################
 # Play 2: Provision DNS server services on the target host

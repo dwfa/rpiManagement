@@ -34,7 +34,7 @@
 #   pre_tasks:
 #     - name: Resolve target host IP
 #       include_tasks:
-#         file: "{{ taskDir }}/system/resolveTargetHost.yaml"
+#         file: "{{ taskPath }}/system/resolveTargetHost.yaml"
 #       vars:
 #         targetHost: "{{ groups[nodes] | first }}"
 #

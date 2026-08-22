@@ -28,21 +28,21 @@
 #   # Unmount by mount point path
 #   - name: Unmount boot partition
 #     include_tasks:
-#       file: "{{ taskDir }}/fileSystem/unmountPartition.yaml"
+#       file: "{{ taskPath }}/fileSystem/unmountPartition.yaml"
 #     vars:
 #       mountPoint: "/mnt/boot"
 #
 #   # Unmount by device path
 #   - name: Unmount device
 #     include_tasks:
-#       file: "{{ taskDir }}/fileSystem/unmountPartition.yaml"
+#       file: "{{ taskPath }}/fileSystem/unmountPartition.yaml"
 #     vars:
 #       mountPoint: "/dev/disk4s1"
 #
 #   # Force unmount busy partition
 #   - name: Force unmount busy partition
 #     include_tasks:
-#       file: "{{ taskDir }}/fileSystem/unmountPartition.yaml"
+#       file: "{{ taskPath }}/fileSystem/unmountPartition.yaml"
 #     vars:
 #       mountPoint: "/mnt/boot"
 #       forceUnmount: true

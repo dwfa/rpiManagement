@@ -23,11 +23,11 @@
 #   2. Install via the host's package manager (apt today)
 #
 # EXAMPLE:
-#   - include_tasks: "{{ taskDir }}/system/installPackage.yaml"
+#   - include_tasks: "{{ taskPath }}/system/installPackage.yaml"
 #     vars:
 #       packageList: vim
 #
-#   - include_tasks: "{{ taskDir }}/system/installPackage.yaml"
+#   - include_tasks: "{{ taskPath }}/system/installPackage.yaml"
 #     vars:
 #       packageList:
 #         - fontconfig

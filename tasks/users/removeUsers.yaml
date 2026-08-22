@@ -24,9 +24,9 @@
 # EXAMPLE:
 #   - name: Remove all default users
 #     include_tasks:
-#       file: "{{ taskDir }}/users/removeUsers.yaml"
+#       file: "{{ taskPath }}/users/removeUsers.yaml"
 #     vars:
-#       userDataDir: "{{ dataDir }}/users/default"
+#       userDataDir: "{{ dataPath }}/users/default"
 #
 # NOTES:
 #   - Each subdirectory must contain a user.yaml at its top level
@@ -55,7 +55,7 @@
 ##############################################################################
 - name: Discover user subdirectories
   ansible.builtin.include_tasks:
-    file: "{{ taskDir }}/files/discoverDirs.yaml"
+    file: "{{ taskPath }}/files/discoverDirs.yaml"
   vars:
     searchDir: "{{ userDataDir }}"
 
@@ -64,7 +64,7 @@
 ##############################################################################
 - name: Remove each user
   ansible.builtin.include_tasks:
-    file: "{{ taskDir }}/users/removeUser.yaml"
+    file: "{{ taskPath }}/users/removeUser.yaml"
   vars:
     userDataPath: "{{ userDataDir }}/{{ item }}/user.yaml"
   loop: "{{ discoveredDirs }}"

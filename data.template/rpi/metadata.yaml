@@ -6,7 +6,7 @@
 #   creation. Used by tasks/files/copyFiles.yaml via createRPiImage role.
 #
 # STRUCTURE:
-#   _srcDir: Source directory for init files (typically {{ dataDir }}/rpi)
+#   _srcDir: Source directory for init files (typically {{ dataPath }}/rpi)
 #   _destDir: Destination directory (typically {{ bootMountPoint }})
 #   _initFiles: Dictionary of files to copy
 #     Each entry:
@@ -30,7 +30,7 @@
 ##############################################################################
 # Source and destination directories
 ##############################################################################
-_srcDir:  "{{ dataDir }}/rpi"
+_srcDir:  "{{ dataPath }}/rpi"
 _destDir: "{{ bootMountPoint }}"
 
 ##############################################################################

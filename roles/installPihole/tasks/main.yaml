@@ -51,7 +51,7 @@
 ##############################################################################
 - name: Install pi-hole
   ansible.builtin.include_tasks:
-    file: "{{ taskDir }}/pihole/install.yaml"
+    file: "{{ taskPath }}/pihole/install.yaml"
 
 ##############################################################################
 # Step 2: Configure pi-hole (re-renders setupVars.conf + pihole.toml,
@@ -59,7 +59,7 @@
 ##############################################################################
 - name: Configure pi-hole
   ansible.builtin.include_tasks:
-    file: "{{ taskDir }}/pihole/configure.yaml"
+    file: "{{ taskPath }}/pihole/configure.yaml"
 
 ##############################################################################
 # Step 3: Restart webmin so its module-detection re-scan picks up

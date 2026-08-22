@@ -58,7 +58,7 @@
     ##########################################################################
     - name: Load local user secrets
       ansible.builtin.include_vars:
-        file: "{{ dataDir }}/users/dwfa/user.yaml"
+        file: "{{ dataPath }}/users/dwfa/user.yaml"
 
     ##########################################################################
     # Set ansible_become_password from the loaded userData. Done via

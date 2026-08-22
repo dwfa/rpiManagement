@@ -93,7 +93,7 @@
 ##############################################################################
 - name: Set up any 3rd-party apt repos
   ansible.builtin.include_tasks:
-    file: "{{ taskDir }}/system/setupAptRepo.yaml"
+    file: "{{ taskPath }}/system/setupAptRepo.yaml"
   vars:
     packageName: "{{ pkgIdx }}"
   loop: "{{ _ipPackageList }}"
@@ -106,7 +106,7 @@
 ##############################################################################
 - name: Install packages
   ansible.builtin.include_tasks:
-    file: "{{ taskDir }}/system/installPackage.yaml"
+    file: "{{ taskPath }}/system/installPackage.yaml"
   vars:
     packageList: "{{ _ipPackageList }}"
 
@@ -117,7 +117,7 @@
 ##############################################################################
 - name: Auto-configure each package
   ansible.builtin.include_tasks:
-    file: "{{ taskDir }}/system/configurePackage.yaml"
+    file: "{{ taskPath }}/system/configurePackage.yaml"
   vars:
     packageName: "{{ pkgIdx }}"
   loop: "{{ _ipPackageList }}"

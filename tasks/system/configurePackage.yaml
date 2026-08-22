@@ -20,7 +20,7 @@
 #   3. If found, include it; otherwise quietly skip
 #
 # EXAMPLE:
-#   - include_tasks: "{{ taskDir }}/system/configurePackage.yaml"
+#   - include_tasks: "{{ taskPath }}/system/configurePackage.yaml"
 #     vars:
 #       packageName: vim
 #
@@ -54,7 +54,7 @@
 ##############################################################################
 - name: "Look for configure task for [{{ packageName }}]"
   ansible.builtin.stat:
-    path: "{{ taskDir }}/{{ packageName }}/configure.yaml"
+    path: "{{ taskPath }}/{{ packageName }}/configure.yaml"
   delegate_to: localhost
   register:    _cpStat
 
@@ -64,7 +64,7 @@
 - name: "Configure [{{ packageName }}]"
   when: _cpStat.stat.exists | default(false)
   ansible.builtin.include_tasks:
-    file: "{{ taskDir }}/{{ packageName }}/configure.yaml"
+    file: "{{ taskPath }}/{{ packageName }}/configure.yaml"
 
 - name: "Debug: per-package configure for [{{ packageName }}]"
   when: debugFlag | default(0) | int == 1

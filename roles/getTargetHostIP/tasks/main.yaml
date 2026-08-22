@@ -37,4 +37,4 @@
 ##############################################################################
 - name: Resolve target host IP
   include_tasks:
-    file: "{{ taskDir }}/system/getTargetHostIP.yaml"
+    file: "{{ taskPath }}/system/getTargetHostIP.yaml"

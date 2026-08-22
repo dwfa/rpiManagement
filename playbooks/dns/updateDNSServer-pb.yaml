@@ -36,7 +36,7 @@
   roles:
     - role: prepareRemoteCredentials
       vars:
-        userDataPath: "{{ dataDir }}/users/dwfa/user.yaml"
+        userDataPath: "{{ dataPath }}/users/dwfa/user.yaml"
 
 ##############################################################################
 # Play 2: Push fresh config to the target host

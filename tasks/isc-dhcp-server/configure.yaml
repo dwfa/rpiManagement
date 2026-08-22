@@ -50,7 +50,7 @@
 ##############################################################################
 - name: Load isc-dhcp-server configuration manifest
   ansible.builtin.include_vars:
-    file: "{{ dataDir }}/packages/isc-dhcp-server/metadata.yaml"
+    file: "{{ dataPath }}/packages/isc-dhcp-server/metadata.yaml"
 
 ##############################################################################
 # Step 2: Parse the canonical network inventory on the controller.
@@ -58,14 +58,14 @@
 # service run (bind9 + isc-dhcp + pi-hole) parses the Excel once.
 ##############################################################################
 - name: Ensure network inventory is parsed
-  ansible.builtin.include_tasks: "{{ taskDir }}/network/parseInventory.yaml"
+  ansible.builtin.include_tasks: "{{ taskPath }}/network/parseInventory.yaml"
 
 ##############################################################################
 # Step 3: Render /etc/dhcp/dhcpd.conf
 ##############################################################################
 - name: Render /etc/dhcp/dhcpd.conf
   ansible.builtin.template:
-    src:    "{{ dataDir }}/packages/isc-dhcp-server/templates/dhcpd.conf.j2"
+    src:    "{{ dataPath }}/packages/isc-dhcp-server/templates/dhcpd.conf.j2"
     dest:   /etc/dhcp/dhcpd.conf
     owner:  root
     group:  root
@@ -81,7 +81,7 @@
 ##############################################################################
 - name: Render /etc/default/isc-dhcp-server
   ansible.builtin.template:
-    src:    "{{ dataDir }}/packages/isc-dhcp-server/templates/defaults.j2"
+    src:    "{{ dataPath }}/packages/isc-dhcp-server/templates/defaults.j2"
     dest:   /etc/default/isc-dhcp-server
     owner:  root
     group:  root

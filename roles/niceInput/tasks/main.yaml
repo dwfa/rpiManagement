@@ -36,4 +36,4 @@
 
 - name: Prompt for user input
   include_tasks:
-    file: "{{ taskDir }}/misc/niceInput.yaml"
+    file: "{{ taskPath }}/misc/niceInput.yaml"

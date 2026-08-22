@@ -2,7 +2,7 @@
 # Common variables inherited by all roles via role dependencies
 #
 # This role is included as a dependency in roles' meta/main.yaml files.
-# Most shared paths (dataDir, taskDir, pbPath, projectPath) are auto-loaded
+# Most shared paths (dataPath, taskPath, pbPath, projectPath) are auto-loaded
 # from data/group_vars/all.yaml; only project-external paths live here.
 #
 # Copyright 2025 Douglas WF Acheson (dwfa@dwfa.ca)
@@ -15,6 +15,6 @@
 ---                                            # identifies a YAML config file
 
 # Sibling project path — netGen lives beside the project root, not inside it.
-# dataDir and taskDir are defined in data/group_vars/all.yaml (auto-loaded,
+# dataPath and taskPath are defined in data/group_vars/all.yaml (auto-loaded,
 # derived from ansible.cfg location so they work at any playbook nesting).
 netGenPath: "{{ projectPath }}/../netGen"

@@ -21,7 +21,7 @@
 # EXAMPLE:
 #   - name: Ensure user's groups exist
 #     include_tasks:
-#       file: "{{ taskDir }}/group/createGroups.yaml"
+#       file: "{{ taskPath }}/group/createGroups.yaml"
 #     vars:
 #       groupList:
 #         - name: acheson
@@ -56,7 +56,7 @@
 - name: Ensure each group exists
   when: groupList | length > 0
   ansible.builtin.include_tasks:
-    file: "{{ taskDir }}/group/createGroup.yaml"
+    file: "{{ taskPath }}/group/createGroup.yaml"
   vars:
     groupData: "{{ groupIdx }}"
   loop: "{{ groupList }}"

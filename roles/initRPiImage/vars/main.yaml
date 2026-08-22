@@ -34,4 +34,4 @@ _bootMountPoint: "{{ '/Volumes/boot' if ansible_facts['system'] == 'Darwin' else
 # File paths for cmdline.txt modification task
 ##############################################################################
 _cmdlineTxtPath:     "{{ _bootMountPoint }}/cmdline.txt"
-_cmdlineTxtModsPath: "{{ dataDir }}/rpi/cmdline-txt-mods.yaml"
+_cmdlineTxtModsPath: "{{ dataPath }}/rpi/cmdline-txt-mods.yaml"

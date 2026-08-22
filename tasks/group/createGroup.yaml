@@ -22,7 +22,7 @@
 # EXAMPLE:
 #   - name: Create acheson group
 #     include_tasks:
-#       file: "{{ taskDir }}/group/createGroup.yaml"
+#       file: "{{ taskPath }}/group/createGroup.yaml"
 #     vars:
 #       groupData:
 #         name: acheson
@@ -31,7 +31,7 @@
 #   # Loop over multiple groups
 #   - name: Ensure user's groups exist
 #     include_tasks:
-#       file: "{{ taskDir }}/group/createGroup.yaml"
+#       file: "{{ taskPath }}/group/createGroup.yaml"
 #     vars:
 #       groupData: "{{ item }}"
 #     loop: "{{ _allUserGroups }}"

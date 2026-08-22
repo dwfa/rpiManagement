@@ -61,9 +61,9 @@
 ##############################################################################
 # Step 1: Ensure data/pki/ exists with restrictive perms
 ##############################################################################
-- name: "Ensure PKI directory exists [{{ dataDir }}/pki]"
+- name: "Ensure PKI directory exists [{{ dataPath }}/pki]"
   ansible.builtin.file:
-    path:  "{{ dataDir }}/pki"
+    path:  "{{ dataPath }}/pki"
     state: directory
     mode:  '0700'
 
@@ -88,14 +88,14 @@
     ##########################################################################
     - name: Create internal CA
       ansible.builtin.include_tasks:
-        file: "{{ taskDir }}/pki/createCA.yaml"
+        file: "{{ taskPath }}/pki/createCA.yaml"
 
     ##########################################################################
     # Step 4: Issue / renew the wildcard server cert (idempotent)
     ##########################################################################
     - name: Issue wildcard server cert
       ansible.builtin.include_tasks:
-        file: "{{ taskDir }}/pki/issueWildcardCert.yaml"
+        file: "{{ taskPath }}/pki/issueWildcardCert.yaml"
 
   always:
     ##########################################################################

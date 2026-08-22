@@ -17,7 +17,7 @@
 # EXAMPLE:
 #   - name: Wait for RPi to boot
 #     include_tasks:
-#       file: "{{ taskDir }}/system/waitForHost.yaml"
+#       file: "{{ taskPath }}/system/waitForHost.yaml"
 #     vars:
 #       waitTimeout: 600  # 10 minutes for slow boot
 #

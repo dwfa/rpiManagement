@@ -39,7 +39,7 @@
 ##############################################################################
 - name: Ask and wait for new device to be attached
   ansible.builtin.include_tasks:
-    file: "{{ taskDir }}/misc/niceWait.yaml"
+    file: "{{ taskPath }}/misc/niceWait.yaml"
   vars:
     title: "Attach external device"
     data: "Attach external device & press Enter to continue ..."

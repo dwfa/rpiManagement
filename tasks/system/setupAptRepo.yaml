@@ -34,7 +34,7 @@
 #      always: cleanup _sarAptRepo so the next iteration starts fresh
 #
 # EXAMPLE:
-#   - include_tasks: "{{ taskDir }}/system/setupAptRepo.yaml"
+#   - include_tasks: "{{ taskPath }}/system/setupAptRepo.yaml"
 #     vars:
 #       packageName: webmin
 #
@@ -101,7 +101,7 @@
 ##############################################################################
 - name: "Stat metadata for [{{ packageName }}]"
   ansible.builtin.stat:
-    path: "{{ dataDir }}/packages/{{ packageName }}/metadata.yaml"
+    path: "{{ dataPath }}/packages/{{ packageName }}/metadata.yaml"
   delegate_to: localhost
   register:    _sarStat
 
@@ -120,7 +120,7 @@
     ##########################################################################
     - name: "Read metadata for [{{ packageName }}]"
       ansible.builtin.slurp:
-        src: "{{ dataDir }}/packages/{{ packageName }}/metadata.yaml"
+        src: "{{ dataPath }}/packages/{{ packageName }}/metadata.yaml"
       delegate_to: localhost
       register:    _sarSlurp
 
@@ -208,7 +208,7 @@
         ########################################################################
         - name: "Auto-record/update keyFingerprint in metadata.yaml"
           ansible.builtin.lineinfile:
-            path:        "{{ dataDir }}/packages/{{ packageName }}/metadata.yaml"
+            path:        "{{ dataPath }}/packages/{{ packageName }}/metadata.yaml"
             regexp:      '^(\s*)keyFingerprint:.*$'
             line:        '  keyFingerprint: {{ _sarComputedFingerprint }}'
             insertafter: '^\s*keyURL:'

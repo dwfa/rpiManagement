@@ -1,7 +1,7 @@
 ##############################################################################
 # Ansible role variables for createRPiImage role
 #
-# Note: Global variables (taskDir, dataDir, ansible_* connection settings)
+# Note: Global variables (taskPath, dataPath, ansible_* connection settings)
 #       are inherited from common role via role dependency (see meta/main.yaml)
 #
 # REQUIRED INPUT VARIABLES:
@@ -18,6 +18,6 @@
 ---                                            # identifies a YAML config file
 
 # No role-specific variables needed
-# All required variables (installDevice, dataDir, taskDir) come from:
+# All required variables (installDevice, dataPath, taskPath) come from:
 #   - getInstallDevice role (installDevice)
-#   - common role dependency (dataDir, taskDir)
+#   - common role dependency (dataPath, taskPath)

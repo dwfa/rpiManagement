@@ -31,9 +31,9 @@
 # EXAMPLE:
 #   - name: Install user files for dwfa
 #     include_tasks:
-#       file: "{{ taskDir }}/users/installUserFiles.yaml"
+#       file: "{{ taskPath }}/users/installUserFiles.yaml"
 #     vars:
-#       userDataPath: "{{ dataDir }}/users/dwfa/user.yaml"
+#       userDataPath: "{{ dataPath }}/users/dwfa/user.yaml"
 #
 # NOTES:
 #   - Trailing slash on src means "contents of": files/.zshrc becomes

@@ -44,4 +44,4 @@
 
 - name: Trust internal CA on the local machine
   ansible.builtin.include_tasks:
-    file: "{{ taskDir }}/pki/trustInternalCA.yaml"
+    file: "{{ taskPath }}/pki/trustInternalCA.yaml"

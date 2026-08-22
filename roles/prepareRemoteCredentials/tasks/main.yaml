@@ -37,7 +37,7 @@
 #     roles:
 #       - role: prepareRemoteCredentials
 #         vars:
-#           userDataPath: "{{ dataDir }}/users/installer/user.yaml"
+#           userDataPath: "{{ dataPath }}/users/installer/user.yaml"
 #
 #   # Play 2: Use credentials on remote hosts
 #   - hosts: "{{ nodes }}"
@@ -94,7 +94,7 @@
 ##############################################################################
 - name: Materialize SSH keys
   ansible.builtin.include_tasks:
-    file: "{{ taskDir }}/users/materializeSSHKey.yaml"
+    file: "{{ taskPath }}/users/materializeSSHKey.yaml"
 
 ##############################################################################
 # Note: _rawUserData is intentionally NOT cleaned up here. It was loaded

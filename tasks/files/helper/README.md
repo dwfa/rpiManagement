@@ -42,7 +42,7 @@ Helper tasks provide reusable sub-functionality for public tasks, keeping the ma
 ```yaml
 - name: Process each modification
   include_tasks:
-    file: "{{ taskDir }}/files/helper/applyModification.yaml"
+    file: "{{ taskPath }}/files/helper/applyModification.yaml"
   loop: "{{ _modList | dict2items }}"
 ```
 

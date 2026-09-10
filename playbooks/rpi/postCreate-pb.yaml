@@ -65,7 +65,7 @@
     - role: bootstrap
     - role: getTargetHostIP
       vars:
-        targetHost: "{{ groups[nodes | default('localhost')] | first }}"
+        targetHost: "{{ groups[nodes | default('installer')] | first }}"
     - role: prepareRemoteCredentials
       vars:
         userDataPath: "{{ dataPath }}/users/{{ installerUser }}/user.yaml"

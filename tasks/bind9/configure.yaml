@@ -1,52 +1,54 @@
 ##############################################################################
-# Configure bind: render zone files + named.conf.{local,options} from
-# the canonical network inventory (produced by netGen).
+# Configure bind9: render zone files + named.conf.{local,options} from
+# data/network/inventory.json (v5 schema) + data/ddns/tsig/*.
 #
 # USAGE:
 #   Loads daemon + domain config from data/packages/bind9/metadata.yaml,
-#   parses the canonical network JSON via the networkInventory module,
-#   renders the forward zone (one file, all hosts) and the reverse zone
-#   (one file for the /16, all hosts), validates with named-checkzone +
-#   named-checkconf, reloads bind9.
+#   loads the network inventory JSON (via the shared parseInventory
+#   task), loads the vault-encrypted TSIG key, renders zones as
+#   DDNS-managed SKELETONS (SOA + NS + static hosts only; dhcpd fills
+#   in DDNS-managed records at lease time via RFC 2136), validates
+#   with named-checkzone + named-checkconf, reloads bind9.
 #
 # REQUIRED VARIABLES:
-#   None at the call site. Driven by data/packages/bind9/metadata.yaml
-#   and the rendered inventory under data/network/inventory.xlsx.
+#   None at the call site. Driven by:
+#     - data/packages/bind9/metadata.yaml
+#     - data/network/inventory.json (loaded via parseInventory)
+#     - data/ddns/tsig/{{ domain }}.tsig.key.yaml (TSIG key)
 #
 # OPTIONAL VARIABLES:
 #   - debugFlag: Enable debug output
 #
 # WORKFLOW:
-#   1. Load metadata (domain, primaryNS, adminContact, listen, etc.)
-#   2. Call networkInventory module → canonical JSON document
-#      (delegated to controller; --strict so data-quality issues fail fast)
-#   3. Alias metadata.subnets as zoneSubnets for clarity
-#   4. Render forward zone → /etc/bind/db.<domain>
-#   5. Render reverse zone → /etc/bind/db.<network-prefix>
-#      (single file — the entire 192.168.0.0/16 reverse zone)
-#   6. Render named.conf.local declaring forward + reverse zones
-#   7. Render named.conf.options (daemon-level config)
-#   8. Validate every rendered zone with named-checkzone, then validate
-#      the overall config with named-checkconf — fail loudly on errors
-#   9. Reload bind9 (graceful — existing connections survive)
-#
-# EXAMPLE:
-#   - include_tasks: "{{ taskPath }}/bind/configure.yaml"
+#   1. Load bind metadata (domain, primaryNS, adminContact, listen,
+#      lanCIDRs, tsigKeyPath, etc.)
+#   2. Load network inventory JSON (cached as netInventory)
+#   3. Load TSIG key YAML (decrypts vault-encrypted secret in task
+#      context; template consumes tsigKey.name / .algorithm / .secret)
+#   4. Split hosts by ddnsManaged flag — static hosts go into zone
+#      files; DDNS-managed hosts get written by dhcpd at runtime
+#   5. Render forward zone (SOA + NS + static hosts)
+#   6. Render reverse zone (same shape for the /16)
+#   7. Render named.conf.local (zone declarations with allow-update
+#      referencing the TSIG key)
+#   8. Render named.conf.options (LAN ACL + TSIG key block + listen
+#      + forwarders + DNSSEC)
+#   9. Validate zones with named-checkzone, then overall config with
+#      named-checkconf — fail loudly on errors
+#  10. Reload bind9 (graceful — existing connections survive)
 #
 # NOTES:
 #   - Zone files are owned root:bind 0644 so bind can read them
 #   - SOA serial is the controller's epoch at render time — strictly
 #     monotonic, which is all bind cares about for replication
-#   - Single /16 reverse zone matches the actual broadcast domain. The
-#     Excel sheets organize hosts by third octet for human readability,
-#     but bind sees one /16
+#   - Single /16 reverse zone matches the actual broadcast domain
 #   - reload (not restart) so existing query connections survive
 #
 # Copyright 2026 Douglas WF Acheson (dwfa@dwfa.ca)
 # Licensed under Apache License 2.0. See LICENSE.md for details.
 #
-# Version: 2.0
-# Date: May 9, 2026
+# Version: 3.0
+# Date: September 09, 2026
 ##############################################################################
 ---                                                   # identifies a YAML file
 
@@ -58,22 +60,37 @@
     file: "{{ dataPath }}/packages/bind9/metadata.yaml"
 
 ##############################################################################
-# Step 2: Parse the canonical network inventory on the controller.
-# Shared task -- cached as `netInventory` for the play, so a multi-
-# service run (bind9 + isc-dhcp + pi-hole) parses the Excel once.
+# Step 2: Parse the canonical network inventory (JSON, cached per play)
 ##############################################################################
 - name: Ensure network inventory is parsed
   ansible.builtin.include_tasks: "{{ taskPath }}/network/parseInventory.yaml"
 
 ##############################################################################
-# Step 3: Alias metadata.subnets as zoneSubnets for the templates
+# Step 3: Load the TSIG key (vault-encrypted secret) shared with dhcpd
 ##############################################################################
-- name: Alias zone subnets
-  ansible.builtin.set_fact:
-    zoneSubnets: "{{ netInventory.metadata.subnets }}"
+- name: Load TSIG key
+  ansible.builtin.include_vars:
+    file: "{{ tsigKeyPath }}"
 
 ##############################################################################
-# Step 4: Render the forward zone file (all named hosts)
+# Step 4: Aliases + split by DDNS management flag
+#
+# - zoneSubnets: passed to named.conf.local for the reverse-zone loop
+# - staticHosts: flat list of hosts across all groups with
+#   ddnsManaged: false — hand-authored into zone files
+##############################################################################
+- name: Alias zone subnets and derive static hosts
+  ansible.builtin.set_fact:
+    zoneSubnets: "{{ netInventory.metadata.subnets }}"
+    staticHosts: >-
+      {{ netInventory.groups
+         | map(attribute='hosts')
+         | flatten
+         | rejectattr('ddnsManaged')
+         | list }}
+
+##############################################################################
+# Step 5: Render the forward zone file (static hosts + skeleton)
 ##############################################################################
 - name: Render forward zone
   ansible.builtin.template:
@@ -82,12 +99,9 @@
     owner: root
     group: bind
     mode:  '0644'
-  vars:
-    zoneHosts: "{{ netInventory.hosts }}"
-    subnet: "{{ zoneSubnets[0] }}"
 
 ##############################################################################
-# Step 5: Render the reverse zone file (one file for the /16)
+# Step 6: Render the reverse zone file
 ##############################################################################
 - name: Render reverse zone
   ansible.builtin.template:
@@ -97,11 +111,10 @@
     group: bind
     mode:  '0644'
   vars:
-    zoneHosts: "{{ netInventory.hosts }}"
     subnet: "{{ zoneSubnets[0] }}"
 
 ##############################################################################
-# Step 6: Render named.conf.local (zone declarations)
+# Step 7: Render named.conf.local (zone declarations + allow-update)
 ##############################################################################
 - name: Render named.conf.local
   ansible.builtin.template:
@@ -113,7 +126,7 @@
     backup: true
 
 ##############################################################################
-# Step 7: Render named.conf.options (daemon-level config)
+# Step 8: Render named.conf.options (LAN ACL + TSIG key + listen + forwarders)
 ##############################################################################
 - name: Render named.conf.options
   ansible.builtin.template:
@@ -125,7 +138,7 @@
     backup: true
 
 ##############################################################################
-# Step 8a: Validate every rendered zone file
+# Step 9a: Validate every rendered zone file
 ##############################################################################
 - name: Validate forward zone
   ansible.builtin.command:
@@ -138,7 +151,7 @@
   changed_when: false
 
 ##############################################################################
-# Step 8b: Validate the overall bind configuration
+# Step 9b: Validate the overall bind configuration
 ##############################################################################
 - name: Validate bind configuration
   ansible.builtin.command:
@@ -146,7 +159,7 @@
   changed_when: false
 
 ##############################################################################
-# Step 9: Reload bind9 to pick up the new zones
+# Step 10: Reload bind9 to pick up the new zones
 ##############################################################################
 - name: Enable and reload bind9
   ansible.builtin.systemd:

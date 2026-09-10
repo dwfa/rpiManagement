@@ -54,28 +54,10 @@
   connection:   local
   gather_facts: false
 
-  pre_tasks:
-    ##########################################################################
-    # Fail fast if the wildcard cert isn't on disk — it's a hard
-    # prerequisite for nginx configure on the target. Generate it via
-    # playbooks/managePKI-pb.yaml before running this playbook.
-    ##########################################################################
-    - name: Verify wildcard cert exists
-      ansible.builtin.stat:
-        path: "{{ dataPath }}/pki/wildcard.{{ domain }}.key"
-      register: _cdsWildcardKeyStat
-
-    - name: Fail if wildcard cert is missing
-      ansible.builtin.fail:
-        msg: >-
-          [ERROR] *** Wildcard cert/key not found at
-          [{{ dataPath }}/pki/wildcard.{{ domain }}.key].
-          Run [./managePKI.sh] first to generate the internal CA +
-          wildcard cert.
-      when: not _cdsWildcardKeyStat.stat.exists
-
   roles:
     - role: bootstrap
+    - role: verifyWildcardCert
+    - role: verifyTSIGKey
     - role: prepareRemoteCredentials
       vars:
         userDataPath: "{{ dataPath }}/users/{{ builderUser }}/user.yaml"
@@ -84,20 +66,20 @@
 # Play 2: Provision DNS server services on the target host
 ##############################################################################
 - name: Provision DNS server services
-  hosts:        "{{ nodes | default('localhost') }}"
+  hosts:        "{{ nodes | default('installer') }}"
   become:       true
   gather_facts: true
 
   # Load remote connection vars (connectionKey.yaml or connectionPWD.yaml)
+  # and the DNS server's user list (dnsUsers).
   vars_files:
     - "{{ pbPath }}/vars/connection{{ hostvars['localhost'].userData.file }}.yaml"
+    - "{{ dataPath }}/dnsServer/users.yaml"
 
   roles:
     - role: createUsers
       vars:
-        userNames:
-          - dwfa
-          - wwwAdmin
+        userNames: "{{ dnsUsers }}"
     - role: configureBaseRPi
     - role: installPackages
     - role: installPackages

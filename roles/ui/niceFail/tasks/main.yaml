@@ -1,0 +1,37 @@
+##############################################################################
+# Fail the playbook with a clean boxed failure message
+#
+# USAGE:
+#   Thin orchestration role that stops the playbook with a titled,
+#   formatted failure block. Wraps tasks/ui/niceFail.yaml so both
+#   role-based callers and include_tasks callers share one
+#   implementation.
+#
+# VARIABLES:
+#   - title: Optional short failure title shown by ansibleRunner
+#   - data: Failure body (string, multiline block, list, or mapping)
+#
+# EXAMPLE:
+#   roles:
+#     - role: niceFail
+#       vars:
+#         title: "Missing wildcard certificate"
+#         data: |-
+#           Cert not found. Run managePKI-pb.yaml first.
+#
+# NOTES:
+#   - Preserves normal Ansible failure semantics under both AR and
+#     bare ansible-playbook — the play stops.
+#   - See tasks/ui/niceFail.yaml for ansibleRunner display behavior.
+#
+# Copyright 2026 Douglas WF Acheson (dwfa@dwfa.ca)
+# Licensed under Apache License 2.0. See LICENSE.md for details.
+#
+# Version: 1.0
+# Date: September 10, 2026
+##############################################################################
+---                                                   # identifies a YAML file
+
+- name: Emit boxed failure
+  include_tasks:
+    file: "{{ taskPath }}/ui/niceFail.yaml"

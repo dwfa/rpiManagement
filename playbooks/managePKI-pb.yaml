@@ -75,3 +75,4 @@
     - role: bootstrap
     - role: installInternalCA
     - role: trustInternalCA
+    - role: manageTSIG

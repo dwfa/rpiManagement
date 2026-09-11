@@ -50,12 +50,56 @@
   ansible.builtin.include_vars:
     file: "{{ dataPath }}/packages/pihole/metadata.yaml"
 
+##############################################################################
+# Step 1b: Derive DNS upstream from bind9's LAN listener
+#
+# pi-hole forwards every query to the co-located bind9 (which owns the
+# dwfa.ca zone and forwards everything else to its own forwarders).
+# Rather than hand-copy bind9's listen address/port into pi-hole's
+# metadata (drift risk when bind9 moves), we read bind9's metadata
+# here and derive dnsUpstreams from its non-loopback listenIPv4
+# entries. inventory.json's metadata.network must be in scope so
+# bind9's metadata references (e.g. {{ network.dnsServer }}) resolve.
+##############################################################################
+- name: Ensure network inventory is parsed
+  ansible.builtin.include_tasks: "{{ taskPath }}/network/parseInventory.yaml"
+
+- name: Set network fact for bind9 metadata references
+  ansible.builtin.set_fact:
+    network: "{{ netInventory.metadata.network }}"
+
+- name: Load bind9 metadata (for upstream derivation)
+  ansible.builtin.include_vars:
+    file: "{{ dataPath }}/packages/bind9/metadata.yaml"
+    name:  bindMeta
+
+##############################################################################
+# Address comes from the target's own default-route interface — the
+# live LAN IP as seen at play time, which follows the box if it
+# moves (staging IP today, production tomorrow). Port comes from
+# bind9's non-loopback listener entry in bind9/metadata.yaml, so a
+# port change in bind9 flows through here automatically. The
+# loopback listener (127.0.0.2:53) is skipped — it exists for dhcpd
+# DDNS only, not for pi-hole upstream traffic.
+##############################################################################
+- name: Derive pi-hole dnsUpstreams from bind9's LAN listener port
+  ansible.builtin.set_fact:
+    dnsUpstreams: >-
+      {{
+        dnsUpstreams | default([])
+          + [ ansible_default_ipv4.address ~ '#' ~ item.port ]
+      }}
+  loop: "{{ bindMeta.listenIPv4 }}"
+  loop_control:
+    label: "port {{ item.port }}"
+  when: '"127.0.0.2" not in item.addresses'
+
 - name: Render /etc/pihole/setupVars.conf
   ansible.builtin.template:
     src:    "{{ dataPath }}/packages/pihole/setupVars.conf.j2"
     dest:   /etc/pihole/setupVars.conf
-    owner:  root
-    group:  root
+    owner:  pihole
+    group:  pihole
     mode:   '0644'
     backup: true
   vars:
@@ -66,8 +110,8 @@
   ansible.builtin.template:
     src:    "{{ dataPath }}/packages/pihole/pihole.toml.j2"
     dest:   /etc/pihole/pihole.toml
-    owner:  root
-    group:  root
+    owner:  pihole
+    group:  pihole
     mode:   '0644'
     backup: true
   register: _pcPiholeTomlResult

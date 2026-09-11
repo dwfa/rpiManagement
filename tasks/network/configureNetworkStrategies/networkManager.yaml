@@ -1,0 +1,75 @@
+##############################################################################
+# configureNetwork strategy: NetworkManager
+#
+# NetworkManager (the default on modern RPi OS / Ubuntu Desktop) does
+# not manage `lo` — loopback aliases have to come from elsewhere. For
+# every alias in nwAliases:
+#   - lo interface: write a systemd-networkd .network file. Even on
+#     NetworkManager-primary hosts, systemd-networkd is present and
+#     will manage `lo` if we give it a matching unit.
+#   - any other interface: use nmcli to add the IP to that connection
+#     and reload/up the connection so it goes live.
+#
+# INPUT: nwAliases (see tasks/network/configureNetwork.yaml)
+#
+# Copyright 2026 Douglas WF Acheson (dwfa@dwfa.ca)
+# Licensed under Apache License 2.0. See LICENSE.md for details.
+#
+# Version: 1.0
+# Date: September 10, 2026
+##############################################################################
+---                                                   # identifies a YAML file
+
+##############################################################################
+# lo aliases -> systemd-networkd (NetworkManager does not own lo)
+##############################################################################
+- name: Persist lo alias as systemd-networkd .network file
+  ansible.builtin.copy:
+    dest:  "/etc/systemd/network/10-{{ item.interface }}-{{ item.label }}.network"
+    owner: root
+    group: root
+    mode:  '0644'
+    content: |
+      # Rendered by tasks/network/configureNetworkStrategies/networkManager.yaml
+      # Do NOT edit by hand -- changes will be overwritten on the next run.
+      # lo is handled by systemd-networkd because NetworkManager does not
+      # manage the loopback interface.
+      [Match]
+      Name={{ item.interface }}
+
+      [Network]
+      Address={{ item.address }}
+  loop:    "{{ nwAliases | default([]) }}"
+  when:    item.interface == 'lo'
+  loop_control:
+    label: "{{ item.interface }} += {{ item.address }} ({{ item.label }})"
+  register: _nwnmLoResult
+
+- name: Ensure systemd-networkd is enabled + running for lo aliases
+  ansible.builtin.systemd:
+    name:    systemd-networkd
+    enabled: true
+    state:   restarted
+  when:      _nwnmLoResult.results | default([]) | selectattr('changed', 'defined') | selectattr('changed') | list | length > 0
+
+##############################################################################
+# non-lo aliases -> nmcli
+##############################################################################
+- name: Add non-lo alias IP to its NetworkManager connection
+  ansible.builtin.command:
+    cmd: "nmcli connection modify {{ item.interface }} +ipv4.addresses {{ item.address }}"
+  loop:  "{{ nwAliases | default([]) }}"
+  when:  item.interface != 'lo'
+  loop_control:
+    label: "{{ item.interface }} += {{ item.address }} ({{ item.label }})"
+  register: _nwnmModResult
+  changed_when: true
+
+- name: Reload + bring up NetworkManager connections when any changed
+  ansible.builtin.shell: |
+    nmcli connection reload
+    nmcli connection up {{ item.item.interface }}
+  loop: "{{ _nwnmModResult.results | default([]) }}"
+  loop_control:
+    label: "up {{ item.item.interface }}"
+  when: item.changed | default(false)

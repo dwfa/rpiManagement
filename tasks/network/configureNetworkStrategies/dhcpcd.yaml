@@ -1,0 +1,24 @@
+##############################################################################
+# configureNetwork strategy: dhcpcd
+#
+# dhcpcd is the legacy RPi-specific manager (pre-Bookworm). It has
+# no clean idiom for interface aliases, so we delegate every alias
+# to systemd-networkd, which is present on dhcpcd-managed hosts and
+# handles `lo` (and additional addresses on any interface) uniformly.
+#
+# Kept as its own strategy so the dispatcher's mapping stays honest
+# ("host runs dhcpcd -> use this strategy"), even though the
+# implementation happens to hand off.
+#
+# INPUT: nwAliases (see tasks/network/configureNetwork.yaml)
+#
+# Copyright 2026 Douglas WF Acheson (dwfa@dwfa.ca)
+# Licensed under Apache License 2.0. See LICENSE.md for details.
+#
+# Version: 1.0
+# Date: September 10, 2026
+##############################################################################
+---                                                   # identifies a YAML file
+
+- name: Delegate aliases to systemd-networkd
+  ansible.builtin.include_tasks: "{{ taskPath }}/network/configureNetworkStrategies/systemd-networkd.yaml"

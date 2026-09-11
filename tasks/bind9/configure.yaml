@@ -73,6 +73,24 @@
     file: "{{ tsigKeyPath }}"
 
 ##############################################################################
+# Step 3b: Ensure bind9's DDNS listen address is live on `lo`
+#
+# bind9's listen-on port 53 binds a secondary loopback address so it
+# can accept DDNS updates from the co-located isc-dhcp-server without
+# fighting pi-hole for 0.0.0.0:53. Address comes from the single
+# source of truth in inventory.json's metadata.network.ddnsAddress
+# (CIDR form). Runs BEFORE the template render + service restart so
+# the address is bindable when bind9 next starts.
+##############################################################################
+- name: Ensure DDNS loopback alias is up on lo
+  ansible.builtin.include_tasks: "{{ taskPath }}/network/configureNetwork.yaml"
+  vars:
+    nwAliases:
+      - interface: lo
+        address:   "{{ netInventory.metadata.network.ddnsAddress }}"
+        label:     ddns
+
+##############################################################################
 # Step 4: Aliases + split by DDNS management flag
 #
 # - zoneSubnets: passed to named.conf.local for the reverse-zone loop
@@ -136,6 +154,8 @@
     group:  bind
     mode:   '0644'
     backup: true
+  vars:
+    network: "{{ netInventory.metadata.network }}"
 
 ##############################################################################
 # Step 9a: Validate every rendered zone file

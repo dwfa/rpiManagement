@@ -1,0 +1,88 @@
+##############################################################################
+# Configure host network state — dispatcher (Strategy pattern)
+#
+# USAGE:
+#   include_tasks from any playbook that needs per-service network
+#   prerequisites (secondary loopback addresses, VIPs, alias
+#   interfaces) up on the target before the service that uses them.
+#
+# REQUIRED VARIABLES:
+#   None. Every input is optional; a call with no inputs is a no-op.
+#
+# OPTIONAL VARIABLES:
+#   nwAliases: List of secondary addresses to bring up idempotently.
+#     Each entry:
+#       interface: <base iface>       # e.g. "lo", "eth0"
+#       address:   <ip>/<prefix>      # e.g. "127.0.0.2/8"
+#       label:     <short-tag>        # unique per host; used in the
+#                                     # per-manager config filename
+#                                     # (e.g. "10-lo-ddns.network")
+#                                     # and, where the manager
+#                                     # supports it, as the interface
+#                                     # label (e.g. "lo:ddns")
+#
+# STRATEGY:
+#   Probe active network managers on the target and dispatch to the
+#   matching per-manager sub-task in tasks/network/configureNetworkStrategies/.
+#   Each strategy takes the same nwAliases input and writes the manager's
+#   own config format + triggers the manager's reload. Persistence and
+#   live-add come from the manager itself, one mechanism.
+#
+#   Priority when multiple managers are active (highest first):
+#     1. NetworkManager    — modern default on Bookworm+ RPi OS
+#     2. systemd-networkd  — server-focused Debian setups
+#     3. ifupdown          — legacy default, still present on older RPi OS
+#     4. dhcpcd            — RPi-specific legacy manager
+#
+#   If none is detected active, falls through to ifupdown as the
+#   lowest common denominator — writing the file still helps if
+#   networking.service gets enabled later.
+#
+# NOTES:
+#   - Callers depend only on this file's interface (nwAliases). They
+#     never see the underlying manager. Adding a new manager means
+#     adding a strategy file + one line here.
+#
+# Copyright 2026 Douglas WF Acheson (dwfa@dwfa.ca)
+# Licensed under Apache License 2.0. See LICENSE.md for details.
+#
+# Version: 2.0
+# Date: September 10, 2026
+##############################################################################
+---                                                   # identifies a YAML file
+
+##############################################################################
+# Step 1: Detect which network manager is active on the target
+##############################################################################
+- name: Probe candidate network managers
+  ansible.builtin.command:
+    cmd: "systemctl is-active {{ item }}"
+  loop:
+    - NetworkManager
+    - systemd-networkd
+    - networking
+    - dhcpcd
+  register: _nwManagerProbe
+  changed_when: false
+  failed_when: false
+
+##############################################################################
+# Step 2: Pick the highest-priority active manager (or ifupdown as fallback)
+##############################################################################
+- name: Select network manager strategy
+  ansible.builtin.set_fact:
+    nwStrategy: >-
+      {{
+        'networkManager'   if _nwManagerProbe.results[0].stdout == 'active' else
+        'systemd-networkd' if _nwManagerProbe.results[1].stdout == 'active' else
+        'ifupdown'         if _nwManagerProbe.results[2].stdout == 'active' else
+        'dhcpcd'           if _nwManagerProbe.results[3].stdout == 'active' else
+        'ifupdown'
+      }}
+
+##############################################################################
+# Step 3: Dispatch to the selected strategy
+##############################################################################
+- name: "Configure network via {{ nwStrategy }}"
+  ansible.builtin.include_tasks:
+    file: "{{ taskPath }}/network/configureNetworkStrategies/{{ nwStrategy }}.yaml"

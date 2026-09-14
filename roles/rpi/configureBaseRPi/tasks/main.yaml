@@ -32,7 +32,9 @@
 #   7. configureGraphics -- HDMI mode + framebuffer
 #   8. configureConsole -- cmdline.txt video= mode
 #   9. configureBootOrder -- EEPROM BOOT_ORDER (RPi 4/5 only)
-#  10. Reboot the target and wait for it to come back -- locale,
+#  10. configurePersistentJournal -- /var/log/journal + 256M cap so
+#      post-mortem logs survive across boots.
+#  11. Reboot the target and wait for it to come back -- locale,
 #      gpu_mem, framebuffer, video= and BOOT_ORDER all need a reboot
 #      to take effect. One reboot at the end covers them all.
 #
@@ -48,8 +50,8 @@
 # Copyright 2026 Douglas WF Acheson (dwfa@dwfa.ca)
 # Licensed under Apache License 2.0. See LICENSE.md for details.
 #
-# Version: 1.0
-# Date: May 16, 2026
+# Version: 1.1
+# Date: September 13, 2026
 ##############################################################################
 ---                                                   # identifies a YAML file
 
@@ -94,6 +96,10 @@
 - name: Configure EEPROM BOOT_ORDER
   ansible.builtin.include_tasks:
     file: "{{ taskPath }}/rpi/configureBootOrder.yaml"
+
+- name: Configure persistent systemd journal
+  ansible.builtin.include_tasks:
+    file: "{{ taskPath }}/rpi/configurePersistentJournal.yaml"
 
 ##############################################################################
 # Reboot once so all the above (locale, gpu_mem, framebuffer, video=,

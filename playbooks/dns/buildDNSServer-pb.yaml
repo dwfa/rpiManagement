@@ -91,7 +91,19 @@
           - bind9utils
           - dnsutils
           - isc-dhcp-server
+          - nut
+          # webmin listed LAST so its install-time module scan sees
+          # every other service already installed on the host and
+          # auto-enables the matching webmin modules (bind9, dhcpd,
+          # nginx, nut, ...). New services added to this list belong
+          # ABOVE webmin for the same reason.
           - webmin
+        # Per-package vars are scoped to that package's configure step
+        # only (installPackages plumbs them via configurePackage's
+        # include_tasks.apply.vars) -- no cross-package leak.
+        packageVars:
+          nut:
+            nutRole: server
     # Pi-hole is native (see BACKLOG "Revisit containerized pi-hole").
     # Not an apt package, so it does not flow through installPackages.
     # The role also restarts webmin at the end as a final module-rescan.

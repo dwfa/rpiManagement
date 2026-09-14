@@ -12,6 +12,10 @@
 #                  at tasks/<packageName>/configure.yaml
 #
 # OPTIONAL VARIABLES:
+#   - packageConfigureVars: Dict of vars to inject into the discovered
+#                           configure.yaml only (via include_tasks.apply.vars).
+#                           Typically supplied by installPackages from its
+#                           per-package packageVars map. Empty by default.
 #   - debugFlag: Enable debug output
 #
 # WORKFLOW:
@@ -36,8 +40,8 @@
 # Copyright 2026 Douglas WF Acheson (dwfa@dwfa.ca)
 # Licensed under Apache License 2.0. See LICENSE.md for details.
 #
-# Version: 1.0
-# Date: May 6, 2026
+# Version: 1.1
+# Date: September 13, 2026
 ##############################################################################
 ---                                                   # identifies a YAML file
 
@@ -59,12 +63,20 @@
   register:    _cpStat
 
 ##############################################################################
-# Include it if found
+# Include it if found.
+#
+# packageConfigureVars (optional, passed by the caller) is a per-package
+# vars map scoped to this include only via include_tasks.apply.vars.
+# The vars exist inside the included configure.yaml and disappear when
+# it returns -- they never leak into surrounding tasks or the next
+# package's configure step.
 ##############################################################################
 - name: "Configure [{{ packageName }}]"
   when: _cpStat.stat.exists | default(false)
   ansible.builtin.include_tasks:
     file: "{{ taskPath }}/{{ packageName }}/configure.yaml"
+    apply:
+      vars: "{{ packageConfigureVars | default({}) }}"
 
 - name: "Debug: per-package configure for [{{ packageName }}]"
   when: debugFlag | default(0) | int == 1

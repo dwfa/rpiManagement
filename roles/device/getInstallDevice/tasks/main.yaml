@@ -20,24 +20,32 @@
 #   - macOS (Darwin): tasks/macOS/getInstallDevice.yaml uses diskutil
 #   - Linux:          tasks/Linux/getInstallDevice.yaml uses lsblk
 #   Each OS task file is responsible for: snapshot-before -> prompt ->
-#   snapshot-after -> set `newDevices` fact as a normalized list of
-#   /dev/... paths. This role then does the universal validation:
-#   fail on 0, fail on >1, set installDevice on exactly 1.
+#   snapshot-after -> set `newDevices` (the diff, normalized list of
+#   /dev/... paths) and `_candidateDevices` (the full post-attach
+#   normalized list). This role then does the universal selection:
+#   set installDevice from the diff when it is exactly 1; otherwise
+#   fall back to niceInput asking the user to type a device path,
+#   validated against `_candidateDevices`.
 #
 # DESIGN NOTES:
-#   - DRY: the "no device / one device / many devices" branching used
-#     to be duplicated in both OS task files (with the 0-device case
-#     silently passing). Lifted here so adding a 3rd platform only
-#     requires writing the detection + normalization, not the
-#     validation logic.
-#   - Loose contract between this role and the OS task files: just
-#     "set `newDevices` as a list of /dev/... strings."
+#   - DRY: the branching used to be duplicated in both OS task files
+#     (with the 0-device case silently passing). Lifted here so adding
+#     a 3rd platform only requires writing the detection +
+#     normalization, not the selection logic.
+#   - Loose contract between this role and the OS task files: set
+#     `newDevices` (diff) and `_candidateDevices` (full list) as
+#     normalized /dev/... string lists.
+#   - Fallback prompt: rather than fail on 0-or-many, the role asks
+#     the user which device to use. The reply is validated against
+#     `_candidateDevices` (the authoritative post-attach list from
+#     diskutil/lsblk) so a typo cannot silently target the wrong
+#     device.
 #
 # Copyright 2025 Douglas WF Acheson (dwfa@dwfa.ca)
 # Licensed under Apache License 2.0. See LICENSE.md for details.
 #
-# Version: 2.0
-# Date: May 17, 2026
+# Version: 2.1
+# Date: September 11, 2026
 ##############################################################################
 ---                                            # identifies a YAML config file
 
@@ -55,29 +63,53 @@
   when: ansible_facts['system'] == "Linux"
 
 ##############################################################################
-# Step 2: Universal validation -- newDevices must be exactly one entry
+# Step 2: Universal selection
+#   - Happy path: exactly one newly-attached device -> use it.
+#   - Fallback:   0 or >1 new devices -> prompt the user for a device
+#                 path via niceInput, validated against the full
+#                 post-attach candidate list from the OS snapshot.
 ##############################################################################
-- name: Fail if no new device detected
-  ansible.builtin.fail:
-    msg: >-
-      [ERROR] *** No new device detected. Either nothing was attached
-      before pressing Enter, or the device did not appear in the system
-      device list. Plug the storage in and re-run the playbook.
-  when: newDevices | length == 0
+- name: Prompt user for install device (fallback when diff is not 1)
+  when: newDevices | length != 1
+  block:
 
-- name: Fail if multiple new devices detected
-  ansible.builtin.fail:
-    msg: >-
-      [ERROR] *** Multiple new devices detected: [{{ newDevices | join(', ') }}].
-      Please attach only ONE device at a time.
-  when: newDevices | length > 1
+    - name: "Debug: fallback reason"
+      ansible.builtin.debug:
+        msg: >-
+          🎯 [DEBUG] *** Fallback prompt: newDevices=[{{ newDevices | join(', ') }}]
+          (count={{ newDevices | length }}); candidates=[{{
+          _candidateDevices | join(', ') }}]
+      when: debugFlag | default(0) | int == 1
+
+    - name: Ask user which device to use
+      ansible.builtin.include_tasks:
+        file: "{{ taskPath }}/ui/niceInput.yaml"
+      vars:
+        title: "Select install device"
+        data: |-
+          {% if newDevices | length == 0 %}
+          No new device was detected after the attach prompt.
+          {% else %}
+          Multiple new devices were detected: [{{ newDevices | join(', ') }}].
+          {% endif %}
+          Candidate devices on this host: [{{ _candidateDevices | join(', ') }}].
+          Type the full /dev/... path of the device to use.
+
+    - name: Fail if user did not enter a candidate device
+      ansible.builtin.fail:
+        msg: >-
+          [ERROR] *** Entered device [{{ promptValue }}] is not in the
+          candidate list [{{ _candidateDevices | join(', ') }}]. Refusing
+          to proceed.
+      when: promptValue not in _candidateDevices
 
 ##############################################################################
-# Step 3: Universal selection -- promote the single match to installDevice
+# Step 3: Universal selection -- promote the resolved match to installDevice
 ##############################################################################
 - name: Set installDevice fact
   ansible.builtin.set_fact:
-    installDevice: "{{ newDevices[0] }}"
+    installDevice: >-
+      {{ newDevices[0] if newDevices | length == 1 else promptValue }}
 
 - name: "Debug: resolved installDevice"
   ansible.builtin.debug:

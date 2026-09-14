@@ -3,18 +3,21 @@
 #
 # Snapshots the external-disk list via `diskutil list external` before
 # and after the user attaches the target storage device, computes the
-# diff, and sets `newDevices` as a list of /dev/diskN paths.
+# diff, and sets `newDevices` as a list of /dev/diskN paths. Also sets
+# `_candidateDevices` -- the full normalized post-attach list -- for
+# the role's main.yaml to use as a whitelist when validating a manual
+# device path (the niceInput fallback when the diff is not exactly 1).
 #
-# Universal validation + selection (fail-on-0, fail-on-many, set
+# Universal validation + selection (fallback prompt on 0-or-many, set
 # installDevice on 1) is done by roles/getInstallDevice/tasks/main.yaml
-# AFTER this file returns. This file's sole contract: leave
-# `newDevices` set as a normalized list.
+# AFTER this file returns. This file's contract: leave `newDevices`
+# and `_candidateDevices` set as normalized lists.
 #
 # Copyright 2025 Douglas WF Acheson (dwfa@dwfa.ca)
 # Licensed under Apache License 2.0. See LICENSE.md for details.
 #
-# Version: 2.0
-# Date: May 17, 2026
+# Version: 2.1
+# Date: September 11, 2026
 ##############################################################################
 ---                                            # identifies a YAML config file
 
@@ -54,15 +57,19 @@
 
 ##############################################################################
 # Compute the diff and normalize each entry to a /dev/diskN base path
-# (strip any partition suffix). Sets the `newDevices` fact -- the
-# role's main.yaml does the validation.
+# (strip any partition suffix). Sets two facts:
+#   - newDevices:        the diff (newly-attached), for the happy path
+#   - _candidateDevices: the full post-attach external list, used by
+#                        the role's main.yaml to validate a manual
+#                        device path when the diff is not exactly one
 ##############################################################################
-- name: Compute newly-attached devices
+- name: Compute newly-attached devices and candidate list
   ansible.builtin.set_fact:
     newDevices: >-
-      {{ _currentDevices | difference(_initialDevices)
-                         | map('regex_replace', '^(/dev/disk\\d+).*$', '\\1')
-                         | list | unique }}
+      {{ _currentNorm | difference(_initialNorm) | unique | list }}
+    _candidateDevices: "{{ _currentNorm | unique | list }}"
   vars:
     _initialDevices: "{{ _initialExternalDevices.stdout_lines | select('match', '/dev') | list }}"
     _currentDevices: "{{ _currentExternalDevices.stdout_lines | select('match', '/dev') | list }}"
+    _initialNorm: "{{ _initialDevices | map('regex_replace', '^(/dev/disk\\d+).*$', '\\1') | list }}"
+    _currentNorm: "{{ _currentDevices | map('regex_replace', '^(/dev/disk\\d+).*$', '\\1') | list }}"

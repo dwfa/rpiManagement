@@ -1,0 +1,185 @@
+##############################################################################
+# Configure NUT (Network UPS Tools) -- server or client, driven by
+# nutRole passed by the caller.
+#
+# USAGE:
+#   Auto-discovered by installPackages when `nut` is in the packageList.
+#   Loads data/packages/nut/metadata.yaml + data/users/upsmon/user.yaml,
+#   renders /etc/nut/* from templates, and enables the appropriate
+#   services.
+#
+# REQUIRED VARIABLES:
+#   - nutRole:  'server' or 'client'. Passed by the calling playbook.
+#               Defaults to 'client' if unset.
+#
+# DATA SOURCES:
+#   - data/packages/nut/metadata.yaml       (non-secret config)
+#   - data/users/upsmon/user.yaml           (vault-encrypted credential)
+#
+# OPTIONAL VARIABLES:
+#   - debugFlag: Enable debug output
+#
+# WORKFLOW:
+#   1. Load NUT metadata
+#   2. Load upsmon credential (vault-encrypted)
+#   3. Validate nutRole
+#   4. Render /etc/nut/nut.conf                       (both roles)
+#   5. Render /etc/nut/ups.conf                       (server only)
+#   6. Render /etc/nut/upsd.conf                      (server only)
+#   7. Render /etc/nut/upsd.users                     (server only)
+#   8. Render /etc/nut/upsmon.conf                    (both roles)
+#   9. Enable + restart services
+#      - server: nut-server, nut-monitor
+#      - client: nut-client
+#
+# NOTES:
+#   - Files containing the plaintext password (upsd.users, upsmon.conf)
+#     rendered with no_log:true.
+#   - NUT-protocol keywords `master`/`slave` in the rendered configs
+#     are NUT vocabulary and stay as-is; our role names are
+#     `server`/`client`.
+#
+# Copyright 2026 Douglas WF Acheson (dwfa@dwfa.ca)
+# Licensed under Apache License 2.0. See LICENSE.md for details.
+#
+# Version: 2.0
+# Date: September 13, 2026
+##############################################################################
+---                                                   # identifies a YAML file
+
+##############################################################################
+# Step 1: Load NUT metadata (upsList, listen, timing, nutServer)
+##############################################################################
+- name: Load NUT configuration manifest
+  ansible.builtin.include_vars:
+    file: "{{ dataPath }}/packages/nut/metadata.yaml"
+
+##############################################################################
+# Step 2: Load upsmon credential (vault-encrypted) into a SCOPED name so
+# the caller's userData fact (used by the play's become_pass) is not
+# clobbered.
+##############################################################################
+- name: Load NUT upsmon credential
+  ansible.builtin.include_vars:
+    file: "{{ dataPath }}/users/upsmon/user.yaml"
+    name: _nutUpsmon
+
+- name: Alias upsmon credential fields
+  ansible.builtin.set_fact:
+    upsmonUser: "{{ _nutUpsmon.userData.uName }}"
+    upsmonPWD:  "{{ _nutUpsmon.userData.pwd }}"
+
+##############################################################################
+# Step 3: Resolve + validate nutRole (default: client)
+##############################################################################
+- name: "Resolve nutRole (default: client)"
+  ansible.builtin.set_fact:
+    nutRole: "{{ nutRole | default('client') }}"
+
+- name: Abort if nutRole is invalid
+  ansible.builtin.include_role:
+    name: niceFail
+  vars:
+    title: "Invalid nutRole"
+    data: |-
+      🎯 {red}nutRole must be 'server' or 'client'.{/red}
+      Got: {yellow}{{ nutRole }}{/yellow}
+
+      Callers pass nutRole via role/task vars; the DNS build playbook
+      overrides to 'server', and everything else inherits the client
+      default.
+  when: nutRole not in ['server', 'client']
+
+##############################################################################
+# Step 4: Render /etc/nut/nut.conf (both roles)
+##############################################################################
+- name: Render /etc/nut/nut.conf
+  ansible.builtin.template:
+    src:    "{{ dataPath }}/packages/nut/templates/nut.conf.j2"
+    dest:   /etc/nut/nut.conf
+    owner:  root
+    group:  nut
+    mode:   "0640"
+
+##############################################################################
+# Step 5-7: Server-only config files
+##############################################################################
+- name: Render server-only NUT config
+  when: nutRole == 'server'
+  block:
+
+    - name: Render /etc/nut/ups.conf
+      ansible.builtin.template:
+        src:    "{{ dataPath }}/packages/nut/templates/ups.conf.j2"
+        dest:   /etc/nut/ups.conf
+        owner:  root
+        group:  nut
+        mode:   "0640"
+
+    - name: Render /etc/nut/upsd.conf
+      ansible.builtin.template:
+        src:    "{{ dataPath }}/packages/nut/templates/upsd.conf.j2"
+        dest:   /etc/nut/upsd.conf
+        owner:  root
+        group:  nut
+        mode:   "0640"
+
+    - name: Render /etc/nut/upsd.users
+      ansible.builtin.template:
+        src:    "{{ dataPath }}/packages/nut/templates/upsd.users.j2"
+        dest:   /etc/nut/upsd.users
+        owner:  root
+        group:  nut
+        mode:   "0640"
+      no_log:  true                # contains plaintext upsmonPWD
+
+##############################################################################
+# Step 8: Render /etc/nut/upsmon.conf (both roles)
+##############################################################################
+- name: Render /etc/nut/upsmon.conf
+  ansible.builtin.template:
+    src:    "{{ dataPath }}/packages/nut/templates/upsmon.conf.j2"
+    dest:   /etc/nut/upsmon.conf
+    owner:  root
+    group:  nut
+    mode:   "0640"
+  no_log:  true                    # contains plaintext upsmonPWD
+
+##############################################################################
+# Step 9: Enable + restart services
+##############################################################################
+- name: Enable and restart NUT services (server)
+  when: nutRole == 'server'
+  ansible.builtin.systemd:
+    name:    "{{ item }}"
+    enabled: true
+    state:   restarted
+  loop:
+    - nut-server
+    - nut-monitor
+
+- name: Enable and restart NUT services (client)
+  when: nutRole == 'client'
+  ansible.builtin.systemd:
+    name:    nut-client
+    enabled: true
+    state:   restarted
+
+##############################################################################
+# Debug: report resolved role
+##############################################################################
+- name: "Debug: resolved NUT role"
+  ansible.builtin.debug:
+    msg: >-
+      🎯 [DEBUG] *** NUT configured as [{{ nutRole }}];
+      upsList entries=[{{ upsList | length }}]
+  when: debugFlag | default(0) | int == 1
+
+##############################################################################
+# Cleanup transient facts
+##############################################################################
+- name: Cleanup transient NUT facts
+  ansible.builtin.set_fact:
+    _nutUpsmon: null
+    upsmonUser: null
+    upsmonPWD:  null

@@ -28,6 +28,14 @@
 # OPTIONAL VARIABLES:
 #   - packageList: Override list of apt package names to install. When
 #                  unset, defaults to basePackageList from vars/main.yaml.
+#   - packageVars: Per-package vars for the configure step, as a map
+#                  {packageName: {var: value, ...}}. Each entry is
+#                  scoped by configurePackage.yaml to that package's
+#                  configure.yaml only (via include_tasks.apply.vars),
+#                  so vars set for one package never leak into
+#                  another's configure step. Example:
+#                    packageVars:
+#                      nut:  { nutRole: server }
 #   - debugFlag:   Enable debug output
 #
 # WORKFLOW:
@@ -75,8 +83,8 @@
 # Copyright 2026 Douglas WF Acheson (dwfa@dwfa.ca)
 # Licensed under Apache License 2.0. See LICENSE.md for details.
 #
-# Version: 2.1
-# Date: May 8, 2026
+# Version: 2.2
+# Date: September 13, 2026
 ##############################################################################
 ---                                                   # identifies a YAML file
 
@@ -119,7 +127,13 @@
   ansible.builtin.include_tasks:
     file: "{{ taskPath }}/system/configurePackage.yaml"
   vars:
-    packageName: "{{ pkgIdx }}"
+    packageName:          "{{ pkgIdx }}"
+    # Per-package caller-supplied vars, if any. packageVars is an
+    # optional {packageName: {var: value}} map passed by the caller;
+    # configurePackage.yaml scopes these to the included configure
+    # file only (via include_tasks.apply.vars) so they never leak
+    # into other packages' configure steps.
+    packageConfigureVars: "{{ (packageVars | default({})).get(pkgIdx, {}) }}"
   loop: "{{ _ipPackageList }}"
   loop_control:
     loop_var: pkgIdx

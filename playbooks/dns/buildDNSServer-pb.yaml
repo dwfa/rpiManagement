@@ -104,10 +104,11 @@
         packageVars:
           nut:
             nutRole: server
-    # Pi-hole is native (see BACKLOG "Revisit containerized pi-hole").
-    # Not an apt package, so it does not flow through installPackages.
-    # The role also restarts webmin at the end as a final module-rescan.
+    # uctLCD and Pi-hole are native installs (see BACKLOG
+    # "Revisit containerized pi-hole").
+    # They are not apt packages, so it does not flow through installPackages.
     - role: installPihole
+    - role: installUctLCD
 
 ##############################################################################
 # Play 3: Cleanup materialized SSH keys on the controller

@@ -1,0 +1,295 @@
+##############################################################################
+# Install and enable uctLCD -- UCTRONICS SKU_RM0004 status LCD daemon
+#
+# USAGE:
+#   Called by any playbook whose target host has the UCTRONICS LCD
+#   physically attached. Opt-in: playbooks that need it include the
+#   role, playbooks that don't leave it alone. There is no per-host
+#   auto-detection.
+#
+# REQUIRED VARIABLES:
+#   None at the call site. Everything drives from
+#   data/packages/uctLCD/metadata.yaml.
+#
+# OPTIONAL VARIABLES:
+#   - debugFlag: Enable debug output
+#
+# EXAMPLE:
+#   - hosts:  "{{ nodes }}"
+#     become: true
+#     roles:
+#       - role: installUctLCD
+#
+# WORKFLOW:
+#   1. Load uctLCD metadata (version, paths, config values).
+#   2. Enable I2C in /boot/firmware/config.txt (blockinfile with a
+#      named marker).
+#   3. Autoload i2c-dev on every boot via /etc/modules-load.d.
+#   4. Resolve the effective release version (pinned or "latest").
+#      When "latest", the .so filename is derived from the release
+#      manifest so an SO-version bump travels with the tag.
+#   5. Download the two release assets (uctLCD.py, libST7735.so.<ver>)
+#      onto the target. .py -> /usr/local/sbin/uctLCD (executable);
+#      .so -> /usr/local/lib/.
+#   6. Create SO symlinks (unversioned -> soname -> real file) and
+#      refresh ldconfig so ctypes.CDLL("libST7735.so.1") resolves.
+#   7. Render daemon config (/etc/uctLCD/config.toml) + the systemd
+#      unit (/etc/systemd/system/uctLCD.service).
+#   8. Enable uctLCD (do NOT start yet -- I2C isn't up until reboot;
+#      starting now would just crash-restart the daemon).
+#   9. Reboot -- only when anything above changed on-disk state
+#      that only takes effect at boot (config.txt, modules-load,
+#      unit file, or a fresh install of any file). A re-run with no
+#      changes skips the reboot. Ansible's reboot module waits for
+#      reconnect so downstream verify steps resume without a race.
+#  10. Verify /dev/i2c-1 exists on the (possibly rebooted) host;
+#      fail loudly if not -- the daemon cannot drive the LCD then.
+#  11. Verify uctLCD is active. On a reboot run, systemd auto-starts
+#      the enabled service at boot; on a no-op run the service was
+#      already running from a previous invocation. Either way, if
+#      it isn't active now something is wrong -- fail with the
+#      journal excerpt so the operator sees why.
+#
+# NOTES:
+#   - Idempotent: re-runs skip the downloads when the file already
+#     exists at the pinned version (get_url uses ETag-style checks).
+#     Bumping uctLcdVersion in metadata triggers a fresh download +
+#     symlink recreation + reboot (which restarts the service via
+#     enable-at-boot) -- one clean state transition.
+#   - The reboot is gated: a re-run where nothing kernel-level or
+#     unit-file changed (typical after the first install) skips it
+#     entirely.
+#   - The role never `state: started`s the service directly. Boot
+#     handles that via `enabled: true`. Keeps the "final state comes
+#     from a boot" narrative consistent whether the role rebooted
+#     or not.
+#
+# Copyright 2026 Douglas WF Acheson (dwfa@dwfa.ca)
+# Licensed under Apache License 2.0. See LICENSE.md for details.
+#
+# Version: 2.0
+# Date: September 24, 2026
+##############################################################################
+---                                                   # identifies a YAML file
+
+##############################################################################
+# Load uctLCD metadata
+##############################################################################
+- name: Load uctLCD metadata
+  ansible.builtin.include_vars:
+    file: "{{ dataPath }}/packages/uctLCD/metadata.yaml"
+
+##############################################################################
+# Enable I2C in /boot/firmware/config.txt
+#
+# The UCTRONICS SKU_RM0004 LCD talks I2C, not SPI. Two settings must
+# be present before the daemon can drive the panel:
+#   dtparam=i2c_arm=on              -- enable the ARM I2C bus
+#   dtparam=i2c_arm_baudrate=600000 -- clock at 600 kHz (panel spec)
+#
+# blockinfile fences them under a named marker so they land together,
+# stay together, and can be cleanly removed on uninstall. A change
+# here triggers the reboot step below.
+##############################################################################
+- name: Ensure I2C is enabled in /boot/firmware/config.txt
+  ansible.builtin.blockinfile:
+    path:   /boot/firmware/config.txt
+    marker: "# {mark} ANSIBLE MANAGED BLOCK uctLCD (I2C for SKU_RM0004)"
+    block: |
+      dtparam=i2c_arm=on
+      dtparam=i2c_arm_baudrate=600000
+    create: false
+    # backup: intentionally OFF -- /boot/firmware is vfat and rejects
+    # the ':' / '@' characters Ansible embeds in its backup filenames
+    # ([Errno 22] Invalid argument). The block markers make it easy
+    # to remove or diff without needing an Ansible-managed backup.
+  register: _uctConfigTxt
+
+##############################################################################
+# Autoload the i2c-dev kernel module on every boot
+#
+# dtparam=i2c_arm=on enables the bus at the SoC level, but userspace
+# only sees /dev/i2c-N when the i2c-dev shim module is loaded.
+# systemd-modules-load.service reads every *.conf under
+# /etc/modules-load.d/ at boot and modprobes what it finds, so a
+# one-line file gives us persistent autoload with no init scripts.
+##############################################################################
+- name: Autoload i2c-dev via /etc/modules-load.d/i2c-dev.conf
+  ansible.builtin.copy:
+    dest:  /etc/modules-load.d/i2c-dev.conf
+    owner: root
+    group: root
+    mode:  '0644'
+    content: |
+      # Rendered by roles/packages/installUctLCD. Loaded by
+      # systemd-modules-load.service at boot so /dev/i2c-N appears
+      # for userspace clients (uctLCD daemon uses /dev/i2c-1).
+      i2c-dev
+  register: _uctModload
+
+##############################################################################
+# Resolve the effective release version (pinned or latest)
+##############################################################################
+- name: Query GitHub for latest release when uctLcdVersion == 'latest'
+  ansible.builtin.uri:
+    url:            "https://api.github.com/repos/{{ uctLcdRepo }}/releases/latest"
+    return_content: true
+  register: _uctLatestRelease
+  when: uctLcdVersion == 'latest'
+
+- name: Materialize effective version + SO filename
+  ansible.builtin.set_fact:
+    _uctVersion: >-
+      {{ _uctLatestRelease.json.tag_name
+         if uctLcdVersion == 'latest'
+         else uctLcdVersion }}
+    _uctSoFile: >-
+      {{ (_uctLatestRelease.json.assets
+           | selectattr('name', 'match', '^libST7735\\.so\\.')
+           | map(attribute='name') | first)
+         if uctLcdVersion == 'latest'
+         else uctLcdSoFile }}
+
+##############################################################################
+# Download the two release assets straight to the target
+##############################################################################
+- name: Install uctLCD daemon script to {{ uctLcdBinPath }}
+  ansible.builtin.get_url:
+    url:   "https://github.com/{{ uctLcdRepo }}/releases/download/{{ _uctVersion }}/uctLCD.py"
+    dest:  "{{ uctLcdBinPath }}"
+    owner: root
+    group: root
+    mode:  '0755'
+  register: _uctBinDownload
+
+- name: Install libST7735 shared library to {{ uctLcdLibDir }}/{{ _uctSoFile }}
+  ansible.builtin.get_url:
+    url:   "https://github.com/{{ uctLcdRepo }}/releases/download/{{ _uctVersion }}/{{ _uctSoFile }}"
+    dest:  "{{ uctLcdLibDir }}/{{ _uctSoFile }}"
+    owner: root
+    group: root
+    mode:  '0644'
+  register: _uctSoDownload
+
+##############################################################################
+# Create SO symlinks (soname + unversioned) and refresh ldconfig
+#
+# ctypes.CDLL("libST7735.so.1") in uctLCD.py loads the soname symlink.
+# The unversioned symlink follows standard SO conventions so anyone
+# compiling against the library later doesn't need to know the exact
+# version.
+##############################################################################
+- name: Create versioned SO symlink (libST7735.so.1 -> {{ _uctSoFile }})
+  ansible.builtin.file:
+    src:   "{{ _uctSoFile }}"
+    dest:  "{{ uctLcdLibDir }}/libST7735.so.1"
+    state: link
+    force: true
+    # Symlinks are within the same directory -- relative target keeps
+    # the pair portable across mounts / bind mounts / chroots.
+    follow: false
+
+- name: Create unversioned SO symlink (libST7735.so -> libST7735.so.1)
+  ansible.builtin.file:
+    src:    libST7735.so.1
+    dest:   "{{ uctLcdLibDir }}/libST7735.so"
+    state:  link
+    force:  true
+    follow: false
+
+- name: Refresh ldconfig cache
+  ansible.builtin.command:
+    cmd: ldconfig
+  when: _uctSoDownload is changed
+
+##############################################################################
+# Render daemon config + systemd unit
+##############################################################################
+- name: Ensure {{ uctLcdConfigDir }} exists
+  ansible.builtin.file:
+    path:  "{{ uctLcdConfigDir }}"
+    state: directory
+    owner: root
+    group: root
+    mode:  '0755'
+
+- name: Render {{ uctLcdConfigPath }}
+  ansible.builtin.template:
+    src:    "{{ dataPath }}/packages/uctLCD/templates/config.toml.j2"
+    dest:   "{{ uctLcdConfigPath }}"
+    owner:  root
+    group:  root
+    mode:   '0644'
+    backup: true
+
+- name: Render {{ uctLcdUnitPath }}
+  ansible.builtin.template:
+    src:    "{{ dataPath }}/packages/uctLCD/templates/uctLCD.service.j2"
+    dest:   "{{ uctLcdUnitPath }}"
+    owner:  root
+    group:  root
+    mode:   '0644'
+    backup: true
+  register: _uctUnitFile
+
+##############################################################################
+# Enable uctLCD (do NOT start yet)
+#
+# I2C isn't up yet -- the config.txt change hasn't taken effect and
+# systemd-modules-load hasn't fired i2c-dev. Starting the service
+# here would spawn a daemon that immediately crashes trying to open
+# /dev/i2c-1. Enabling only marks the unit to start at boot; the
+# reboot below then starts it as part of normal boot ordering.
+##############################################################################
+- name: Enable uctLCD (start deferred to boot)
+  ansible.builtin.systemd:
+    name:          uctLCD.service
+    daemon_reload: "{{ _uctUnitFile is changed }}"
+    enabled:       true
+
+##############################################################################
+# Reboot last -- so all changes above take effect together and the
+# service comes up on the first clean boot with the correct kernel
+# I2C state, the correct modules loaded, and the correct binary +
+# library on disk. Gated on any change that only takes effect at
+# boot (config.txt, modules-load, unit file, or a fresh binary/SO
+# download that means the currently-running service is stale).
+##############################################################################
+- name: Reboot to apply all installUctLCD changes
+  ansible.builtin.reboot:
+    msg:                "Reboot triggered by installUctLCD"
+    reboot_timeout:     300
+    connect_timeout:    20
+    post_reboot_delay:  10
+  when: >
+    _uctConfigTxt is changed
+    or _uctModload  is changed
+    or _uctUnitFile is changed
+    or _uctBinDownload is changed
+    or _uctSoDownload  is changed
+
+##############################################################################
+# Verify /dev/i2c-1 came up and the daemon is running
+##############################################################################
+- name: Verify /dev/i2c-1 is present
+  ansible.builtin.stat:
+    path: /dev/i2c-1
+  register: _uctI2cDev
+
+- name: Fail when /dev/i2c-1 is missing
+  ansible.builtin.fail:
+    msg: |
+      /dev/i2c-1 is not present after enabling I2C and rebooting.
+      Check /boot/firmware/config.txt for the uctLCD marker block
+      and confirm i2c-dev loaded at boot:
+        lsmod | grep i2c_dev
+        dmesg | grep -i i2c
+      The uctLCD daemon cannot drive the LCD without /dev/i2c-1.
+  when: not _uctI2cDev.stat.exists
+
+- name: Verify uctLCD service is active
+  ansible.builtin.command:
+    cmd: systemctl is-active uctLCD.service
+  register:     _uctActive
+  changed_when: false
+  failed_when:  _uctActive.stdout | trim != 'active'

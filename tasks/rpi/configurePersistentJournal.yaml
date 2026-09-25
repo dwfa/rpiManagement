@@ -1,0 +1,96 @@
+##############################################################################
+# Configure persistent systemd journal
+#
+# USAGE:
+#   Called by roles/rpi/configureBaseRPi. Ensures /var/log/journal
+#   exists (journald persists automatically when the directory is
+#   present) and caps journal storage via a drop-in so it never eats
+#   the SD card.
+#
+# REQUIRED VARIABLES:
+#   None.
+#
+# OPTIONAL VARIABLES:
+#   - debugFlag: Enable debug output
+#
+# WORKFLOW:
+#   1. Ensure /var/log/journal exists (journald reads this at start to
+#      decide persistent vs volatile).
+#   2. Drop /etc/systemd/journald.conf.d/00-persist.conf with size caps.
+#   3. Restart systemd-journald if either of the above changed so the
+#      new mode + caps take effect immediately (older journal from
+#      the volatile /run/log/journal is discarded at that point --
+#      acceptable one-time cost).
+#
+# NOTES:
+#   - After this task runs once, `journalctl --boot=-1` (and older
+#     offsets) work for every subsequent boot -- so a post-mortem on
+#     an unexpected shutdown (NUT-triggered or otherwise) is possible.
+#   - Size cap: 256 MiB total. Generous for a homelab Pi (weeks of
+#     logs at typical volumes) and small enough to survive on a modest
+#     SD card. Individual file cap 32 MiB so rotation is smooth.
+#
+# Copyright 2026 Douglas WF Acheson (dwfa@dwfa.ca)
+# Licensed under Apache License 2.0. See LICENSE.md for details.
+#
+# Version: 1.0
+# Date: September 13, 2026
+##############################################################################
+---                                                   # identifies a YAML file
+
+##############################################################################
+# Step 1: Ensure the persistent journal directory exists
+##############################################################################
+- name: Ensure /var/log/journal exists
+  ansible.builtin.file:
+    path:  /var/log/journal
+    state: directory
+    owner: root
+    group: systemd-journal
+    mode:  "2755"                     # setgid so new files inherit group
+  register: _cpjDirState
+
+##############################################################################
+# Step 2: Cap journal storage via drop-in
+##############################################################################
+- name: Drop journald size-cap override
+  ansible.builtin.copy:
+    dest:  /etc/systemd/journald.conf.d/00-persist.conf
+    owner: root
+    group: root
+    mode:  "0644"
+    content: |
+      # Rendered by tasks/rpi/configurePersistentJournal.yaml.
+      # Do NOT edit by hand.
+      [Journal]
+      Storage=persistent
+      SystemMaxUse=256M
+      SystemMaxFileSize=32M
+  register: _cpjDropIn
+
+##############################################################################
+# Step 3: Restart journald if anything changed
+##############################################################################
+- name: Restart systemd-journald to apply persistence + caps
+  ansible.builtin.systemd:
+    name:  systemd-journald
+    state: restarted
+  when: _cpjDirState is changed or _cpjDropIn is changed
+
+##############################################################################
+# Debug
+##############################################################################
+- name: "Debug: persistent journal state"
+  ansible.builtin.debug:
+    msg: >-
+      🐛 [DEBUG] *** persistent journal: dir changed=[{{ _cpjDirState is changed }}]
+      dropin changed=[{{ _cpjDropIn is changed }}]
+  when: debugFlag | default(0) | int == 1
+
+##############################################################################
+# Cleanup transient facts
+##############################################################################
+- name: Cleanup transient facts
+  ansible.builtin.set_fact:
+    _cpjDirState: null
+    _cpjDropIn:   null

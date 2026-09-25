@@ -55,7 +55,7 @@
     cmd: >-
       security add-trusted-cert -d -r trustRoot
       -k /Library/Keychains/System.keychain
-      "{{ dataDir }}/pki/dwfaInternalCA.crt"
+      "{{ dataPath }}/pki/dwfaInternalCA.crt"
   become: true
   when:
     - ansible_facts['os_family'] == "Darwin"
@@ -66,7 +66,7 @@
 ##############################################################################
 - name: "[Debian] Deploy internal CA to /usr/local/share/ca-certificates/"
   ansible.builtin.copy:
-    src:    "{{ dataDir }}/pki/dwfaInternalCA.crt"
+    src:    "{{ dataPath }}/pki/dwfaInternalCA.crt"
     dest:   /usr/local/share/ca-certificates/dwfaInternalCA.crt
     owner:  root
     group:  root
@@ -91,5 +91,5 @@
     msg: >-
       [WARN] *** OS family [{{ ansible_facts['os_family'] | default('unknown') }}]
       not supported by trustInternalCA. Install the CA cert manually:
-      [{{ dataDir }}/pki/dwfaInternalCA.crt]
+      [{{ dataPath }}/pki/dwfaInternalCA.crt]
   when: ansible_facts['os_family'] not in ["Darwin", "Debian"]

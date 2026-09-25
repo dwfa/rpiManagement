@@ -1,0 +1,109 @@
+##############################################################################
+# Ansible role to write RPi OS image to device
+#
+# USAGE:
+#   Writes a Raspberry Pi OS image to a block device (USB drive, SD card, etc.).
+#   Requires prerequisite roles to set facts for device and image paths.
+#
+# REQUIRED VARIABLES:
+#   - installDevice: Target device path (e.g., /dev/disk4, /dev/sdb)
+#       Must be set by getInstallDevice role before calling this role
+#   - dataPath: Path to data directory (inherited from common role)
+#   - taskPath: Path to tasks directory (inherited from common role)
+#   - debugFlag: (optional) Enable debug output
+#
+# WORKFLOW:
+#   1. Set _imagePath based on local/remote execution context
+#   2. Copy image from localhost to /tmp (remote targets only)
+#   3. Unmount all partitions on target device (prevents dd "device busy" errors)
+#   4. Write image to device using writeImage.yaml task
+#   5. Cleanup temporary image from /tmp (remote targets only)
+#
+# EXAMPLE:
+#   - hosts: localhost
+#     roles:
+#       - role: getInstallDevice        # Sets installDevice fact
+#       - role: updateRPiImage          # Sets imagePath fact (on localhost)
+#       - role: createRPiImage          # Writes image to device
+#       - role: initRPiImage            # Initializes boot partition
+#
+# NOTES:
+#   - Requires sudo/root permissions for device write access
+#   - User will be prompted to confirm destructive operation
+#   - Validation performed in writeImage.yaml task
+#   - Must run getInstallDevice and updateRPiImage roles first
+#   - initRPiImage role should follow to initialize boot partition
+#   - For remote targets, image copied to /tmp with SHA256 checksum verification,
+#       then deleted after successful write to conserve disk space
+#
+# Copyright 2025 Douglas WF Acheson (dwfa@dwfa.ca)
+# Licensed under Apache License 2.0. See LICENSE.md for details.
+#
+# Version: 5.1
+# Date: February 21, 2026
+##############################################################################
+---                                            # identifies a YAML config file
+
+##############################################################################
+# Set image path based on execution context
+# Note: Image filename is always currentRPiImage.img
+#       - local connection: {{ dataPath }}/images/currentRPiImage.img
+#       - remote connection: /tmp/currentRPiImage.img (copied from localhost)
+##############################################################################
+- name: Set image path (local)
+  ansible.builtin.set_fact:
+    _imagePath: "{{ dataPath }}/images/currentRPiImage.img"
+  when: ansible_connection == 'local'
+
+- name: Set image path (remote)
+  ansible.builtin.set_fact:
+    _imagePath: "/tmp/currentRPiImage.img"
+  when: ansible_connection != 'local'
+
+##############################################################################
+# Copy image for remote hosts (remote targets only)
+# Note: ansible.builtin.copy verifies integrity via internal checksum
+##############################################################################
+- name: Copy image to remote host
+  ansible.builtin.copy:
+    src:  "{{ dataPath }}/images/currentRPiImage.img"
+    dest: "{{ _imagePath }}"
+    mode: '0644'
+  when: ansible_connection != 'local'
+
+##############################################################################
+# Unmount all partitions on target device before writing
+# Note: Idempotent - succeeds gracefully if device not mounted
+##############################################################################
+- name: Unmount all partitions on target device
+  include_tasks:
+    file: "{{ taskPath }}/fileSystem/unmountDevice.yaml"
+  vars:
+    device: "{{ installDevice }}"
+
+##############################################################################
+# Write RPi image to device
+##############################################################################
+- name: include task to write RPi Image to device
+  include_tasks:
+    file: "{{ taskPath }}/fileSystem/writeImage.yaml"
+  vars:
+    useDevice:    "{{ installDevice }}"
+    useImagePath: "{{ _imagePath }}"
+
+##############################################################################
+# Cleanup temporary image from remote host (remote targets only)
+# Note: Frees ~2GB disk space in /tmp after successful image write
+##############################################################################
+- name: Remove temporary image from remote host
+  ansible.builtin.file:
+    path: "{{ _imagePath }}"
+    state: absent
+  when: ansible_connection != 'local'
+
+##############################################################################
+# Cleanup temporary facts
+##############################################################################
+- name: Cleanup temporary facts
+  ansible.builtin.set_fact:
+    _imagePath: null

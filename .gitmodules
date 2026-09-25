@@ -1,0 +1,6 @@
+[submodule "data"]
+	path = data
+	url = https://github.com/dwfa/rpiData.git
+[submodule "docs/seSpecs"]
+	path = docs/seSpecs
+	url = https://github.com/dwfa/seSpecs.git

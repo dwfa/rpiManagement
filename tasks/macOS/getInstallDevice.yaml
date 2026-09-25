@@ -1,18 +1,23 @@
 ##############################################################################
 # macOS implementation for device detection
 #
-# This is the macOS-specific implementation called by getInstallDevice role.
-# See roles/getInstallDevice/tasks/main.yaml for role documentation.
+# Snapshots the external-disk list via `diskutil list external` before
+# and after the user attaches the target storage device, computes the
+# diff, and sets `newDevices` as a list of /dev/diskN paths. Also sets
+# `_candidateDevices` -- the full normalized post-attach list -- for
+# the role's main.yaml to use as a whitelist when validating a manual
+# device path (the niceInput fallback when the diff is not exactly 1).
 #
-# IMPLEMENTATION:
-#   Uses /usr/sbin/diskutil to compare device lists before/after attachment
-#   Sets installDevice fact with detected device path (/dev/diskN)
+# Universal validation + selection (fallback prompt on 0-or-many, set
+# installDevice on 1) is done by roles/getInstallDevice/tasks/main.yaml
+# AFTER this file returns. This file's contract: leave `newDevices`
+# and `_candidateDevices` set as normalized lists.
 #
 # Copyright 2025 Douglas WF Acheson (dwfa@dwfa.ca)
 # Licensed under Apache License 2.0. See LICENSE.md for details.
 #
-# Version: 1.4
-# Date: January 27, 2026
+# Version: 2.1
+# Date: September 11, 2026
 ##############################################################################
 ---                                            # identifies a YAML config file
 
@@ -20,55 +25,51 @@
 # Validate platform compatibility
 ##############################################################################
 - name: Fail if not running on macOS
-  fail:
-    msg: "[ERROR] *** This task requires macOS but running on [{{ ansible_system }}]"
-  when: ansible_system != 'Darwin'
+  ansible.builtin.fail:
+    msg: "[ERROR] *** This task requires macOS but running on [{{ ansible_facts['system'] }}]"
+  when: ansible_facts['system'] != 'Darwin'
 
 ##############################################################################
-# Capture the states of external devices initial and after prompt
+# Snapshot 1: external-disk list BEFORE the user attaches anything
 ##############################################################################
 - name: Get set of initial external devices
-  shell:
+  ansible.builtin.shell:
     cmd: /usr/sbin/diskutil list external
   register: _initialExternalDevices
 
+##############################################################################
+# Pause for the user to attach the storage device
+##############################################################################
 - name: Ask and wait for new device to be attached
-  include_tasks:
-    file: "{{ taskDir }}/misc/waitForInput.yaml"
+  ansible.builtin.include_tasks:
+    file: "{{ taskPath }}/ui/niceWait.yaml"
   vars:
-    waitMsg: "Attach external device & press enter to continue ..."
+    title: "Attach external device"
+    data: "Attach external device & press Enter to continue ..."
 
-- name: Get current block devices
-  shell:
+##############################################################################
+# Snapshot 2: external-disk list AFTER attachment
+##############################################################################
+- name: Get current external devices
+  ansible.builtin.shell:
     cmd: /usr/sbin/diskutil list external
   register: _currentExternalDevices
 
 ##############################################################################
-# Detect newly attached device and set installDevice fact
-# Uses block-scoped vars to compute intermediate values without global pollution
+# Compute the diff and normalize each entry to a /dev/diskN base path
+# (strip any partition suffix). Sets two facts:
+#   - newDevices:        the diff (newly-attached), for the happy path
+#   - _candidateDevices: the full post-attach external list, used by
+#                        the role's main.yaml to validate a manual
+#                        device path when the diff is not exactly one
 ##############################################################################
-- name: Detect and set installation device
-  block:
-    - name: Fail if multiple new devices detected
-      fail:
-        msg: >-
-          [ERROR] *** Multiple new devices detected: [{{ _newDevices | join(', ') }}].
-          Please attach only ONE device at a time.
-      when: _newDevices | length > 1
-
-    - name: Determine install device
-      set_fact:
-        installDevice: "{{ _newDevices[0] | regex_replace('^(/dev/disk\\d+).*$', '\\1') }}"
-      when: _newDevices | length == 1
-
-    - name: Display device detection result
-      debug:
-        msg: >-
-          {{ '[DEBUG] *** new attached device found [' + installDevice + ']'
-               if installDevice is defined else
-             '[DEBUG] *** no new attached device found!!!' }}
-      when: debugFlag is defined
+- name: Compute newly-attached devices and candidate list
+  ansible.builtin.set_fact:
+    newDevices: >-
+      {{ _currentNorm | difference(_initialNorm) | unique | list }}
+    _candidateDevices: "{{ _currentNorm | unique | list }}"
   vars:
     _initialDevices: "{{ _initialExternalDevices.stdout_lines | select('match', '/dev') | list }}"
     _currentDevices: "{{ _currentExternalDevices.stdout_lines | select('match', '/dev') | list }}"
-    _newDevices: "{{ _currentDevices | difference(_initialDevices) }}"
+    _initialNorm: "{{ _initialDevices | map('regex_replace', '^(/dev/disk\\d+).*$', '\\1') | list }}"
+    _currentNorm: "{{ _currentDevices | map('regex_replace', '^(/dev/disk\\d+).*$', '\\1') | list }}"

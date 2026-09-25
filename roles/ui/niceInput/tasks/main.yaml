@@ -1,0 +1,38 @@
+##############################################################################
+# Prompt the user for input and capture the response
+#
+# USAGE:
+#   Thin orchestration role that prompts for input and returns the
+#   user's response as a fact. Wraps tasks/ui/niceInput.yaml so
+#   both role-based callers and include_tasks callers share one
+#   implementation.
+#
+# VARIABLES:
+#   - title: Optional short prompt title shown by ansibleRunner
+#   - data: Optional prompt message shown by Ansible and ansibleRunner
+#
+# OUTPUT VARIABLES:
+#   - promptValue: The user's response, whitespace-trimmed
+#
+# EXAMPLE:
+#   roles:
+#     - role: niceInput
+#       vars:
+#         title: "Enter DHCP address"
+#         data: "Enter the DHCP-assigned IP for this host."
+#
+# NOTES:
+#   - Must run in a play whose host has interactive stdin, typically localhost.
+#   - See tasks/ui/niceInput.yaml for ansibleRunner display behavior.
+#
+# Copyright 2026 Douglas WF Acheson (dwfa@dwfa.ca)
+# Licensed under Apache License 2.0. See LICENSE.md for details.
+#
+# Version: 1.1
+# Date: August 15, 2026
+##############################################################################
+---                                                   # identifies a YAML file
+
+- name: Prompt for user input
+  include_tasks:
+    file: "{{ taskPath }}/ui/niceInput.yaml"

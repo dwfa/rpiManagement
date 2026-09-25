@@ -1,0 +1,122 @@
+##############################################################################
+# Build DNS / DHCP RPi server
+#
+# Provisions a freshly-imaged RPi (already bootstrapped via
+# postCreate-pb.yaml) into the project's DNS / DHCP server. Layered:
+#
+#   Play 1 (localhost) -- validate prereqs + load credentials:
+#     - verify wildcard cert exists under data/pki/
+#     - decrypt dwfa user vault via prepareRemoteCredentials
+#
+#   Play 2 (target, become):
+#     - createUsers          -- dwfa + wwwAdmin
+#     - configureBaseRPi     -- TZ, locale, keyboard, wifi country,
+#                               GPU memory, framebuffer, console video,
+#                               EEPROM BOOT_ORDER; reboot at the end
+#     - installPackages      -- base list (vim, zsh, fish)
+#     - installPackages      -- nginx-core, nginx, bind9, bind9utils,
+#                               dnsutils, isc-dhcp-server, webmin.
+#                               Each per-package configure.yaml runs
+#                               via installPackages' auto-discovery.
+#                               Webmin is intentionally last so its
+#                               module-detection picks up bind/dhcp.
+#     - installPihole        -- native install + configure pi-hole;
+#                               nginx reverse-proxies /pihole/ to
+#                               FTL:8080; restarts webmin at the end
+#                               so its module-detection picks up the
+#                               final state on disk (pi-hole is not
+#                               an apt package, so it lives outside
+#                               installPackages).
+#
+#   Play 3 (localhost) -- cleanup materialized SSH keys.
+#
+# PREREQUISITES:
+#   - Run [./managePKI.sh] first to materialize data/pki/
+#     (CA + wildcard cert; the pre_tasks block fails fast otherwise)
+#   - postCreate-pb.yaml has already run against this host (dwfa user
+#     exists, static IP applied, host reachable at the dns inventory
+#     address). [./buildDNSServer.sh] chains postCreate -> this
+#     playbook for a fresh build.
+#
+# Copyright 2026 Douglas WF Acheson (dwfa@dwfa.ca)
+# Licensed under Apache License 2.0. See LICENSE.md for details.
+#
+# Version: 3.1
+# Date: May 17, 2026
+##############################################################################
+---                                            # identifies a YAML config file
+
+##############################################################################
+# Play 1: Validate prerequisites and load credentials on the controller
+##############################################################################
+- name: Prepare local resources
+  hosts:        localhost
+  connection:   local
+  gather_facts: false
+
+  roles:
+    - role: bootstrap
+    - role: verifyWildcardCert
+    - role: verifyTSIGKey
+    - role: prepareRemoteCredentials
+      vars:
+        userDataPath: "{{ dataPath }}/users/{{ builderUser }}/user.yaml"
+
+##############################################################################
+# Play 2: Provision DNS server services on the target host
+##############################################################################
+- name: Provision DNS server services
+  hosts:        "{{ nodes | default('installer') }}"
+  become:       true
+  gather_facts: true
+
+  # Load remote connection vars (connectionKey.yaml or connectionPWD.yaml)
+  # and the DNS server's user list (dnsUsers).
+  vars_files:
+    - "{{ pbPath }}/vars/connection{{ hostvars['localhost'].userData.file }}.yaml"
+    - "{{ dataPath }}/dnsServer/users.yaml"
+
+  roles:
+    - role: createUsers
+      vars:
+        userNames: "{{ dnsUsers }}"
+    - role: configureBaseRPi
+    - role: installPackages
+    - role: installPackages
+      vars:
+        packageList:
+          - nginx-core
+          - nginx
+          - bind9
+          - bind9utils
+          - dnsutils
+          - isc-dhcp-server
+          - nut
+          # webmin listed LAST so its install-time module scan sees
+          # every other service already installed on the host and
+          # auto-enables the matching webmin modules (bind9, dhcpd,
+          # nginx, nut, ...). New services added to this list belong
+          # ABOVE webmin for the same reason.
+          - webmin
+        # Per-package vars are scoped to that package's configure step
+        # only (installPackages plumbs them via configurePackage's
+        # include_tasks.apply.vars) -- no cross-package leak.
+        packageVars:
+          nut:
+            nutRole: server
+    # uctLCD and Pi-hole are native installs (see BACKLOG
+    # "Revisit containerized pi-hole").
+    # They are not apt packages, so it does not flow through installPackages.
+    - role: installPihole
+    - role: installUctLCD
+
+##############################################################################
+# Play 3: Cleanup materialized SSH keys on the controller
+##############################################################################
+- name: Cleanup materialized SSH keys
+  hosts:        localhost
+  connection:   local
+  gather_facts: false
+
+  roles:
+    - clearLocal

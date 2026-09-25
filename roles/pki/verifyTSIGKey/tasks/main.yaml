@@ -1,0 +1,54 @@
+##############################################################################
+# Verify the DDNS TSIG key exists on disk.
+#
+# Playbooks that consume the shared TSIG key at runtime call this role
+# first to fail fast (with a friendly niceDisplay panel) when the key
+# isn't materialized yet. On success the role is silent.
+#
+# REQUIRED VARIABLES:
+#   - dataPath: absolute path to the project's data/ directory
+#   - domain:   DNS zone the key protects (e.g. example.com)
+#
+# OPTIONAL VARIABLES:
+#   - debugFlag: emit a confirmation debug line when the key is present
+#
+# USAGE:
+#   roles:
+#     - role: verifyTSIGKey
+#
+# Copyright 2026 Douglas WF Acheson (dwfa@dwfa.ca)
+# Licensed under Apache License 2.0. See LICENSE.md for details.
+#
+# Version: 1.0
+# Date: September 09, 2026
+##############################################################################
+---                                                   # identifies a YAML file
+
+- name: Stat TSIG key file
+  ansible.builtin.stat:
+    path: "{{ dataPath }}/ddns/tsig/{{ domain }}.tsig.key.yaml"
+  register: _vtkKeyStat
+
+- name: Abort if TSIG key is missing
+  ansible.builtin.include_role:
+    name: niceFail
+  vars:
+    title: "Missing TSIG key"
+    data: |-
+      🔒 {red}TSIG key not found:{/red}
+      {cyan}{{ dataPath }}/ddns/tsig/{{ domain }}.tsig.key.yaml{/cyan}
+
+      Run this first to generate the shared TSIG key:
+        {yellow}ansible-playbook playbooks/managePKI-pb.yaml{/yellow}
+  when: not _vtkKeyStat.stat.exists
+
+- name: Debug TSIG key confirmation
+  ansible.builtin.debug:
+    msg: "🔒 [DEBUG] *** TSIG key present at [{{ dataPath }}/ddns/tsig/{{ domain }}.tsig.key.yaml]"
+  when:
+    - debugFlag | default(0) | int == 1
+    - _vtkKeyStat.stat.exists
+
+- name: Cleanup temporary facts
+  ansible.builtin.set_fact:
+    _vtkKeyStat: null

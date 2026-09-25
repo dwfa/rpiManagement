@@ -63,7 +63,7 @@
 ##############################################################################
 - name: Mount root partition
   ansible.builtin.include_tasks:
-    file: "{{ taskDir }}/fileSystem/mountPartition.yaml"
+    file: "{{ taskPath }}/fileSystem/mountPartition.yaml"
   vars:
     mountPoint: "{{ _ssipoRootMountPoint }}"
 
@@ -87,9 +87,10 @@
 # Generate UUID for connection
 ##############################################################################
 - name: Generate UUID for NM connection
-  local_action:
-    module: generateUUID
-  register: _ssipoUUID
+  generateUUID:
+  delegate_to: localhost
+  become:      false
+  register:    _ssipoUUID
 
 ##############################################################################
 # Write .nmconnection file using template
@@ -100,7 +101,7 @@
     group: root
     mode:  '0600'
     owner: root
-    src:   "{{ dataDir }}/network/nm/eth.conf"
+    src:   "{{ dataPath }}/network/nm/eth.conf"
   vars:
     autoconnect: "yes"
     ip4Address:  "address1={{ _ssipoLoaded.ipDetails.address }}/{{ _ssipoLoaded.ipDetails.netmask }},{{ _ssipoLoaded.ipDetails.gateway }}"
@@ -121,7 +122,7 @@
 ##############################################################################
 - name: Unmount root partition
   ansible.builtin.include_tasks:
-    file: "{{ taskDir }}/fileSystem/unmountPartition.yaml"
+    file: "{{ taskPath }}/fileSystem/unmountPartition.yaml"
   vars:
     mountPoint: "{{ _ssipoRootMountPoint }}"
 

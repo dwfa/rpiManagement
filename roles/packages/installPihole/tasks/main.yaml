@@ -1,0 +1,74 @@
+##############################################################################
+# Install + configure pi-hole, then refresh webmin -- thin role wrapper
+#
+# USAGE:
+#   Wraps tasks/pihole/install.yaml and tasks/pihole/configure.yaml in
+#   the canonical install-then-configure order, then restarts webmin so
+#   its module-detection re-scan picks up anything new on disk. Pi-hole
+#   is not an apt package (its official installer is a curl|bash
+#   script), so it does not fit the installPackages auto-discovery
+#   flow; this role is the project's entry point for putting pi-hole
+#   on a host.
+#
+# REQUIRED VARIABLES:
+#   - userData: decrypted by prepareRemoteCredentials in Play 1.
+#               sudoPWD is double-sha256'd into WEBPASSWORD.
+#
+# OPTIONAL VARIABLES:
+#   - piholeInterface: LAN interface for pi-hole to listen on
+#                      (default: eth0)
+#   - ipv4Address:     CIDR address pi-hole reports as its own
+#                      (default: ansible_default_ipv4.address + /16)
+#   - debugFlag:       Enable debug output
+#
+# EXAMPLE:
+#   - hosts:  "{{ nodes }}"
+#     become: true
+#     roles:
+#       - role: installPihole
+#
+# NOTES:
+#   - install.yaml is idempotent: skips when /usr/local/bin/pihole
+#     already exists. configure.yaml always re-renders setupVars.conf,
+#     so metadata changes are picked up on every run.
+#   - webmin restart at the end was previously in the calling
+#     playbook's post_tasks. Moved here so the "install pi-hole and
+#     make sure webmin sees the world" responsibility lives in one
+#     place. Idempotent: webmin happily restarts.
+#   - See data/BACKLOG.md "Revisit containerized pi-hole" for the
+#     rationale behind the native (not Docker) deployment.
+#
+# Copyright 2026 Douglas WF Acheson (dwfa@dwfa.ca)
+# Licensed under Apache License 2.0. See LICENSE.md for details.
+#
+# Version: 2.0
+# Date: May 17, 2026
+##############################################################################
+---                                                   # identifies a YAML file
+
+##############################################################################
+# Step 1: Install pi-hole (idempotent -- skips if already installed)
+##############################################################################
+- name: Install pi-hole
+  ansible.builtin.include_tasks:
+    file: "{{ taskPath }}/pihole/install.yaml"
+
+##############################################################################
+# Step 2: Configure pi-hole (re-renders setupVars.conf + pihole.toml,
+# drops nginx snippet, restarts pihole-FTL + reloads nginx as needed)
+##############################################################################
+- name: Configure pi-hole
+  ansible.builtin.include_tasks:
+    file: "{{ taskPath }}/pihole/configure.yaml"
+
+##############################################################################
+# Step 3: Restart webmin so its module-detection re-scan picks up
+# everything currently on disk (bind, dhcp, nginx, pi-hole). Webmin
+# was installed earlier in the play (last entry in packageList so it
+# would see installed services), but a final restart here is cheap
+# insurance after pi-hole drops its files.
+##############################################################################
+- name: Restart webmin so it auto-detects newly-installed modules
+  ansible.builtin.systemd:
+    name:  webmin
+    state: restarted

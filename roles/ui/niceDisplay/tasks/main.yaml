@@ -1,0 +1,37 @@
+##############################################################################
+# Render a boxed display block (title + payload) via ansibleRunner
+#
+# USAGE:
+#   Thin orchestration role that renders a formatted display block.
+#   Wraps tasks/ui/niceDisplay.yaml so both role-based callers and
+#   include_tasks callers share one implementation.
+#
+# VARIABLES:
+#   - title: Optional short box title shown by ansibleRunner
+#   - data: Display payload (string, multiline block, list, or mapping)
+#
+# EXAMPLE:
+#   roles:
+#     - role: niceDisplay
+#       vars:
+#         title: "Provision complete"
+#         data:
+#           - "server = [example-db-01]"
+#           - "status = [deployed]"
+#
+# NOTES:
+#   - Under ansibleRunner the block renders as a boxed display; under
+#     bare ansible-playbook it renders as a normal debug msg.
+#   - See tasks/ui/niceDisplay.yaml for ansibleRunner display behavior.
+#
+# Copyright 2026 Douglas WF Acheson (dwfa@dwfa.ca)
+# Licensed under Apache License 2.0. See LICENSE.md for details.
+#
+# Version: 1.0
+# Date: August 22, 2026
+##############################################################################
+---                                                   # identifies a YAML file
+
+- name: Render display block
+  include_tasks:
+    file: "{{ taskPath }}/ui/niceDisplay.yaml"

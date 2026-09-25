@@ -17,7 +17,7 @@
 # EXAMPLE:
 #   - name: Install dwfa's SSH keys
 #     include_tasks:
-#       file: "{{ taskDir }}/users/addSSHKeys.yaml"
+#       file: "{{ taskPath }}/users/addSSHKeys.yaml"
 #     vars:
 #       uName:      dwfa
 #       publicKeys: "{{ _cuLoadedUser.userData.sshKeys.public }}"

@@ -15,9 +15,9 @@
 # EXAMPLE:
 #   - name: Discover default users
 #     include_tasks:
-#       file: "{{ taskDir }}/files/discoverDirs.yaml"
+#       file: "{{ taskPath }}/files/discoverDirs.yaml"
 #     vars:
-#       searchDir: "{{ dataDir }}/users/default"
+#       searchDir: "{{ dataPath }}/users/default"
 #
 #   # Given: data/users/default/dwfa/  data/users/default/jane/
 #   # Result: discoveredDirs: ['dwfa', 'jane']

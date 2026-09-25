@@ -1,0 +1,44 @@
+##############################################################################
+# configureNetwork strategy: systemd-networkd
+#
+# Persist each alias as a /etc/systemd/network/10-<iface>-<label>.network
+# file, then restart systemd-networkd so the address goes live. systemd-
+# networkd handles `lo` uniformly regardless of what manages primary
+# interfaces on the host.
+#
+# INPUT: nwAliases (see tasks/network/configureNetwork.yaml)
+#
+# Copyright 2026 Douglas WF Acheson (dwfa@dwfa.ca)
+# Licensed under Apache License 2.0. See LICENSE.md for details.
+#
+# Version: 1.0
+# Date: September 10, 2026
+##############################################################################
+---                                                   # identifies a YAML file
+
+- name: Persist alias as systemd-networkd .network file
+  ansible.builtin.copy:
+    dest:  "/etc/systemd/network/10-{{ item.interface }}-{{ item.label }}.network"
+    owner: root
+    group: root
+    mode:  '0644'
+    content: |
+      # Rendered by tasks/network/configureNetworkStrategies/systemd-networkd.yaml
+      # Do NOT edit by hand -- changes will be overwritten on the next run.
+      [Match]
+      Name={{ item.interface }}
+
+      [Network]
+      Address={{ item.address }}
+      # This is an addition. Existing addresses on {{ item.interface }} are
+      # kept because systemd-networkd merges Address= across matching units.
+  loop: "{{ nwAliases | default([]) }}"
+  loop_control:
+    label: "{{ item.interface }} += {{ item.address }} ({{ item.label }})"
+  register: _nwsdWriteResult
+
+- name: Restart systemd-networkd when any alias file changed
+  ansible.builtin.systemd:
+    name:    systemd-networkd
+    state:   restarted
+  when: _nwsdWriteResult.results | selectattr('changed') | list | length > 0

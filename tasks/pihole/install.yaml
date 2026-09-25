@@ -91,7 +91,7 @@
 
     - name: Pre-seed /etc/pihole/setupVars.conf
       ansible.builtin.template:
-        src:   "{{ dataDir }}/packages/pihole/setupVars.conf.j2"
+        src:   "{{ dataPath }}/packages/pihole/setupVars.conf.j2"
         dest:  /etc/pihole/setupVars.conf
         owner: root
         group: root
@@ -106,11 +106,11 @@
     ##########################################################################
     - name: Load pi-hole metadata for ftlWebserverPort
       ansible.builtin.include_vars:
-        file: "{{ dataDir }}/packages/pihole/metadata.yaml"
+        file: "{{ dataPath }}/packages/pihole/metadata.yaml"
 
     - name: Pre-seed /etc/pihole/pihole.toml (FTL webserver port)
       ansible.builtin.template:
-        src:   "{{ dataDir }}/packages/pihole/pihole.toml.j2"
+        src:   "{{ dataPath }}/packages/pihole/pihole.toml.j2"
         dest:  /etc/pihole/pihole.toml
         owner: root
         group: root

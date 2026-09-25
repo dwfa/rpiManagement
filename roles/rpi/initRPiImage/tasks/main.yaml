@@ -1,0 +1,130 @@
+##############################################################################
+# Ansible role to initialize freshly written RPi OS image
+#
+# USAGE:
+#   Configures a freshly written RPi OS image with initialization files and
+#   network settings. Handles partition mounting internally (encapsulated).
+#   Must be called AFTER createRPiImage role which writes the image to device.
+#
+# REQUIRED FACTS:
+#   - installDevice: Target device path (set by getInstallDevice role)
+#   - taskPath: Path to tasks directory (inherited from common role)
+#   - dataPath: Path to data directory (inherited from common role)
+#   - userDataPath: Path to vault-encrypted user.yaml for RPi initial user
+#                   (passed as role var from playbook)
+#   - debugFlag: (optional) Enable debug output
+#
+# WORKFLOW:
+#   1. Mount boot partition (handles macOS auto-mount)
+#   2. Copy initialization files (ssh) to boot
+#   3. Generate userconf.txt from userDataPath (loaded by writeUserConf task)
+#   4. Modify cmdline.txt with custom boot parameters
+#   5. Unmount boot partition
+#   6. Configure static IP on root partition (Linux only)
+#
+# EXAMPLE:
+#   - hosts: localhost
+#     roles:
+#       - role: getInstallDevice
+#       - role: updateRPiImage
+#       - role: createRPiImage
+#       - role: initRPiImage
+#
+# NOTES:
+#   - Requires createRPiImage to have written image first
+#   - Boot partition: FAT32, mountable on macOS and Linux
+#   - Root partition: ext4, mountable on Linux only (static IP skipped on macOS)
+#   - Static init files defined in data/rpi/imageBuild.yaml
+#   - userconf.txt written by tasks/rpi/writeUserConf.yaml — loads
+#     userDataPath independently so RPi initial user can differ from
+#     SSH connection user (userData)
+#   - cmdline.txt modifications defined in data/rpi/cmdline-txt-mods.yaml
+#   - Requires Python passlib for password_hash filter (used in writeUserConf)
+#
+# Copyright 2025 Douglas WF Acheson (dwfa@dwfa.ca)
+# Licensed under Apache License 2.0. See LICENSE.md for details.
+#
+# Version: 2.6
+# Date: June 22, 2026
+##############################################################################
+---
+
+##############################################################################
+# Mount boot partition
+# macOS: Auto-mounts after dd, unmount first then mount to known path
+# Linux: Mount to /mnt/boot
+##############################################################################
+- name: Wait for macOS to auto-mount boot partition
+  ansible.builtin.include_tasks:
+    file: "{{ taskPath }}/ui/niceWait.yaml"
+  vars:
+    title: "Wait for boot partition mount"
+    data: >-
+      Waiting for macOS to mount boot partition.
+      Press Enter when ready
+  when: ansible_facts['system'] == 'Darwin'
+# TODO shouldn't the above task be converted to include role?
+
+- name: Unmount auto-mounted boot partition (macOS)
+  include_tasks:
+    file: "{{ taskPath }}/fileSystem/unmountPartition.yaml"
+  vars:
+    mountPoint: "{{ _bootPartitionDevice }}"
+  when: ansible_facts['system'] == 'Darwin'
+
+- name: Mount boot partition
+  include_tasks:
+    file: "{{ taskPath }}/fileSystem/mountPartition.yaml"
+  vars:
+    mountPoint:      "{{ _bootMountPoint }}"
+    partitionDevice: "{{ _bootPartitionDevice }}"
+
+##############################################################################
+# Copy init files to boot partition
+##############################################################################
+- name: Copy init files to boot partition
+  include_tasks:
+    file: "{{ taskPath }}/files/copyFiles.yaml"
+  vars:
+    destDir:      "{{ _bootMountPoint }}"
+    metadataPath: "{{ dataPath }}/rpi/imageBuild.yaml"
+
+##############################################################################
+# Generate initial user in userconf.txt on boot partition
+##############################################################################
+- name: Generate initial user on boot partition
+  include_tasks:
+    file: "{{ taskPath }}/rpi/writeUserConf.yaml"
+  vars:
+    bootMountPoint: "{{ _bootMountPoint }}"
+
+##############################################################################
+# Update boot/cmdline.txt
+##############################################################################
+- name: Update cmdline.txt
+  include_tasks:
+    file: "{{ taskPath }}/files/modifyFile.yaml"
+  vars:
+    filePath:     "{{ _cmdlineTxtPath }}"
+    metadataPath: "{{ _cmdlineTxtModsPath }}"
+
+##############################################################################
+# Unmount boot partition
+##############################################################################
+- name: Unmount boot partition
+  include_tasks:
+    file: "{{ taskPath }}/fileSystem/unmountPartition.yaml"
+  vars:
+    mountPoint: "{{ _bootMountPoint }}"
+
+##############################################################################
+# Configure static IP on root filesystem (Linux only)
+# Skipped on macOS (cannot mount ext4).
+##############################################################################
+- name: Configure static IP on root filesystem
+  include_role:
+    name: setStaticIP
+  vars:
+    partitionDevice:  "{{ _rootPartitionDevice }}"
+    staticIPDataPath: "{{ dataPath }}/network/staticIP/installer.yaml"
+  when: ansible_facts['system'] != 'Darwin'

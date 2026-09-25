@@ -24,7 +24,7 @@
 #   6. Reload nginx (graceful — picks up the new location include)
 #
 # EXAMPLE:
-#   - include_tasks: "{{ taskDir }}/webmin/configure.yaml"
+#   - include_tasks: "{{ taskPath }}/webmin/configure.yaml"
 #
 # NOTES:
 #   - lineinfile's regexp must match an existing line; we're updating
@@ -49,7 +49,7 @@
 ##############################################################################
 - name: Load webmin configuration manifest
   ansible.builtin.include_vars:
-    file: "{{ dataDir }}/packages/webmin/metadata.yaml"
+    file: "{{ dataPath }}/packages/webmin/metadata.yaml"
 
 ##############################################################################
 # Step 2: Apply regex/replace edits to webmin's config files

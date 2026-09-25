@@ -1,0 +1,52 @@
+##############################################################################
+# configureNetwork strategy: ifupdown
+#
+# Persist each alias as /etc/network/interfaces.d/<label>.cfg and
+# bring it up via `ifup <iface>:<label>`. Directory is ensured to
+# exist so this task doubles as the fallback strategy for hosts
+# that will only get networking.service later.
+#
+# INPUT: nwAliases (see tasks/network/configureNetwork.yaml)
+#
+# Copyright 2026 Douglas WF Acheson (dwfa@dwfa.ca)
+# Licensed under Apache License 2.0. See LICENSE.md for details.
+#
+# Version: 1.0
+# Date: September 10, 2026
+##############################################################################
+---                                                   # identifies a YAML file
+
+- name: Ensure /etc/network/interfaces.d exists
+  ansible.builtin.file:
+    path:  /etc/network/interfaces.d
+    state: directory
+    owner: root
+    group: root
+    mode:  '0755'
+
+- name: Persist alias as ifupdown drop-in
+  ansible.builtin.copy:
+    dest:  "/etc/network/interfaces.d/{{ item.label }}.cfg"
+    owner: root
+    group: root
+    mode:  '0644'
+    content: |
+      # Rendered by tasks/network/configureNetworkStrategies/ifupdown.yaml
+      # Do NOT edit by hand -- changes will be overwritten on the next run.
+      auto {{ item.interface }}:{{ item.label }}
+      iface {{ item.interface }}:{{ item.label }} inet static
+          address {{ item.address | split('/') | first }}
+          netmask {{ item.address | ansible.utils.ipaddr('netmask') }}
+  loop: "{{ nwAliases | default([]) }}"
+  loop_control:
+    label: "{{ item.interface }}:{{ item.label }} = {{ item.address }}"
+  register: _nwifWriteResult
+
+- name: Bring alias up via ifup when its drop-in changed
+  ansible.builtin.command:
+    cmd: "ifup {{ item.item.interface }}:{{ item.item.label }}"
+  loop: "{{ _nwifWriteResult.results | default([]) }}"
+  loop_control:
+    label: "ifup {{ item.item.interface }}:{{ item.item.label }}"
+  when: item.changed | default(false)
+  changed_when: true

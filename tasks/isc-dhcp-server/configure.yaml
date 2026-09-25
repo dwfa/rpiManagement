@@ -1,47 +1,52 @@
 ##############################################################################
 # Configure isc-dhcp-server: render /etc/dhcp/dhcpd.conf + the
-# /etc/default/isc-dhcp-server file from the canonical inventory.
+# /etc/default/isc-dhcp-server file from data/network/inventory.json
+# (v5 schema) + data/ddns/tsig/*.
 #
 # USAGE:
 #   Auto-discovered by installPackages when `isc-dhcp-server` is in the
-#   packageList. Loads dhcp-specific metadata, parses the network
-#   inventory via netGen, renders Jinja2 templates, validates with
-#   `dhcpd -t`, then enables + restarts the service.
+#   packageList. Loads dhcp-specific metadata, loads the network
+#   inventory JSON (via the shared parseInventory task), loads the
+#   vault-encrypted TSIG key shared with bind9, renders the config
+#   with DDNS enabled, validates with `dhcpd -t`, then enables +
+#   restarts the service. A systemd drop-in ensures dhcpd starts
+#   after bind9 (dhcpd needs bind9 up to accept DDNS updates).
 #
 # REQUIRED VARIABLES:
 #   None at the call site. Driven by:
 #     - data/packages/isc-dhcp-server/metadata.yaml
-#     - data/network/inventory.xlsx (via netGen)
+#     - data/network/inventory.json (loaded via parseInventory)
+#     - data/ddns/tsig/{{ domain }}.tsig.key.yaml (TSIG key)
 #
 # OPTIONAL VARIABLES:
 #   - debugFlag: Enable debug output
 #
 # WORKFLOW:
-#   1. Load dhcp metadata (lease times, guest pool, listen interface)
-#   2. Parse network inventory via networkInventory module (delegated
-#      to controller); --strict so data-quality issues fail fast
-#   3. Render /etc/dhcp/dhcpd.conf from the template:
-#         - global options use network.domain/dnsServer/gateway
-#         - subnet declaration uses the /16 from metadata.subnets[0]
-#         - host {} reservation blocks for each MAC of each
-#           dhcpManaged host
-#   4. Render /etc/default/isc-dhcp-server (listen interface)
-#   5. Validate the rendered config with `dhcpd -t`
-#   6. Enable + restart the service
+#   1. Load dhcp metadata (lease times, listen interface, TSIG path,
+#      DDNS primary + port)
+#   2. Load network inventory JSON (cached as netInventory)
+#   3. Load TSIG key YAML (vault-encrypted secret decrypted in-task)
+#   4. Render /etc/dhcp/dhcpd.conf (DDNS block + reservations)
+#   5. Render /etc/default/isc-dhcp-server (listen interface)
+#   6. Drop systemd override so dhcpd waits for bind9
+#   7. Validate the rendered config with `dhcpd -t`
+#   8. Reload systemd and enable + restart isc-dhcp-server
 #
 # NOTES:
-#   - Hosts whose comment contains "no dhcp" are skipped — they
-#     self-configure their static IPs (wormhole, ds9, pihole today)
-#   - `dhcpd -t` is run BEFORE restart so a bad config doesn't take
-#     down the running daemon
-#   - Loop variables follow the project's <noun>Idx convention where
-#     applicable; Jinja2 inside the template handles host iteration
+#   - Reservations still cover dhcpManaged hosts; DDNS pushes their
+#     A/PTR records to bind9 at lease time so bind9's zone files
+#     stay skeleton (SOA/NS/static hosts only).
+#   - `dhcpd -t` runs BEFORE restart so a bad config doesn't take
+#     down the running daemon.
+#   - Systemd ordering is a small drop-in at
+#     /etc/systemd/system/isc-dhcp-server.service.d/after-bind9.conf
+#     so we don't fork the upstream unit file.
 #
 # Copyright 2026 Douglas WF Acheson (dwfa@dwfa.ca)
 # Licensed under Apache License 2.0. See LICENSE.md for details.
 #
-# Version: 1.0
-# Date: May 10, 2026
+# Version: 2.0
+# Date: September 09, 2026
 ##############################################################################
 ---                                                   # identifies a YAML file
 
@@ -50,38 +55,47 @@
 ##############################################################################
 - name: Load isc-dhcp-server configuration manifest
   ansible.builtin.include_vars:
-    file: "{{ dataDir }}/packages/isc-dhcp-server/metadata.yaml"
+    file: "{{ dataPath }}/packages/isc-dhcp-server/metadata.yaml"
 
 ##############################################################################
-# Step 2: Parse the canonical network inventory on the controller.
-# Shared task -- cached as `netInventory` for the play, so a multi-
-# service run (bind9 + isc-dhcp + pi-hole) parses the Excel once.
+# Step 2: Parse the canonical network inventory (JSON, cached per play)
 ##############################################################################
 - name: Ensure network inventory is parsed
-  ansible.builtin.include_tasks: "{{ taskDir }}/network/parseInventory.yaml"
+  ansible.builtin.include_tasks: "{{ taskPath }}/network/parseInventory.yaml"
 
 ##############################################################################
-# Step 3: Render /etc/dhcp/dhcpd.conf
+# Step 3: Load the TSIG key shared with bind9
+##############################################################################
+- name: Load TSIG key
+  ansible.builtin.include_vars:
+    file: "{{ tsigKeyPath }}"
+
+##############################################################################
+# Step 4: Render /etc/dhcp/dhcpd.conf
 ##############################################################################
 - name: Render /etc/dhcp/dhcpd.conf
   ansible.builtin.template:
-    src:    "{{ dataDir }}/packages/isc-dhcp-server/templates/dhcpd.conf.j2"
+    src:    "{{ dataPath }}/packages/isc-dhcp-server/templates/dhcpd.conf.j2"
     dest:   /etc/dhcp/dhcpd.conf
     owner:  root
     group:  root
     mode:   '0644'
     backup: true
   vars:
-    network:        "{{ netInventory.metadata.network }}"
-    dhcpHosts:      "{{ netInventory.hosts }}"
-    networkSubnet:  "{{ netInventory.metadata.subnets[0].subnetPrefix }}.0.0"
+    network:       "{{ netInventory.metadata.network }}"
+    hostGroups:    "{{ netInventory.groups }}"
+    dhcpPools:     "{{ netInventory.dhcpPools }}"
+    zoneSubnets:   "{{ netInventory.metadata.subnets }}"
+    networkCidr:   "{{ netInventory.metadata.subnets[0].cidr }}"
+    networkSubnet: "{{ netInventory.metadata.subnets[0].cidr | ansible.utils.ipaddr('network') }}"
+    tsigKey:       "{{ tsigKey }}"
 
 ##############################################################################
-# Step 4: Render /etc/default/isc-dhcp-server (sets listen interface)
+# Step 5: Render /etc/default/isc-dhcp-server (sets listen interface)
 ##############################################################################
 - name: Render /etc/default/isc-dhcp-server
   ansible.builtin.template:
-    src:    "{{ dataDir }}/packages/isc-dhcp-server/templates/defaults.j2"
+    src:    "{{ dataPath }}/packages/isc-dhcp-server/templates/defaults.j2"
     dest:   /etc/default/isc-dhcp-server
     owner:  root
     group:  root
@@ -89,7 +103,40 @@
     backup: true
 
 ##############################################################################
-# Step 5: Validate the rendered dhcpd.conf before letting the service load it
+# Step 6: Systemd ordering — dhcpd waits for bind9
+##############################################################################
+- name: Ensure dhcpd systemd override directory exists
+  ansible.builtin.file:
+    path:  /etc/systemd/system/isc-dhcp-server.service.d
+    state: directory
+    owner: root
+    group: root
+    mode:  '0755'
+
+- name: Drop systemd override making dhcpd depend on bind9
+  ansible.builtin.copy:
+    dest: /etc/systemd/system/isc-dhcp-server.service.d/after-bind9.conf
+    owner: root
+    group: root
+    mode:  '0644'
+    content: |
+      # Rendered by tasks/isc-dhcp-server/configure.yaml. Do NOT edit by hand.
+      #
+      # dhcpd needs bind9 running to deliver DDNS updates. Without this
+      # ordering, dhcpd can start first at boot and queue update failures
+      # until bind9 comes up.
+      [Unit]
+      After=bind9.service
+      Wants=bind9.service
+  register: _dhcpdSystemdDropIn
+
+- name: Reload systemd to pick up drop-in changes
+  ansible.builtin.systemd:
+    daemon_reload: true
+  when: _dhcpdSystemdDropIn is changed
+
+##############################################################################
+# Step 7: Validate the rendered dhcpd.conf before letting the service load it
 ##############################################################################
 - name: Validate dhcpd configuration
   ansible.builtin.command:
@@ -97,7 +144,7 @@
   changed_when: false
 
 ##############################################################################
-# Step 6: Enable + restart isc-dhcp-server
+# Step 8: Enable + restart isc-dhcp-server
 ##############################################################################
 - name: Enable and restart isc-dhcp-server
   ansible.builtin.systemd:

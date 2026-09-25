@@ -5,8 +5,8 @@
 # Copyright 2025 Douglas WF Acheson (dwfa@dwfa.ca)
 # Licensed under Apache License 2.0. See LICENSE.md for details.
 #
-# Version: 2.2
-# Date: February 03, 2026
+# Version: 2.3
+# Date: August 01, 2026
 ##############################################################################
 -->
 
@@ -31,18 +31,18 @@ preparation to application and network configuration.
 
 ## Architecture
 
-This project separates automation code from configuration:
+This project uses a **git submodule** to separate public automation code
+from private configuration:
 
-- **This directory**: Ansible roles, playbooks, custom modules, and scripts
-- **data/ directory**: Your credentials, SSH keys, inventory, and host configs
+- **Main repo** (this one): Ansible roles, playbooks, custom modules, and
+  scripts.
+- **`data/` submodule**: your private repo containing credentials, SSH
+  keys, inventory, and host configs. The main repo pins a specific
+  `data/` commit, so automation code and configuration stay paired.
 
-The `data/` directory is excluded from version control (via `.gitignore`) and
-created from `data.template/` during setup. This keeps your sensitive
-configuration private.
-
-**Optional**: For advanced users who want to version-control their data
-directory separately (e.g., to share automation code publicly while keeping
-credentials private), see [docs/TWO_REPO_ARCHITECTURE.md](docs/TWO_REPO_ARCHITECTURE.md)
+Clone with `--recurse-submodules` (or run `git submodule update --init`
+after cloning) to populate `data/`. First-time users without a private
+data repo yet can bootstrap from `data.template/` — see Quick Start.
 
 ## Prerequisites
 
@@ -57,17 +57,26 @@ credentials private), see [docs/TWO_REPO_ARCHITECTURE.md](docs/TWO_REPO_ARCHITEC
 
 ## Quick Start
 
-1. **Clone this repository:**
+1. **Clone this repository (with submodules):**
 
    ```bash
-   git clone https://github.com/YOUR_USERNAME/ansible-rpi-management.git
+   git clone --recurse-submodules \
+       https://github.com/YOUR_USERNAME/ansible-rpi-management.git
    cd ansible-rpi-management
    ```
 
-2. **Create your data directory from template:**
+   If you already cloned without `--recurse-submodules`, run
+   `git submodule update --init` inside the repo.
+
+2. **First-time users only — bootstrap `data/` from the template:**
+
+   The `data/` submodule points to a private repo you own. If you don't
+   have one yet:
 
    ```bash
    cp -r data.template data
+   cd data && git init && git add . && git commit -m "Initial data setup"
+   # push to your own private remote, then wire it in as the submodule
    ```
 
 3. **Set up credentials** (creates encrypted credential file):

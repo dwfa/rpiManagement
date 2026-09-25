@@ -1,46 +1,58 @@
 ##############################################################################
-# Parse the canonical network inventory (Excel -> JSON) via netGen.
+# Load the canonical network inventory JSON into a play-scoped fact.
 #
 # USAGE:
-#   include_tasks from any role/task that needs the rendered network
-#   inventory. Sets `netInventory` as a play-scoped shared fact:
+#   include_tasks from any role/task that needs the network inventory.
+#   Sets `netInventory` as a play-scoped shared fact:
 #
-#     - include_tasks: "{{ taskDir }}/network/parseInventory.yaml"
-#     - debug: var=netInventory.hosts
+#     - include_tasks: "{{ taskPath }}/network/parseInventory.yaml"
+#     - debug: var=netInventory.groups
 #
-#   The task is cached: the first caller in a play does the netGen
-#   parse; subsequent callers in the same play short-circuit on the
-#   `netInventory is defined` guard so the Excel file is read only
-#   once per playbook run -- important for multi-service plays like
+#   The task is cached: the first caller in a play loads the file;
+#   subsequent callers in the same play short-circuit on the
+#   `netInventory is defined` guard so the JSON is read only once per
+#   playbook run — important for multi-service plays like
 #   reconfigureDNSServer where bind9 + isc-dhcp-server + pi-hole all
 #   need the same data.
 #
 # REQUIRED VARIABLES:
 #   None at the call site. Driven by:
-#     - {{ dataDir }}/network/inventory.xlsx
-#     - {{ netGenPath }} (controller-side path to the netGen project)
+#     - {{ dataPath }}/network/inventory.json (v5 schema — see
+#       data/network/inventorySchema.jsonc)
 #
 # OPTIONAL VARIABLES:
 #   - debugFlag: enable debug output (parse summary line)
 #
 # WORKFLOW:
 #   1. Skip if `netInventory` is already defined in this play
-#   2. Call the networkInventory custom module (delegated to localhost
-#      -- it imports netGen's Python package). --strict so data-quality
-#      issues fail the play fast.
-#   3. Emit a one-line parse summary when debugFlag is on.
+#   2. Load inventory.json via include_vars into a transient `_piRaw`
+#      (delegated to localhost — file lives on the controller only)
+#   3. Promote to a play-scoped `netInventory` fact via set_fact
+#      (NOT register — see CACHING note below)
+#   4. Emit a one-line parse summary when debugFlag is on
+#
+# CACHING:
+#   The load goes into a transient `_piRaw` and is then promoted to
+#   `netInventory` via set_fact. This split matters: `register:` fires
+#   even on SKIPPED tasks (it assigns a skip placeholder), so naively
+#   using `register: netInventory` here would overwrite a previously-
+#   cached netInventory with `{"skipped": true}` on the second include.
+#   set_fact only runs when the task actually executes, so the cache
+#   survives subsequent skipped invocations from other services in the
+#   same play.
 #
 # NOTES:
 #   - Naming: `netInventory` (no underscore) is intentional. The
 #     project's `_<name>` convention marks transient/role-local facts
 #     that get cleaned up; this one is intentionally play-scoped and
-#     shared across consumers, like userData / defaultUsersData.
+#     shared across consumers, like userData.
+#   - include_vars auto-detects JSON when the file extension is .json.
 #
 # Copyright 2026 Douglas WF Acheson (dwfa@dwfa.ca)
 # Licensed under Apache License 2.0. See LICENSE.md for details.
 #
-# Version: 1.0
-# Date: May 17, 2026
+# Version: 3.0
+# Date: September 06, 2026
 ##############################################################################
 ---                                                   # identifies a YAML file
 
@@ -48,18 +60,22 @@
   when: netInventory is not defined
   block:
 
-    - name: Parse network inventory via netGen
-      networkInventory:
-        path:       "{{ dataDir }}/network/inventory.xlsx"
-        netGenPath: "{{ netGenPath }}"
-        strict:     true
+    - name: Load network inventory JSON
+      ansible.builtin.include_vars:
+        file: "{{ dataPath }}/network/inventory.json"
+        name: _piRaw
       delegate_to: localhost
-      register:    netInventory
+
+    - name: Cache parsed inventory as play-scoped fact
+      ansible.builtin.set_fact:
+        netInventory: "{{ _piRaw }}"
 
     - name: "Debug: inventory parse"
       ansible.builtin.debug:
         msg: >-
-          [DEBUG] *** parsed [{{ netInventory.host_count }}] hosts;
+          🌐 [DEBUG] *** loaded [{{ netInventory.metadata.statistics.totalHosts }}] hosts across
+          [{{ netInventory.metadata.statistics.groups }}] groups;
           dhcpManaged=[{{ netInventory.metadata.statistics.dhcpManaged }}];
-          warnings=[{{ netInventory.metadata.warnings | length }}]
+          ddnsManaged=[{{ netInventory.metadata.statistics.ddnsManaged }}];
+          retired=[{{ netInventory.metadata.statistics.retired }}]
       when: debugFlag | default(0) | int == 1

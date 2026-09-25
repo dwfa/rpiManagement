@@ -1,0 +1,40 @@
+##############################################################################
+# Fail the playbook with a clean boxed failure message.
+#
+# USAGE:
+#   Stops the playbook and surfaces a titled, formatted failure block.
+#   Under ansibleRunner the block renders as a boxed panel; under bare
+#   ansible-playbook it renders as an ordinary fail msg. Both paths
+#   preserve normal Ansible failure semantics — the play stops.
+#
+# VARIABLES:
+#   - title: Optional short failure title shown by ansibleRunner
+#   - data: Failure body (string, multiline block, list, or mapping)
+#
+# EXAMPLE:
+#   - name: "Validate required settings"
+#     ansible.builtin.include_tasks: "{{ taskPath }}/ui/niceFail.yaml"
+#     vars:
+#       title: "Missing required settings"
+#       data:
+#         - "server = [unset]"
+#         - "env    = [dev]"
+#
+# NOTES:
+#   - Under ansibleRunner the include row + this wrapper's task row are
+#     hidden; only the boxed title + payload appear.
+#   - Under plain ansible-playbook, the task name and msg appear as
+#     normal Ansible failure output.
+#   - This wrapper is detected by ansibleRunner as a failure block.
+#
+# Copyright 2026 Douglas WF Acheson (dwfa@dwfa.ca)
+# Licensed under Apache License 2.0. See LICENSE.md for details.
+#
+# Version: 1.0
+# Date: September 10, 2026
+##############################################################################
+---                                            # identifies a YAML config file
+
+- name: "niceFail: {{ title | default('Failure') }}"
+  ansible.builtin.fail:
+    msg: "{{ data }}"

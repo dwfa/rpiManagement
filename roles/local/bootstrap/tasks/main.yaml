@@ -1,0 +1,154 @@
+##############################################################################
+# Controller-side prerequisite bootstrap
+#
+# Ensures Python modules AND Ansible collections required by downstream
+# tasks are present in the Ansible controller's environment. Runs on
+# localhost only.
+#
+# REQUIREMENTS SOURCE:
+#   data/bootstrap/requirements.yaml — lists of pyModules and
+#   ansibleModules. Add entries there, not here.
+#
+# BEHAVIOR:
+#   - Hard-fails if the controller Python interpreter is not inside a venv.
+#     Avoids installing packages into system / Homebrew Python.
+#   - Idempotent install of each required module (pip is a no-op when the
+#     module is already present at any version).
+#   - Idempotent install of each required collection via ansible-galaxy
+#     (skips download if already present at any version).
+#   - Hash-gated: after a successful full run the role writes the SHA-256
+#     of requirements.yaml to .venv/.bootstrap-stamp.yaml. Subsequent
+#     runs skip both install loops when the current file hash matches
+#     the stored hash. Any edit to requirements.yaml invalidates the
+#     cache automatically. Delete the marker to force a full re-run
+#     without touching requirements.
+#   - No wall-clock dependency (no `ansible_date_time`) — works whether
+#     the calling play sets `gather_facts: true` or `false`.
+#
+# USAGE:
+#   - roles:
+#       - role: bootstrap    # first role in the localhost play
+#
+# Copyright 2026 Douglas WF Acheson (dwfa@dwfa.ca)
+# Licensed under Apache License 2.0. See LICENSE.md for details.
+#
+# Version: 1.4
+# Date: September 10, 2026
+##############################################################################
+---                                            # identifies a YAML config file
+
+##############################################################################
+# Detect whether the controller interpreter is inside a virtual environment.
+# `sys.prefix != sys.base_prefix` is the standard Python-level test and
+# works for both venv and virtualenv.
+##############################################################################
+- name: Detect controller Python venv
+  ansible.builtin.command:
+    argv:
+      - "{{ ansible_playbook_python }}"
+      - -c
+      - "import sys; print('yes' if sys.prefix != sys.base_prefix else 'no')"
+  register:     _venvCheck
+  changed_when: false
+  check_mode:   false                          # read-only, safe under --check
+
+- name: Refuse to bootstrap into non-venv interpreter
+  ansible.builtin.fail:
+    msg: >-
+      [ERROR] *** Controller interpreter [{{ ansible_playbook_python }}]
+      is not inside a virtual environment. Refusing to install packages
+      system-wide. Launch via ar.py (which uses .venv/), or create and
+      activate a venv before running ansible-playbook directly:
+        python3 -m venv .venv && source .venv/bin/activate
+  when: _venvCheck.stdout | trim != 'yes'
+
+##############################################################################
+# Load the requirements list (pyModules + ansibleModules).
+##############################################################################
+- name: Load bootstrap requirements
+  ansible.builtin.include_vars:
+    file: "{{ _requirementsFile }}"
+  vars:
+    _requirementsFile: "{{ dataPath }}/bootstrap/requirements.yaml"
+
+##############################################################################
+# Hash gate — compare current requirements.yaml SHA-256 to the hash
+# recorded in the marker on the last successful run. Match = skip.
+##############################################################################
+- name: Compute current requirements hash
+  ansible.builtin.set_fact:
+    _reqHash: "{{ lookup('file', dataPath ~ '/bootstrap/requirements.yaml') | hash('sha256') }}"
+
+- name: Stat bootstrap marker
+  ansible.builtin.stat:
+    path: "{{ _bootstrapMarker }}"
+  register:   _bootstrapMarkerStat
+  check_mode: false
+  vars:
+    _bootstrapMarker: "{{ ansible_playbook_python | dirname | dirname }}/.bootstrap-stamp.yaml"
+
+- name: Load stored hash from marker
+  ansible.builtin.include_vars:
+    file: "{{ ansible_playbook_python | dirname | dirname }}/.bootstrap-stamp.yaml"
+    name: _bootstrapMarkerVars
+  when: _bootstrapMarkerStat.stat.exists
+
+- name: Decide whether bootstrap loops can be skipped
+  ansible.builtin.set_fact:
+    _bootstrapSkip: >-
+      {{ _bootstrapMarkerStat.stat.exists
+         and (_bootstrapMarkerVars.requirementsHash | default('')) == _reqHash }}
+
+- name: "Bootstrap status"
+  ansible.builtin.debug:
+    msg: >-
+      🔧 bootstrap
+      {{ 'requirements hash MATCH — install loops SKIPPED' if _bootstrapSkip
+         else ('requirements hash CHANGED — refreshing' if _bootstrapMarkerStat.stat.exists
+               else 'marker missing — first-run bootstrap') }}
+
+##############################################################################
+# Install required Python modules into the controller venv.
+# pip is idempotent: no-op when already present.
+##############################################################################
+- name: Ensure required Python modules are installed
+  ansible.builtin.pip:
+    name: "{{ item }}"
+    executable: "{{ ansible_playbook_python | dirname }}/pip"
+  loop: "{{ pyModules | default([]) }}"
+  when: not _bootstrapSkip
+
+##############################################################################
+# Install required Ansible collections. ansible-galaxy is idempotent when
+# the collection is already present (--upgrade omitted intentionally so a
+# re-run does not silently move versions).
+##############################################################################
+- name: Ensure required Ansible collections are installed
+  ansible.builtin.command:
+    argv:
+      - "{{ ansible_playbook_python | dirname }}/ansible-galaxy"
+      - collection
+      - install
+      - "{{ item }}"
+  register:     _collectionInstall
+  changed_when: "'Installing' in _collectionInstall.stdout"
+  loop: "{{ ansibleModules | default([]) }}"
+  when: not _bootstrapSkip
+
+##############################################################################
+# Refresh the marker after a successful full run. Records the hash so
+# the next invocation can short-circuit unless requirements changes.
+##############################################################################
+- name: Refresh bootstrap marker
+  ansible.builtin.copy:
+    dest: "{{ ansible_playbook_python | dirname | dirname }}/.bootstrap-stamp.yaml"
+    mode: '0644'
+    content: |
+      ##############################################################################
+      # Bootstrap cache marker — DO NOT EDIT BY HAND.
+      # Rewritten by roles/local/bootstrap after each successful full run.
+      # Delete this file to force a bootstrap rerun.
+      ##############################################################################
+      ---
+      requirementsHash: "{{ _reqHash }}"
+  when: not _bootstrapSkip

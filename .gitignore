@@ -4,31 +4,32 @@
 # Excludes private data, temporary files, and system-specific files
 ##############################################################################
 
-# Private data directory (separate git repo)
-data/
-
-# Project documentation (symlinked from data/)
-CLAUDE.md
-BACKLOG.md
 
 # Personal development notes (local only)
-NOTES.md
-plan.md
-
-# Actual inventory file (in data/ directory)
-# Note: data.template/inventory.yaml is the template and should be tracked
-/inventory.yaml
-data/inventory.yaml
+AGENTS.md
+CLAUDE.md
+docs/backlog.md
+docs/newIdeas.md
+docs/notes.md
+docs/plan.md
+_delete/
 
 # Test and development files (not for public release)
 test.sh
 playbooks/test-pb.yaml
+ansibleRunnerShim.py
 
 # Wrapper scripts (not ready for public release)
 createImage.sh
 setupInstaller.sh
 setupRPiDNS.sh
 writeDiskPartitions.sh
+
+# ansibleRunner project-local launcher + installer (per-machine, not
+# committed — install via `python3 install.py` from a downloaded copy)
+ar.py
+install.py
+.ansibleRunner/
 
 # Custom modules (not ready for public release)
 library/
@@ -72,7 +73,8 @@ __pycache__/
 *.backup
 
 # Log files
-*.log
+logs/
+.log
 
 # Temporary files
 *.tmp
@@ -80,3 +82,5 @@ __pycache__/
 
 # VS Code workspace files
 *.code-workspace
+.venv/
+.menuState.json

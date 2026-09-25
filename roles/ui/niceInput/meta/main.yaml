@@ -1,0 +1,13 @@
+##############################################################################
+# Role dependencies for niceInput role
+#
+# Copyright 2026 Douglas WF Acheson (dwfa@dwfa.ca)
+# Licensed under Apache License 2.0. See LICENSE.md for details.
+#
+# Version: 1.0
+# Date: August 01, 2026
+##############################################################################
+
+---
+dependencies:
+  - role: common

@@ -1,0 +1,107 @@
+##############################################################################
+# Create user account(s) — three modes: single path, directory scan, or
+# list of usernames
+#
+# USAGE:
+#   Thin dispatcher role. Based on which variable is passed, delegates to
+#   one of three paths. Exactly one of the three inputs must be provided.
+#
+# REQUIRED VARIABLES (exactly one of):
+#   - userDataPath: Path to a single vault-encrypted user.yaml file
+#   - userDataDir:  Path to a directory containing user subdirectories
+#                   (each subdirectory must contain a user.yaml)
+#   - userNames:    List of usernames. Each is resolved by convention
+#                   to "{{ dataPath }}/users/<uName>/user.yaml". Useful
+#                   when the caller wants to create a specific subset
+#                   of users without scanning a whole directory or
+#                   spelling out full paths.
+#
+# OPTIONAL VARIABLES:
+#   - debugFlag: Enable debug output
+#
+# WORKFLOW:
+#   1. Validate that exactly one of the three inputs is provided
+#   2. userDataPath → delegate to tasks/users/createUser.yaml (single)
+#   3. userDataDir  → delegate to tasks/users/createUsers.yaml (scan)
+#   4. userNames    → loop, deriving userDataPath per name and calling
+#                     tasks/users/createUser.yaml each time
+#
+# EXAMPLES:
+#   # Single user (explicit path)
+#   roles:
+#     - role: createUsers
+#       vars:
+#         userDataPath: "{{ dataPath }}/users/dwfa/user.yaml"
+#
+#   # Multiple users from a directory (scan)
+#   roles:
+#     - role: createUsers
+#       vars:
+#         userDataDir: "{{ dataPath }}/users/default"
+#
+#   # Specific list of users (paths derived by convention)
+#   roles:
+#     - role: createUsers
+#       vars:
+#         userNames:
+#           - dwfa
+#           - alice
+#
+# NOTES:
+#   - The three modes are mutually exclusive — provide exactly one
+#   - The list-mode validation does not check that each named user's
+#     user.yaml exists; the underlying createUser.yaml will fail if
+#     a path is missing. This is deliberate — fail loudly on a
+#     mistyped name rather than silently skipping
+#   - See createUser.yaml / createUsers.yaml headers for details of
+#     the per-user behavior
+#
+# Copyright 2026 Douglas WF Acheson (dwfa@dwfa.ca)
+# Licensed under Apache License 2.0. See LICENSE.md for details.
+#
+# Version: 5.0
+# Date: May 3, 2026
+##############################################################################
+---                                                   # identifies a YAML file
+
+##############################################################################
+# Validate: exactly one of userDataPath, userDataDir, or userNames must
+# be provided. Counts how many are defined; anything other than 1 fails.
+##############################################################################
+- name: Validate required input
+  ansible.builtin.fail:
+    msg: >-
+      [ERROR] *** createUsers role requires exactly one of userDataPath,
+      userDataDir, or userNames to be provided
+  when: >-
+    ([userDataPath is defined,
+      userDataDir  is defined,
+      userNames    is defined] | select | list | length) != 1
+
+##############################################################################
+# Mode 1 — single user from an explicit path
+##############################################################################
+- name: Create single user
+  when: userDataPath is defined
+  ansible.builtin.include_tasks:
+    file: "{{ taskPath }}/users/createUser.yaml"
+
+##############################################################################
+# Mode 2 — multiple users discovered from a directory
+##############################################################################
+- name: Create users from directory
+  when: userDataDir is defined
+  ansible.builtin.include_tasks:
+    file: "{{ taskPath }}/users/createUsers.yaml"
+
+##############################################################################
+# Mode 3 — list of usernames; delegate to createUsers.yaml task which
+# handles the loop. Keeping the per-iteration var binding inside the
+# task file (not here at role scope) avoids the recursion bug Ansible
+# triggers when role-level `vars:` referencing a loop_var get
+# pre-evaluated in sibling modes' contexts.
+##############################################################################
+- name: Create users from list of names
+  when: userNames is defined
+  ansible.builtin.include_tasks:
+    file: "{{ taskPath }}/users/createUsers.yaml"

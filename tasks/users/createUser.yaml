@@ -12,7 +12,7 @@
 # REQUIRED VARIABLES (exactly one of):
 #   - userDataPath: Explicit path to a vault-encrypted user.yaml file
 #   - uName:        Username; user.yaml is found by convention at
-#                   "{{ dataDir }}/users/<uName>/user.yaml"
+#                   "{{ dataPath }}/users/<uName>/user.yaml"
 #
 #   user.yaml's userData dict must contain: uName, uid, name, shell,
 #   primaryGroup (list with one {name, gid}), supplementaryGroups
@@ -50,11 +50,11 @@
 #      createHome=false)
 #
 # EXAMPLES:
-#   - include_tasks: "{{ taskDir }}/users/createUser.yaml"
+#   - include_tasks: "{{ taskPath }}/users/createUser.yaml"
 #     vars:
-#       userDataPath: "{{ dataDir }}/users/dwfa/user.yaml"
+#       userDataPath: "{{ dataPath }}/users/dwfa/user.yaml"
 #
-#   - include_tasks: "{{ taskDir }}/users/createUser.yaml"
+#   - include_tasks: "{{ taskPath }}/users/createUser.yaml"
 #     vars:
 #       uName: dwfa
 #
@@ -104,7 +104,7 @@
     _userDataPath: >-
       {{ userDataPath
          if userDataPath is defined
-         else dataDir ~ '/users/' ~ uName ~ '/user.yaml' }}
+         else dataPath ~ '/users/' ~ uName ~ '/user.yaml' }}
 
 ##############################################################################
 # Load user data
@@ -121,7 +121,7 @@
 ##############################################################################
 - name: Ensure referenced groups exist
   ansible.builtin.include_tasks:
-    file: "{{ taskDir }}/group/createGroups.yaml"
+    file: "{{ taskPath }}/group/createGroups.yaml"
   vars:
     groupList: >-
       {{ (_cuLoadedUser.userData.primaryGroup        | default([])) +
@@ -172,7 +172,7 @@
     - _cuLoadedUser.userData.sshKeys.public      is defined
     - _cuLoadedUser.userData.sshKeys.public      | length > 0
   ansible.builtin.include_tasks:
-    file: "{{ taskDir }}/users/addSSHKeys.yaml"
+    file: "{{ taskPath }}/users/addSSHKeys.yaml"
   vars:
     uName:      "{{ _cuLoadedUser.userData.uName | trim }}"
     publicKeys: "{{ _cuLoadedUser.userData.sshKeys.public }}"
@@ -186,6 +186,6 @@
 - name: Install user files
   when: _cuLoadedUser.userData.createHome | default(true) | bool
   ansible.builtin.include_tasks:
-    file: "{{ taskDir }}/users/installUserFiles.yaml"
+    file: "{{ taskPath }}/users/installUserFiles.yaml"
   vars:
     userDataPath: "{{ _userDataPath }}"

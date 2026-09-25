@@ -22,9 +22,9 @@
 # EXAMPLE:
 #   - name: Remove installer user
 #     include_tasks:
-#       file: "{{ taskDir }}/users/removeUser.yaml"
+#       file: "{{ taskPath }}/users/removeUser.yaml"
 #     vars:
-#       userDataPath: "{{ dataDir }}/users/installer/user.yaml"
+#       userDataPath: "{{ dataPath }}/users/installer/user.yaml"
 #
 # NOTES:
 #   - Errors from killall are ignored (user may not exist or have no

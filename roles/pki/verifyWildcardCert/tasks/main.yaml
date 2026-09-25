@@ -1,0 +1,54 @@
+##############################################################################
+# Verify the internal-CA wildcard certificate exists on disk.
+#
+# Playbooks that consume wildcard.<domain>.{key,crt} at runtime call this
+# role first to fail fast (with a friendly niceDisplay panel) when the
+# cert isn't materialized yet. On success the role is silent.
+#
+# REQUIRED VARIABLES:
+#   - dataPath: absolute path to the project's data/ directory
+#   - domain:   DNS zone the wildcard covers (e.g. example.com)
+#
+# OPTIONAL VARIABLES:
+#   - debugFlag: emit a confirmation debug line when the cert is present
+#
+# USAGE:
+#   roles:
+#     - role: verifyWildcardCert
+#
+# Copyright 2026 Douglas WF Acheson (dwfa@dwfa.ca)
+# Licensed under Apache License 2.0. See LICENSE.md for details.
+#
+# Version: 1.0
+# Date: August 22, 2026
+##############################################################################
+---                                                   # identifies a YAML file
+
+- name: Stat wildcard cert key
+  ansible.builtin.stat:
+    path: "{{ dataPath }}/pki/wildcard.{{ domain }}.key"
+  register: _vwcKeyStat
+
+- name: Abort if wildcard cert is missing
+  ansible.builtin.include_role:
+    name: niceFail
+  vars:
+    title: "Missing wildcard certificate"
+    data: |-
+      🔒 {red}Wildcard cert/key not found:{/red}
+      {cyan}{{ dataPath }}/pki/wildcard.{{ domain }}.key{/cyan}
+
+      Run this first to generate the internal CA + wildcard cert:
+        {yellow}ansible-playbook playbooks/managePKI-pb.yaml{/yellow}
+  when: not _vwcKeyStat.stat.exists
+
+- name: Debug wildcard cert confirmation
+  ansible.builtin.debug:
+    msg: "🔒 [DEBUG] *** wildcard cert present at [{{ dataPath }}/pki/wildcard.{{ domain }}.key]"
+  when:
+    - debugFlag | default(0) | int == 1
+    - _vwcKeyStat.stat.exists
+
+- name: Cleanup temporary facts
+  ansible.builtin.set_fact:
+    _vwcKeyStat: null

@@ -1,0 +1,37 @@
+##############################################################################
+# Ansible role variables for initRPiImage role
+#
+# REQUIRED INPUT FACTS:
+#   - installDevice: Target device path (set by getInstallDevice role)
+#
+# Note: These variables reference installDevice which must exist when this
+#       role starts. Set by getInstallDevice role in the playbook.
+#
+# Copyright 2025 Douglas WF Acheson (dwfa@dwfa.ca)
+# Licensed under Apache License 2.0. See LICENSE.md for details.
+#
+# Version: 2.1
+# Date: March 22, 2026
+##############################################################################
+---
+
+##############################################################################
+# Partition device paths derived from installDevice
+# macOS: /dev/disk6 → /dev/disk6s1 (partition slice), /dev/disk6s2
+# Linux: /dev/sdb → /dev/sdb1 (partition number), /dev/sdb2
+##############################################################################
+_bootPartitionDevice: "{{ installDevice + ('s1' if ansible_facts['system'] == 'Darwin' else '1') }}"
+_rootPartitionDevice: "{{ installDevice + ('s2' if ansible_facts['system'] == 'Darwin' else '2') }}"
+
+##############################################################################
+# Mount point for boot partition (platform-specific)
+# macOS: /Volumes/boot — /mnt is read-only (SIP); /Volumes is writable
+# Linux: /mnt/boot  — standard Linux mount directory
+##############################################################################
+_bootMountPoint: "{{ '/Volumes/boot' if ansible_facts['system'] == 'Darwin' else '/mnt/boot' }}"
+
+##############################################################################
+# File paths for cmdline.txt modification task
+##############################################################################
+_cmdlineTxtPath:     "{{ _bootMountPoint }}/cmdline.txt"
+_cmdlineTxtModsPath: "{{ dataPath }}/rpi/cmdline-txt-mods.yaml"

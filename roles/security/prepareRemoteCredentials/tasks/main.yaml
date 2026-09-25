@@ -1,0 +1,106 @@
+##############################################################################
+# Load credentials from vault-encrypted user.yaml file and materialize
+# SSH keys to disk
+#
+# USAGE:
+#   Loads connection credentials from a user's vault-encrypted user.yaml
+#   file. Extracts only connection-relevant fields (uName, pwd, sudoPWD,
+#   sshKeys, file) into a clean userData fact. Materializes SSH keys to
+#   disk if the user has any (skips silently if not). Must run on
+#   localhost with connection: local before any plays that need SSH
+#   connection to remote hosts.
+#
+# REQUIRED VARIABLES:
+#   - userDataPath: Path to user.yaml file containing userData dict
+#                   with uName, pwd, sudoPWD, and sshKeys fields
+#
+# OPTIONAL VARIABLES:
+#   - factName: Name of the output fact (default: 'userData')
+#               Use a custom name to load multiple users without
+#               overwriting the connection credential fact.
+#
+# OUTPUT FACTS (accessible via hostvars['localhost']):
+#   - {{ factName }}: Dictionary containing:
+#       uName:   SSH username
+#       pwd:     SSH password    (vault-decrypted empty '' if absent)
+#       sudoPWD: Sudo password   (vault-decrypted empty '' if absent)
+#       sshKeys: Map of SSH keys (vault-decrypted empty {} if absent)
+#       file:    Connection vars file suffix — 'Key' if user has private
+#                SSH keys, 'PWD' otherwise; used directly in vars_files
+#                filename: connection{{ userData.file }}.yaml
+#
+# EXAMPLE:
+#   # Play 1: Load installer credentials locally
+#   - hosts: localhost
+#     connection: local
+#     gather_facts: false
+#     roles:
+#       - role: prepareRemoteCredentials
+#         vars:
+#           userDataPath: "{{ dataPath }}/users/installer/user.yaml"
+#
+#   # Play 2: Use credentials on remote hosts
+#   - hosts: "{{ nodes }}"
+#     vars_files:
+#       - "{{ playbook_dir }}/vars/connection\
+#          {{ hostvars['localhost'].userData.file }}.yaml"
+#
+# NOTES:
+#   - Must run with connection: local (no SSH needed)
+#   - Vault decryption happens automatically via include_vars
+#   - All connection facts accessible via hostvars['localhost']
+#   - user.yaml must contain userData dict with uName (required),
+#     pwd, sudoPWD, and sshKeys (all optional, default to empty)
+#   - trim applied to string fields — ansible-vault encrypt_string
+#     may append a trailing newline to the decrypted value
+#   - SSH keys materialized to data/ssh/key.prv and key.pub if present;
+#     call clearLocal role in a final localhost play to remove them
+#   - For plays that must use password auth regardless of userData.file
+#     (e.g. fresh RPi with no authorized_keys), load connectionPWD.yaml
+#     explicitly instead of using the userData.file filename
+#
+# Copyright 2026 Douglas WF Acheson (dwfa@dwfa.ca)
+# Licensed under Apache License 2.0. See LICENSE.md for details.
+#
+# Version: 2.5
+# Date: March 22, 2026
+##############################################################################
+---                                            # identifies a YAML config file
+
+##############################################################################
+# Load raw user data (vault decoded in task context)
+##############################################################################
+- name: Load raw user data
+  ansible.builtin.include_vars:
+    file: "{{ userDataPath }}"
+    name: _rawUserData
+
+##############################################################################
+# Extract connection-relevant fields into userData fact
+# trim applied to string fields to strip trailing newlines that
+# ansible-vault encrypt_string may append to decrypted values
+##############################################################################
+- name: "Set [{{ factName | default('userData') }}] fact from loaded credentials"
+  ansible.builtin.set_fact:
+    "{{ factName | default('userData') }}":
+      file:    "{{ 'Key' if (_rawUserData.userData.sshKeys.private | default({})) | length > 0 else 'PWD' }}"
+      pwd:     "{{ _rawUserData.userData.pwd     | default('') | trim }}"
+      sshKeys: "{{ _rawUserData.userData.sshKeys | default({}) }}"
+      sudoPWD: "{{ _rawUserData.userData.sudoPWD | default('') | trim }}"
+      uName:   "{{ _rawUserData.userData.uName   | trim }}"
+
+##############################################################################
+# Materialize SSH keys to disk (skips silently if user has no SSH keys)
+##############################################################################
+- name: Materialize SSH keys
+  ansible.builtin.include_tasks:
+    file: "{{ taskPath }}/users/materializeSSHKey.yaml"
+
+##############################################################################
+# Note: _rawUserData is intentionally NOT cleaned up here. It was loaded
+# via include_vars (a "var", not a "fact"), and facts take precedence over
+# vars in Ansible. Setting it to null via set_fact would create a fact
+# that blocks the next include_vars reload, breaking subsequent calls
+# (e.g., when postCreate-pb.yaml reloads credentials for a different user
+# in a later play).
+##############################################################################

@@ -24,22 +24,22 @@
 # EXAMPLE:
 #   - name: Copy RPi init files using metadata defaults
 #     include_tasks:
-#       file: "{{ taskDir }}/files/copyFiles.yaml"
+#       file: "{{ taskPath }}/files/copyFiles.yaml"
 #     vars:
-#       metadataPath: "{{ dataDir }}/rpi/imageBuild.yaml"
+#       metadataPath: "{{ dataPath }}/rpi/imageBuild.yaml"
 #
 #   - name: Copy RPi init files with override
 #     include_tasks:
-#       file: "{{ taskDir }}/files/copyFiles.yaml"
+#       file: "{{ taskPath }}/files/copyFiles.yaml"
 #     vars:
-#       metadataPath: "{{ dataDir }}/rpi/imageBuild.yaml"
+#       metadataPath: "{{ dataPath }}/rpi/imageBuild.yaml"
 #       destDir: "/custom/destination"
 #
 # NOTES:
 #   - Metadata file must contain '_initFiles' list and optionally _srcDir/_destDir
 #   - Metadata defines: _srcDir (with sourceDir override), _destDir (with destDir override)
 #   - Each _initFiles entry can specify: file (required), mode (optional, default: 0644)
-#   - Example metadata: _srcDir: "{{ sourceDir | default(dataDir + '/rpi') }}"
+#   - Example metadata: _srcDir: "{{ sourceDir | default(dataPath + '/rpi') }}"
 #   - Caller must ensure destDir is accessible (mounted if needed)
 #   - Requires write permissions to destDir
 #   - Generic: can copy from any source to any destination with any metadata

@@ -5,9 +5,9 @@
 #   Runs on localhost (typically in Play 1 of a playbook, before any remote
 #   play attempts SSH). Tries the target host's inventory IP first; if
 #   unreachable, prompts the user for the actual (e.g. DHCP-assigned) IP.
-#   Stores the resolved address as the global fact `newTarget` on localhost.
+#   Stores the resolved address as the global fact `currentIP` on localhost.
 #   Subsequent remote plays reference it directly:
-#       hosts: "{{ hostvars['localhost'].newTarget }}"
+#       hosts: "{{ hostvars['localhost'].currentIP }}"
 #
 # REQUIRED VARIABLES:
 #   - targetHost: Inventory host key (IP string in this project's inventory)
@@ -20,27 +20,27 @@
 #   - debugFlag:      Enable debug output
 #
 # OUTPUT VARIABLES:
-#   - newTarget: Resolved IP string (set on localhost). Either equals
+#   - currentIP: Resolved IP string (set on localhost). Either equals
 #                targetHost (known IP reachable) or the user-prompted IP.
 #
 # WORKFLOW:
 #   1. Try targetHost on sshPort with short timeout
-#   2. If reachable: newTarget = targetHost
+#   2. If reachable: currentIP = targetHost
 #   3. If unreachable: prompt user for DHCP-assigned IP, validate format,
-#      wait for it to be reachable, set newTarget = prompted IP
+#      wait for it to be reachable, set currentIP = prompted IP
 #
 # EXAMPLE:
 #   # Play 1 (localhost)
 #   pre_tasks:
 #     - name: Resolve target host IP
 #       include_tasks:
-#         file: "{{ taskDir }}/system/resolveTargetHost.yaml"
+#         file: "{{ taskPath }}/system/resolveTargetHost.yaml"
 #       vars:
 #         targetHost: "{{ groups[nodes] | first }}"
 #
 #   # Play 2 (remote)
 #   - name: Do work on RPi
-#     hosts: "{{ hostvars['localhost'].newTarget }}"
+#     hosts: "{{ hostvars['localhost'].currentIP }}"
 #     ...
 #
 # NOTES:
@@ -65,64 +65,75 @@
   when: targetHost is not defined
 
 ##############################################################################
-# Try known IP (targetHost) with short timeout
+# Try known IP (targetHost) with short timeout.
+# Delegates to the shared waitForHost task so the underlying probe
+# mechanism lives in one place.
 ##############################################################################
 - name: Try known IP [{{ targetHost }}]
-  ansible.builtin.wait_for:
-    host:    "{{ targetHost }}"
-    port:    "{{ sshPort        | default(22) }}"
-    timeout: "{{ resolveTimeout | default(30) }}"
-  register:      _rthKnownIPResult
-  ignore_errors: true
+  include_tasks: "{{ taskPath }}/system/waitForHost.yaml"
+  vars:
+    waitHost:    "{{ targetHost }}"
+    waitPort:    "{{ sshPort        | default(22) }}"
+    waitTimeout: "{{ resolveTimeout | default(5) }}"
 
-##############################################################################
-# Known IP reachable — set newTarget to targetHost
-##############################################################################
-- name: Set newTarget to known IP
+# Snapshot hostReachable before the fallback block overwrites it.
+- name: Snapshot known-IP reachability
   ansible.builtin.set_fact:
-    newTarget: "{{ targetHost }}"
-  when: _rthKnownIPResult is succeeded
+    _rthKnownIPReachable: "{{ hostReachable }}"
 
 ##############################################################################
-# Fallback: prompt user and set newTarget when known IP unreachable
+# Known IP reachable — set currentIP to targetHost
+##############################################################################
+- name: Set currentIP to known IP
+  ansible.builtin.set_fact:
+    currentIP: "{{ targetHost }}"
+  when: _rthKnownIPReachable
+
+##############################################################################
+# Fallback: prompt user and set currentIP when known IP unreachable
 ##############################################################################
 - name: Resolve via user prompt
   block:
     - name: Prompt for DHCP-assigned IP
-      ansible.builtin.pause:
-        prompt: |-
+      ansible.builtin.include_role:
+        name: niceInput
+      vars:
+        title: "Enter DHCP-assigned IP"
+        data: |-
           Host [{{ targetHost }}] not reachable on port {{ sshPort | default(22) }}.
-          Enter the DHCP-assigned IP for this host
-      register: _rthPrompt
+          Enter the DHCP-assigned IP for this host.
 
     - name: Validate prompted IP format
       ansible.builtin.fail:
-        msg: >-
-          [ERROR] *** Invalid IPv4 format:
-          [{{ _rthPrompt.user_input | default('') | trim }}]
-      when: not (_rthPrompt.user_input | default('') | trim
-                 | regex_search('^([0-9]{1,3}\.){3}[0-9]{1,3}$'))
+        msg: "[ERROR] *** Invalid IPv4 format: [{{ promptValue }}]"
+      when: not (promptValue | regex_search('^([0-9]{1,3}\.){3}[0-9]{1,3}$'))
 
-    - name: Set newTarget to prompted IP
+    - name: Set currentIP to prompted IP
       ansible.builtin.set_fact:
-        newTarget: "{{ _rthPrompt.user_input | trim }}"
+        currentIP: "{{ promptValue }}"
 
     - name: Wait for resolved host to be reachable
-      ansible.builtin.wait_for:
-        host:    "{{ newTarget }}"
-        port:    "{{ sshPort        | default(22) }}"
-        timeout: "{{ resolveTimeout | default(30) }}"
-  when: _rthKnownIPResult is failed
+      include_tasks: "{{ taskPath }}/system/waitForHost.yaml"
+      vars:
+        waitHost:    "{{ currentIP }}"
+        waitPort:    "{{ sshPort        | default(22) }}"
+        waitTimeout: "{{ resolveTimeout | default(30) }}"
+
+    - name: Fail if prompted host still not reachable
+      ansible.builtin.fail:
+        msg: "[ERROR] *** Prompted host [{{ currentIP }}] not reachable on port [{{ sshPort | default(22) }}]."
+      when: not hostReachable
+  when: not _rthKnownIPReachable
 
 ##############################################################################
 # Register resolved target in runtime inventory so subsequent plays can
-# reference it via `hosts: "{{ hostvars['localhost'].newTarget }}"`.
+# reference it via `hosts: "{{ hostvars['localhost'].currentIP }}"`.
 # Ansible's hosts: directive only matches hosts that exist in inventory;
 # add_host creates an entry for the resolved IP at runtime.
 ##############################################################################
 - name: Add resolved target to runtime inventory
   ansible.builtin.add_host:
-    name:   "{{ newTarget }}"
+    name:   "{{ currentIP }}"
     groups: resolved
 
 ##############################################################################
@@ -130,7 +141,7 @@
 ##############################################################################
 - name: Debug resolved target
   ansible.builtin.debug:
-    msg: "[DEBUG] *** Target [{{ targetHost }}] resolved to [{{ newTarget }}]"
+    msg: "[DEBUG] *** Target [{{ targetHost }}] resolved to [{{ currentIP }}]"
   when: debugFlag | default(0) | int == 1
 
 ##############################################################################

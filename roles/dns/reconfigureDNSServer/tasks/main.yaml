@@ -1,0 +1,72 @@
+##############################################################################
+# Reconfigure an already-provisioned DNS server -- thin role wrapper
+#
+# USAGE:
+#   Pushes fresh configuration to a host where bind9, isc-dhcp-server,
+#   and pi-hole are already installed. Used to ship updates to DNS
+#   records (bind zone files), DHCP reservations (dhcpd.conf), or
+#   pi-hole settings (setupVars.conf, pihole.toml) without
+#   reinstalling anything.
+#
+#   Each step calls the SAME configure.yaml that buildDNSServer-pb.yaml
+#   uses on first provision -- no divergence. The configure tasks
+#   re-parse data/network/inventory.xlsx via netGen on every run, so
+#   inventory edits flow straight through.
+#
+# REQUIRED VARIABLES:
+#   - userData: decrypted by prepareRemoteCredentials in Play 1.
+#               Used by tasks/pihole/configure.yaml for WEBPASSWORD.
+#
+# OPTIONAL VARIABLES:
+#   - debugFlag: Enable debug output
+#
+# EXAMPLE:
+#   - hosts:  "{{ nodes }}"
+#     become: true
+#     roles:
+#       - role: reconfigureDNSServer
+#
+# WORKFLOW:
+#   1. Reconfigure bind9     -- re-render named.conf.*, zone files
+#   2. Reconfigure isc-dhcp  -- re-render dhcpd.conf
+#   3. Reconfigure pi-hole   -- re-render setupVars.conf + pihole.toml
+#
+# NOTES:
+#   - Each underlying configure.yaml validates its config before
+#     reloading/restarting the service (`named-checkconf`, `dhcpd -t`,
+#     `nginx -t`). A bad render fails the play before any running
+#     daemon is touched.
+#   - Service restart/reload is gated inside each configure.yaml on
+#     actual file changes, so a no-op run reloads nothing.
+#   - To reconfigure just one service, call its configure.yaml
+#     directly via include_tasks from a one-off play -- this role is
+#     the "reconfigure everything DNS-server" bundle.
+#
+# Copyright 2026 Douglas WF Acheson (dwfa@dwfa.ca)
+# Licensed under Apache License 2.0. See LICENSE.md for details.
+#
+# Version: 1.0
+# Date: May 16, 2026
+##############################################################################
+---                                                   # identifies a YAML file
+
+##############################################################################
+# Step 1: bind9 -- DNS zone files driven from inventory.xlsx
+##############################################################################
+- name: Reconfigure bind9
+  ansible.builtin.include_tasks:
+    file: "{{ taskPath }}/bind9/configure.yaml"
+
+##############################################################################
+# Step 2: isc-dhcp-server -- DHCP reservations driven from inventory.xlsx
+##############################################################################
+- name: Reconfigure isc-dhcp-server
+  ansible.builtin.include_tasks:
+    file: "{{ taskPath }}/isc-dhcp-server/configure.yaml"
+
+##############################################################################
+# Step 3: pi-hole -- setupVars.conf + pihole.toml driven from metadata
+##############################################################################
+- name: Reconfigure pi-hole
+  ansible.builtin.include_tasks:
+    file: "{{ taskPath }}/pihole/configure.yaml"

@@ -62,12 +62,12 @@
 ##############################################################################
 - name: Stat existing wildcard cert
   ansible.builtin.stat:
-    path: "{{ dataDir }}/pki/wildcard.{{ domain }}.crt"
+    path: "{{ dataPath }}/pki/wildcard.{{ domain }}.crt"
   register: _iwcCertStat
 
 - name: Stat existing wildcard key
   ansible.builtin.stat:
-    path: "{{ dataDir }}/pki/wildcard.{{ domain }}.key"
+    path: "{{ dataPath }}/pki/wildcard.{{ domain }}.key"
   register: _iwcKeyStat
 
 ##############################################################################
@@ -75,7 +75,7 @@
 ##############################################################################
 - name: Stage existing wildcard cert
   ansible.builtin.copy:
-    src:        "{{ dataDir }}/pki/wildcard.{{ domain }}.crt"
+    src:        "{{ dataPath }}/pki/wildcard.{{ domain }}.crt"
     dest:       "{{ _icaWorkDir.path }}/wildcard.{{ domain }}.crt"
     remote_src: true
     mode:       '0644'
@@ -83,7 +83,7 @@
 
 - name: Stage existing wildcard key (auto-decrypts if vault-encrypted)
   ansible.builtin.copy:
-    src:     "{{ dataDir }}/pki/wildcard.{{ domain }}.key"
+    src:     "{{ dataPath }}/pki/wildcard.{{ domain }}.key"
     dest:    "{{ _icaWorkDir.path }}/wildcard.{{ domain }}.key"
     decrypt: true
     mode:    '0600'
@@ -187,7 +187,7 @@
 - name: Persist wildcard cert to data/pki/
   ansible.builtin.copy:
     src:        "{{ _icaWorkDir.path }}/wildcard.{{ domain }}.crt"
-    dest:       "{{ dataDir }}/pki/wildcard.{{ domain }}.crt"
+    dest:       "{{ dataPath }}/pki/wildcard.{{ domain }}.crt"
     remote_src: true
     mode:       '0644'
   when:
@@ -197,7 +197,7 @@
 - name: Persist wildcard CSR to data/pki/
   ansible.builtin.copy:
     src:        "{{ _icaWorkDir.path }}/wildcard.{{ domain }}.csr"
-    dest:       "{{ dataDir }}/pki/wildcard.{{ domain }}.csr"
+    dest:       "{{ dataPath }}/pki/wildcard.{{ domain }}.csr"
     remote_src: true
     mode:       '0600'
   when: _iwcCsr is changed
@@ -205,7 +205,7 @@
 - name: Persist wildcard private key to data/pki/
   ansible.builtin.copy:
     src:        "{{ _icaWorkDir.path }}/wildcard.{{ domain }}.key"
-    dest:       "{{ dataDir }}/pki/wildcard.{{ domain }}.key"
+    dest:       "{{ dataPath }}/pki/wildcard.{{ domain }}.key"
     remote_src: true
     mode:       '0600'
   when: _iwcKey is changed
@@ -216,7 +216,7 @@
 ##############################################################################
 - name: Read wildcard key first bytes (vault idempotency check)
   ansible.builtin.slurp:
-    src: "{{ dataDir }}/pki/wildcard.{{ domain }}.key"
+    src: "{{ dataPath }}/pki/wildcard.{{ domain }}.key"
   register: _iwcKeyHead
 
 - name: Vault-encrypt wildcard private key (only if currently plaintext)
@@ -224,6 +224,6 @@
     cmd: >-
       ansible-vault encrypt
       --vault-password-file ~/.ansibleVaultPWD
-      "{{ dataDir }}/pki/wildcard.{{ domain }}.key"
+      "{{ dataPath }}/pki/wildcard.{{ domain }}.key"
   changed_when: true
   when: not (_iwcKeyHead.content | b64decode).startswith('$ANSIBLE_VAULT')

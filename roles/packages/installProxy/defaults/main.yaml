@@ -1,0 +1,72 @@
+##############################################################################
+# Default variables for installProxy
+#
+# Generic settings only. Site-specific values come from the inventory:
+#   - serviceName (group var, e.g. data/group_vars/dns.yaml) -- the
+#     name clients use to reach the service, independent of which
+#     machine currently provides it
+#   - domain      (data/group_vars/all.yaml)
+# Any value here can be overridden per group or host.
+#
+# Copyright 2026 Douglas WF Acheson (dwfa@dwfa.ca)
+# Licensed under Apache License 2.0. See LICENSE.md for details.
+#
+# Version: 1.0
+# Date: September 25, 2026
+##############################################################################
+---                                            # identifies a YAML config file
+
+##############################################################################
+# apt packages that make up the proxy
+##############################################################################
+proxyPackages:
+  - nginx-core
+  - nginx
+
+##############################################################################
+# Name clients are redirected to, and the TLS cert (basename under
+# /etc/ssl/private/) served on 443
+##############################################################################
+proxyServerName: "{{ serviceName }}.{{ domain }}"
+proxyCertName:   "wildcard.{{ domain }}"
+
+##############################################################################
+# User the nginx worker processes run as (nginx.conf `user`). www-data is
+# the Debian package default; override per site if a dedicated account
+# is used. The account must exist before this role runs.
+##############################################################################
+proxyUser: www-data
+
+##############################################################################
+# Directories created on the target before deploying files
+##############################################################################
+proxyDirs:
+  - /etc/nginx/sites-available
+  - /etc/nginx/sites-enabled
+  - /etc/nginx/sites-available/default-locations
+  - /etc/nginx/sites-enabled/default-locations
+
+##############################################################################
+# Static files (from the role's files/) copied to the target
+##############################################################################
+proxyFiles:
+  - src:  99_catchall.location
+    dest: /etc/nginx/sites-available/default-locations/99_catchall.location
+
+##############################################################################
+# Templates (from the role's templates/) rendered on the target
+##############################################################################
+proxyTemplates:
+  - src:  nginx.conf.j2
+    dest: /etc/nginx/nginx.conf
+  - src:  00-default.conf.j2
+    dest: /etc/nginx/sites-available/00-default.conf
+
+##############################################################################
+# sites-available -> sites-enabled symlinks
+##############################################################################
+proxyLinks:
+  - src:  /etc/nginx/sites-available/00-default.conf
+    dest: /etc/nginx/sites-enabled/00-default.conf
+  - src:  /etc/nginx/sites-available/default-locations/99_catchall.location
+    dest: /etc/nginx/sites-enabled/default-locations/99_catchall.location

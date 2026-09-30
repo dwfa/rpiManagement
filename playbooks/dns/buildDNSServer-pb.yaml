@@ -14,8 +14,11 @@
 #                               GPU memory, framebuffer, console video,
 #                               EEPROM BOOT_ORDER; reboot at the end
 #     - installPackages      -- base list (vim, zsh, fish)
-#     - installPackages      -- nginx-core, nginx, bind9, bind9utils,
-#                               dnsutils, isc-dhcp-server, webmin.
+#     - installProxy         -- nginx + TLS front door; must precede
+#                               webmin and pi-hole, which drop their
+#                               location snippets into it.
+#     - installPackages      -- bind9, bind9utils, dnsutils,
+#                               isc-dhcp-server, nut, webmin.
 #                               Each per-package configure.yaml runs
 #                               via installPackages' auto-discovery.
 #                               Webmin is intentionally last so its
@@ -41,8 +44,8 @@
 # Copyright 2026 Douglas WF Acheson (dwfa@dwfa.ca)
 # Licensed under Apache License 2.0. See LICENSE.md for details.
 #
-# Version: 3.1
-# Date: May 17, 2026
+# Version: 3.2
+# Date: September 25, 2026
 ##############################################################################
 ---                                            # identifies a YAML config file
 
@@ -82,11 +85,10 @@
         userNames: "{{ dnsUsers }}"
     - role: configureBaseRPi
     - role: installPackages
+    - role: installProxy
     - role: installPackages
       vars:
         packageList:
-          - nginx-core
-          - nginx
           - bind9
           - bind9utils
           - dnsutils

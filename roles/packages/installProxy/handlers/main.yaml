@@ -1,0 +1,28 @@
+##############################################################################
+# Handlers for installProxy
+#
+# Both handlers listen on "reload proxy". Handlers run in definition
+# order, so `nginx -t` runs first; if it fails, the reload never runs
+# and a bad config cannot take down the running daemon.
+#
+# Copyright 2026 Douglas WF Acheson (dwfa@dwfa.ca)
+# Licensed under Apache License 2.0. See LICENSE.md for details.
+#
+# Version: 1.0
+# Date: September 25, 2026
+##############################################################################
+---                                                   # identifies a YAML file
+
+- name: Validate nginx configuration
+  listen: reload proxy
+  ansible.builtin.command:
+    argv:
+      - nginx
+      - -t
+  changed_when: false
+
+- name: Reload nginx
+  listen: reload proxy
+  ansible.builtin.systemd:
+    name:  nginx
+    state: reloaded

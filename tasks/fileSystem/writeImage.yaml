@@ -19,12 +19,14 @@
 #   2. Determine decompression utility based on format
 #   3. Fail if unsupported format
 #   4. Set dd status flag (progress for local, none for remote)
-#   5. Prompt user to confirm destructive operation
-#   6. Decompress (if needed) and write to devicePath:
+#   5. macOS: verify useDevice is (external, physical) via diskutil
+#   6. Prompt user to confirm destructive operation
+#   7. Wipe old signatures from the device (wipeDevice.yaml)
+#   8. Decompress (if needed) and write to devicePath:
 #      - .gz: Use gzip -cd | dd
 #      - .xz: Use xzcat | dd
 #      - .img: Use cat | dd
-#   7. Show progress during write operation (local only)
+#   9. Show progress during write operation (local only)
 #
 # EXAMPLE:
 #   - name: Write RPi OS image to device
@@ -44,8 +46,8 @@
 # Copyright 2025 Douglas WF Acheson (dwfa@dwfa.ca)
 # Licensed under Apache License 2.0. See LICENSE.md for details.
 #
-# Version: 1.8
-# Date: October 25, 2025
+# Version: 2.0
+# Date: September 29, 2026
 ##############################################################################
 ---                                            # identifies a YAML config file
 
@@ -101,32 +103,40 @@
     _imageExt: "{{ useImagePath | basename | splitext | last }}"
 
 #############################################################################
-# Validate useDevice descriptor (macOS only).
+# Validate useDevice (macOS only).
 #
-# Same defence-in-depth check we do in unmountDevice.yaml. On macOS the
-# incoming value may be a diskutil-style descriptor
-# ("/dev/diskN (external, physical):") — refuse to run destructive ops
-# unless all three markers are present, then extract just /dev/diskN.
+# Same live check as unmountDevice.yaml: ask diskutil about the device and
+# refuse the write unless it reports (external, physical). Checks the real
+# device, not the text of useDevice, so a bare /dev/diskN is enough.
 ##############################################################################
-- name: Validate useDevice descriptor (macOS)
-  ansible.builtin.fail:
-    msg: >-
-      [ERROR] *** Refusing to write to [{{ useDevice }}] — not a valid
-      macOS external physical device descriptor.
-      Missing checks: {{ _missing | join(', ') }}.
-      Expected shape: "/dev/diskN (external, physical):"
+- name: Validate useDevice (macOS)
+  when: ansible_facts['system'] == 'Darwin'
   vars:
-    _lower:    "{{ useDevice | lower }}"
-    _hasPath:  "{{ useDevice is match('.*/dev/disk\\d+.*') }}"
-    _hasExt:   "{{ 'external' in _lower }}"
-    _hasPhys:  "{{ 'physical' in _lower }}"
-    _missing: >-
-      {{ (['/dev/diskN'] if not _hasPath else [])
-         + (['external']  if not _hasExt  else [])
-         + (['physical']  if not _hasPhys else []) }}
-  when:
-    - ansible_facts['system'] == 'Darwin'
-    - not (_hasPath and _hasExt and _hasPhys)
+    _devicePath: "{{ useDevice | regex_search('/dev/disk\\d+') | default('', true) }}"
+    _isExtPhys: >-
+      {{ (_writeImageDeviceInfo.rc | default(1)) == 0 and
+         ((_writeImageDeviceInfo.stdout_lines | default([]) | first | default(''))
+           is search('\(external, physical\)')) }}
+  block:
+    - name: Query useDevice from diskutil (macOS)
+      ansible.builtin.command:
+        argv:
+          - diskutil
+          - list
+          - "{{ _devicePath }}"
+      register:     _writeImageDeviceInfo
+      changed_when: false
+      failed_when:  false
+
+    - name: Refuse device that is not external + physical (macOS)
+      when: not _isExtPhys
+      ansible.builtin.include_tasks: "{{ taskPath }}/ui/niceFail.yaml"
+      vars:
+        title: "Refusing to write image"
+        data:
+          - "useDevice = [{{ useDevice }}]"
+          - "diskutil  = [{{ _writeImageDeviceInfo.stdout_lines | default([]) | first | default('no such device') }}]"
+          - "Expected: /dev/diskN (external, physical)"
 
 #############################################################################
 # Write image to device
@@ -141,6 +151,12 @@
       vars:
         title: "Confirm write operation"
         data: "WARNING: About to write [{{ useImagePath }}] to [{{ _devicePath }}]. This will DESTROY all data on the device. Press Enter to continue or Ctrl+C then 'A' to abort..."
+
+    - name: Wipe old device signatures
+      ansible.builtin.include_tasks:
+        file: "{{ taskPath }}/fileSystem/wipeDevice.yaml"
+      vars:
+        device: "{{ _devicePath }}"
 
     - name: write image to device
       ansible.builtin.shell:
@@ -165,3 +181,4 @@
     _decompressUtil: null
     _ddStatus: null
     _writeResult: null
+    _writeImageDeviceInfo: null

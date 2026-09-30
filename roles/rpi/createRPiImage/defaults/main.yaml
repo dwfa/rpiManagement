@@ -1,0 +1,20 @@
+##############################################################################
+# Default variables for createRPiImage
+#
+# Any value here can be overridden per group or host.
+#
+# Copyright 2026 Douglas WF Acheson (dwfa@dwfa.ca)
+# Licensed under Apache License 2.0. See LICENSE.md for details.
+#
+# Version: 1.0
+# Date: September 29, 2026
+##############################################################################
+---                                            # identifies a YAML config file
+
+##############################################################################
+# Where RPi OS images are kept on a REMOTE build host. Images are named by
+# their real release filename and kept between builds, so a later build
+# with the same image skips the copy. Old images are not pruned -- manage
+# them by hand.
+##############################################################################
+buildImageDir: /usr/local/src/rpiImages

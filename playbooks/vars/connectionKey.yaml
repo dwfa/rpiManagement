@@ -9,7 +9,7 @@
 # PREREQUISITES:
 #   - Preceding play must run prepareRemoteCredentials role on localhost
 #   - userData fact must exist in hostvars['localhost']
-#   - data/ssh/key.prv must exist (written by materializeSSHKey)
+#   - data/ssh/key.prv must exist (written by writeSSHKeyFiles)
 #
 # EXAMPLE:
 #   vars_files:
@@ -19,8 +19,8 @@
 # Copyright 2026 Douglas WF Acheson (dwfa@dwfa.ca)
 # Licensed under Apache License 2.0. See LICENSE.md for details.
 #
-# Version: 1.2
-# Date: August 15, 2026
+# Version: 1.3
+# Date: October 3, 2026
 ##############################################################################
 
 ---                                            # identifies a YAML config file

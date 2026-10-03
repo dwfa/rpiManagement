@@ -1,13 +1,13 @@
 ##############################################################################
-# Remove materialized SSH key files from disk
+# Remove SSH key files (key.prv, key.pub) from disk
 #
 # USAGE:
 #   Called from a final localhost play after all remote plays have
-#   completed. Removes key.prv and key.pub written by materializeSSHKey
+#   completed. Removes key.prv and key.pub written by writeSSHKeyFiles
 #   so they do not persist on disk after the playbook run.
 #
 # OPTIONAL VARIABLES:
-#   - sshKeyPath: Directory containing the materialized key files
+#   - sshKeyPath: Directory containing the key files
 #                 (default: "{{ dataPath }}/ssh")
 #                 Removes: sshKeyPath/key.prv and sshKeyPath/key.pub
 #
@@ -15,14 +15,14 @@
 #   - MUST run on localhost — fails immediately if inventory_hostname
 #     is not 'localhost' to prevent deleting files on remote hosts
 #   - Silently skips each file if it does not exist
-#   - The <cleanupSSHKey> prefix in error messages is hardcoded —
+#   - The <removeSSHKeyFiles> prefix in error messages is hardcoded —
 #     Ansible has no equivalent of __FILE__ for included task files
 #
 # Copyright 2026 Douglas WF Acheson (dwfa@dwfa.ca)
 # Licensed under Apache License 2.0. See LICENSE.md for details.
 #
-# Version: 1.0
-# Date: March 21, 2026
+# Version: 1.1
+# Date: October 3, 2026
 ##############################################################################
 ---                                                   # identifies a YAML file
 
@@ -31,14 +31,14 @@
 ##############################################################################
 - name: Fail if not running on localhost
   ansible.builtin.fail:
-    msg: "[ERROR] *** <cleanupSSHKey> must run on localhost — \
+    msg: "[ERROR] *** <removeSSHKeyFiles> must run on localhost — \
           inventory_hostname is [{{ inventory_hostname }}]"
   when: inventory_hostname != 'localhost'
 
 ##############################################################################
-# Remove materialized key files
+# Remove key files
 ##############################################################################
-- name: Remove materialized SSH key files
+- name: Remove SSH key files
   ansible.builtin.file:
     path:  "{{ item }}"
     state: absent

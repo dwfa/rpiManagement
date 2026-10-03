@@ -5,7 +5,7 @@
 #   Run as the final role in a localhost cleanup play (or mid-playbook
 #   when switching credentials). Removes:
 #     1. Materialized SSH key files (key.prv, key.pub) written to disk
-#        by tasks/users/materializeSSHKey.yaml
+#        by tasks/users/writeSSHKeyFiles.yaml
 #     2. The data/ssh/knownHosts file (forces SSH to re-validate host
 #        keys on next connect — necessary after a host has been
 #        re-imaged with fresh host keys)
@@ -42,8 +42,8 @@
 # Copyright 2026 Douglas WF Acheson (dwfa@dwfa.ca)
 # Licensed under Apache License 2.0. See LICENSE.md for details.
 #
-# Version: 2.1
-# Date: May 3, 2026
+# Version: 2.2
+# Date: October 3, 2026
 ##############################################################################
 ---                                                   # identifies a YAML file
 
@@ -52,7 +52,7 @@
 ##############################################################################
 - name: Remove materialized SSH keys
   ansible.builtin.include_tasks:
-    file: "{{ taskPath }}/users/cleanupSSHKey.yaml"
+    file: "{{ taskPath }}/users/removeSSHKeyFiles.yaml"
 
 ##############################################################################
 # Wipe knownHosts file. state=absent is idempotent — succeeds whether

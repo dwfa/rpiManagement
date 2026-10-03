@@ -27,14 +27,14 @@
 #   - Writes the first key found in each section (key_1, key_2, ...)
 #   - userData.sshKeys.private / .public must each be a dict of
 #     key entries with a 'key' field
-#   - The <materializeSSHKey> prefix in error messages is hardcoded —
+#   - The <writeSSHKeyFiles> prefix in error messages is hardcoded —
 #     Ansible has no equivalent of __FILE__ for included task files
 #
 # Copyright 2026 Douglas WF Acheson (dwfa@dwfa.ca)
 # Licensed under Apache License 2.0. See LICENSE.md for details.
 #
-# Version: 1.1
-# Date: March 21, 2026
+# Version: 1.2
+# Date: October 3, 2026
 ##############################################################################
 ---                                                   # identifies a YAML file
 
@@ -43,12 +43,12 @@
 ##############################################################################
 - name: Fail if not running on localhost
   ansible.builtin.fail:
-    msg: "[ERROR] *** <materializeSSHKey> must run on localhost — \
+    msg: "[ERROR] *** <writeSSHKeyFiles> must run on localhost — \
           inventory_hostname is [{{ inventory_hostname }}]"
   when: inventory_hostname != 'localhost'
 
 ##############################################################################
-# Materialize private key
+# Write private key
 ##############################################################################
 - name: Write private SSH key to disk
   ansible.builtin.copy:
@@ -61,7 +61,7 @@
     - userData.sshKeys.private | length > 0
 
 ##############################################################################
-# Materialize public key
+# Write public key
 ##############################################################################
 - name: Write public SSH key to disk
   ansible.builtin.copy:

@@ -6,76 +6,77 @@
 #   Supports both local (macOS) and remote (Linux) target hosts.
 #
 # EXAMPLE:
-#   ./createImage.sh                                    # localhost (macOS)
-#   ./createImage.sh -n installer                       # remote Linux host
-#   # or directly:
-#   ansible-playbook --extra-vars "nodes=localhost" playbooks/buildRPiImage-pb.yaml
-#   ansible-playbook --extra-vars "nodes=installer" playbooks/buildRPiImage-pb.yaml
+#   # Build on this Mac (default nodes=localhost)
+#   ansible-playbook playbooks/rpi/buildRPiImage-pb.yaml
+#   # Build on a remote Linux build host
+#   ansible-playbook --extra-vars "nodes=dnsInstaller" playbooks/rpi/buildRPiImage-pb.yaml
 #
 # WORKFLOW:
-#   Play 1 (localhost):
-#     1. prepareRemoteCredentials: Load vault-encrypted credentials and
-#        materialize SSH keys to data/ssh/ (skips if no keys present)
-#     2. updateRPiImage: Download/update RPi OS image to data/images/
-#   Play 2 (target host):
-#     3. getInstallDevice: Detect single available external drive
-#     4. createRPiImage: Copy image to target (if remote), write to disk
-#     5. initRPiImage: Copy init files and configure boot partition
-#   Play 3 (localhost):
-#     6. clearLocal: Remove materialized SSH key files from data/ssh/
+#   Play 1 (localhost) - Playbook Initialization:
+#     1. bootstrap: Ensure required ansible and python packages are installed
+#     2. writeSSHKey: Write the builder user's SSH key to data/ssh/
+#        (skips if the user has no key -- password auth is used instead)
+#   Play 2 (localhost) - Get Latest RPi Image:
+#     3. updateRPiImage: Download the latest RPi OS image to data/images/
+#        if a newer one is available (or use rpiImagePin if set)
+#   Play 3 (target host) - Create RPi Image:
+#     Loads the builder user's user.yaml and vars/connection.yaml via
+#     vars_files (key or password auth chosen there) -- no hand-off
+#     through hostvars['localhost'].
+#     4. getInstallDevice: Detect single available external drive
+#     5. createRPiImage: Copy image to target (if remote), write to disk
+#     6. initRPiImage: Copy init files and configure boot partition
+#   Play 4 (localhost) - Remove SSH key files:
+#     7. clearLocal: Remove the SSH key files from data/ssh/
 #
 # Copyright 2025 Douglas WF Acheson (dwfa@dwfa.ca)
 # Licensed under Apache License 2.0. See LICENSE.md for details.
 #
-# Version: 2.4
-# Date: March 22, 2026
+# Version: 3.0
+# Date: October 3, 2026
 ##############################################################################
 ---                                            # identifies a YAML config file
 
 ##############################################################################
-# Play 1: Load credentials, materialize SSH keys, manage image locally
-# Note: updateRPiImage must run on localhost where data/ directory exists
+# Play 1: This is the Playbook Initialization play which runs on the localhost
+# It will do the following:
+#   1. bootstrap: Ensure required ansible and python packages are installed
+#   2. writeSSHKey: Write the builder user's SSH key to data/ssh
 ##############################################################################
-- name: Prepare local resources
+- name: Playbook Initialization
   hosts:        localhost
   connection:   local
   gather_facts: false
 
   roles:
     - role: bootstrap
-    - role: prepareRemoteCredentials
+    - role: writeSSHKey
       vars:
         userDataPath: "{{ dataPath }}/users/{{ builderUser }}/user.yaml"
+
+##############################################################################
+# Play 2: This play gets (DLs) the latest RPi image if one is available
+##############################################################################
+- name: Get Latest RPi Image
+  hosts:        localhost
+  connection:   local
+  gather_facts: false
+
+  roles:
     - role: updateRPiImage
 
 ##############################################################################
-# Play 2: Execute on target hosts
+# Play 3: Execute on target hosts
 ##############################################################################
 - name: Create RPi Image
   hosts:        "{{ nodes | default('localhost') }}"
   become:       true
-  gather_facts: false                      # explicit setup below so it
-                                           # runs AFTER include_vars
+  gather_facts: true
 
-  pre_tasks:
-    ##########################################################################
-    # Load remote connection vars (connectionKey.yaml or connectionPWD.yaml)
-    # at task time -- AFTER Play 1 has set hostvars['localhost'].userData.
-    # Replaces the play-level `vars_files:` form, which ansible-core 2.21+
-    # validates at parse time (before Play 1 runs) and warns loudly when
-    # the templated path references an undefined var.
-    #
-    # include_vars is a controller-side action -- no SSH needed -- so
-    # gather_facts (explicit setup, next) is the first task to actually
-    # connect to the target. By then, ansible_user / ansible_ssh_* /
-    # ansible_become_password are all in play scope.
-    ##########################################################################
-    - name: Load remote connection vars
-      ansible.builtin.include_vars:
-        file: "{{ pbPath }}/vars/connection{{ hostvars['localhost'].userData.file }}.yaml"
-
-    - name: Gather facts now that connection vars are loaded
-      ansible.builtin.setup:
+  # Builder user's credentials + connection settings (key or password)
+  vars_files:
+    - "{{ dataPath }}/users/{{ builderUser }}/user.yaml"
+    - "{{ pbPath }}/vars/connection.yaml"
 
   roles:
     - role: getInstallDevice
@@ -85,9 +86,9 @@
         userDataPath: "{{ dataPath }}/users/{{ installerUser }}/user.yaml"
 
 ##############################################################################
-# Play 3: Cleanup materialized SSH keys
+# Play 4: Remove SSH key files
 ##############################################################################
-- name: Cleanup materialized SSH keys
+- name: Remove SSH key files
   hosts:        localhost
   connection:   local
   gather_facts: false

@@ -1,0 +1,65 @@
+##############################################################################
+# Upgrade all installed packages and reboot if the upgrade requires it
+#
+# USAGE:
+#   Brings a host's packages (including kernel and firmware packages) up
+#   to date: refreshes the package list, runs a full upgrade, removes
+#   packages that are no longer needed, then reboots only if the upgrade
+#   left /var/run/reboot-required behind.
+#
+# REQUIRED VARIABLES:
+#   None. Run in a play with become: true.
+#
+# OPTIONAL VARIABLES:
+#   - debugFlag: Enable debug output
+#
+# EXAMPLE:
+#   - hosts:  initializer
+#     become: true
+#     roles:
+#       - role: upgradePackages
+#
+# WORKFLOW:
+#   1. apt update + full upgrade (dist-upgrade) + autoremove
+#   2. Check for /var/run/reboot-required
+#   3. Reboot and wait for the host to come back, only if required
+#
+# NOTES:
+#   - Full upgrade (not safe upgrade) so new kernel/firmware packages and
+#     changed dependencies are installed
+#   - Does not update the RPi bootloader (EEPROM)
+#
+# Copyright 2026 Douglas WF Acheson (dwfa@dwfa.ca)
+# Licensed under Apache License 2.0. See LICENSE.md for details.
+#
+# Version: 1.0
+# Date: October 3, 2026
+##############################################################################
+---                                                   # identifies a YAML file
+
+- name: Upgrade all packages
+  ansible.builtin.apt:
+    update_cache: true
+    upgrade:      dist
+    autoremove:   true
+  register: _upgradePackagesResult
+
+- name: "Debug: upgrade result"
+  when: debugFlag | default(0) | int == 1
+  ansible.builtin.debug:
+    msg: "[DEBUG] *** Packages upgraded: [{{ _upgradePackagesResult.changed }}]"
+
+- name: Check whether a reboot is required
+  ansible.builtin.stat:
+    path: /var/run/reboot-required
+  register: _upgradePackagesRebootFlag
+
+- name: Reboot (only if the upgrade requires it)
+  when: _upgradePackagesRebootFlag.stat.exists
+  ansible.builtin.reboot:
+    msg: "Reboot after package upgrade"
+
+- name: Cleanup temporary facts
+  ansible.builtin.set_fact:
+    _upgradePackagesResult:     null
+    _upgradePackagesRebootFlag: null

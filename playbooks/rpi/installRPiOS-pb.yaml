@@ -1,5 +1,5 @@
 ##############################################################################
-# Build Raspberry Pi image
+# Install Raspberry Pi OS onto a storage device
 #
 # USAGE:
 #   Builds RPi OS images onto removable storage (SD cards, USB drives).
@@ -7,9 +7,9 @@
 #
 # EXAMPLE:
 #   # Build on this Mac (default nodes=localhost)
-#   ansible-playbook playbooks/rpi/buildRPiImage-pb.yaml
+#   ansible-playbook playbooks/rpi/installRPiOS-pb.yaml
 #   # Build on a remote Linux build host
-#   ansible-playbook --extra-vars "nodes=dnsInstaller" playbooks/rpi/buildRPiImage-pb.yaml
+#   ansible-playbook --extra-vars "nodes=dnsInstaller" playbooks/rpi/installRPiOS-pb.yaml
 #
 # WORKFLOW:
 #   Play 1 (localhost) - Playbook Initialization:

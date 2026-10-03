@@ -2,7 +2,7 @@
 # Build DNS / DHCP RPi server
 #
 # Provisions a freshly-imaged RPi (already bootstrapped via
-# postCreate-pb.yaml) into the project's DNS / DHCP server. Layered:
+# initRPi-pb.yaml) into the project's DNS / DHCP server. Layered:
 #
 #   Play 1 (localhost) -- validate prereqs + load credentials:
 #     - verify wildcard cert exists under data/pki/
@@ -36,9 +36,9 @@
 # PREREQUISITES:
 #   - Run [./managePKI.sh] first to materialize data/pki/
 #     (CA + wildcard cert; the pre_tasks block fails fast otherwise)
-#   - postCreate-pb.yaml has already run against this host (dwfa user
+#   - initRPi-pb.yaml has already run against this host (dwfa user
 #     exists, static IP applied, host reachable at the dns inventory
-#     address). [./buildDNSServer.sh] chains postCreate -> this
+#     address). [./buildDNSServer.sh] chains initRPi -> this
 #     playbook for a fresh build.
 #
 # Copyright 2026 Douglas WF Acheson (dwfa@dwfa.ca)

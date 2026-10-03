@@ -48,7 +48,7 @@ operations within a larger workflow.
 
 | Helper                  | Purpose                                              | Called By                       |
 |-------------------------|------------------------------------------------------|---------------------------------|
-| `loadUserData.yaml`     | Loads one user's vault data and accumulates into map | `postCreate-pb.yaml` (Play 1)   |
+| `loadUserData.yaml`     | Loads one user's vault data and accumulates into map | `initRPi-pb.yaml` (Play 1)   |
 
 ## Adding New Helpers
 

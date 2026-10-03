@@ -1,0 +1,183 @@
+##############################################################################
+# Initialize a freshly imaged RPi
+#
+# USAGE:
+#   Run once on a new RPi after its first boot. Moves it onto its static
+#   address, creates the builder user, removes the installer user, and
+#   upgrades all packages.
+#
+# OPTIONAL VARIABLES:
+#   - nodes: Inventory host or IP of the new RPi (default: initializer)
+#
+# EXAMPLE:
+#   ansible-playbook playbooks/rpi/initRPi-pb.yaml
+#   ansible-playbook --extra-vars "nodes=<dhcp-ip>" playbooks/rpi/initRPi-pb.yaml
+#
+# WORKFLOW:
+#   1. Playbook Initialization (localhost): bootstrap, write installer key
+#   2. Find New RPi (localhost): try initializer's address, else prompt
+#   3. Move the RPi onto installer.yaml's address (as installer)
+#   4. Create the builder user (as installer)
+#   5. Switch SSH key from installer to builder user (localhost)
+#   6. Remove the installer user, upgrade all packages, reboot if
+#      required (as builder user)
+#   7. Remove SSH key files (localhost)
+#
+# NOTES:
+#   - A macOS-imaged RPi boots on DHCP; Play 2 prompts for its address
+#     (or pass it as nodes=<dhcp-ip>)
+#   - installer.yaml's address must match initializer's ansible_host
+#   - See each play's banner for details
+#
+# Copyright 2026 Douglas WF Acheson (dwfa@dwfa.ca)
+# Licensed under Apache License 2.0. See LICENSE.md for details.
+#
+# Version: 4.2
+# Date: October 3, 2026
+##############################################################################
+---                                                   # identifies a YAML file
+
+##############################################################################
+# Play 1: This is the Playbook Initialization play which runs on the localhost
+# It will do the following:
+#   1. bootstrap: Ensure required ansible and python packages are installed
+#   2. writeSSHKey: Write the installer's SSH key to data/ssh (none by
+#      default -- installer logs in with its password)
+##############################################################################
+- name: Playbook Initialization
+  hosts:        localhost
+  connection:   local
+  gather_facts: false
+
+  roles:
+    - role: bootstrap
+    - role: writeSSHKey
+      vars:
+        userDataPath: "{{ dataPath }}/users/{{ installerUser }}/user.yaml"
+
+##############################################################################
+# Play 2: This play finds the new RPi's current IP and runs on the localhost
+# It will do the following:
+#   1. findHostIP: Try initializer's address; if the RPi does not answer
+#      there, prompt for its address
+#   2. Adds the new RPi's IP to the runtime inventory group `resolved`
+#      and sets the localhost fact `discoveredRPiIP`
+##############################################################################
+- name: Find New RPi
+  hosts:        localhost
+  connection:   local
+  gather_facts: false
+
+  roles:
+    - role: findHostIP
+      vars:
+        # nodes may be an inventory host with ansible_host (initializer),
+        # a host named by its address, or a bare IP not in the inventory
+        targetHost: >-
+          {{ (hostvars[_node].ansible_host | default(_node))
+             if _node in hostvars else _node }}
+        _node: "{{ nodes | default('initializer') }}"
+
+##############################################################################
+# Play 3: This play moves the new RPi onto its static IP and runs on the
+# new RPi (runtime group `resolved`, as installer)
+# It will do the following:
+#   1. setStaticIP: Apply installer.yaml (address, netmask, gateway, dns,
+#      domain); does nothing if the RPi is already on that address
+# Note: installer.yaml's address must match initializer's ansible_host --
+#       Plays 4 and 6 connect there
+##############################################################################
+- name: Normalize installer to static IP
+  hosts:        "{{ hostvars['localhost'].discoveredRPiIP }}"
+  become:       true
+  gather_facts: false
+
+  # Installer's credentials + connection settings (key or password)
+  vars_files:
+    - "{{ dataPath }}/users/{{ installerUser }}/user.yaml"
+    - "{{ pbPath }}/vars/connection.yaml"
+
+  roles:
+    - role: setStaticIP
+      vars:
+        currentAddress:   "{{ hostvars['localhost'].discoveredRPiIP }}"
+        staticIPDataPath: "{{ dataPath }}/network/staticIP/installer.yaml"
+
+##############################################################################
+# Play 4: This play creates the builder user and runs on the new RPi
+# (initializer, as installer)
+# It will do the following:
+#   1. createUsers: Create the builder user from its user.yaml -- ensures
+#      its groups exist and installs its SSH keys
+##############################################################################
+- name: Create 1st real users
+  hosts:        initializer
+  become:       true
+  gather_facts: true
+
+  # Installer's credentials + connection settings (key or password)
+  vars_files:
+    - "{{ dataPath }}/users/{{ installerUser }}/user.yaml"
+    - "{{ pbPath }}/vars/connection.yaml"
+
+  roles:
+    - role: createUsers
+      vars:
+        userDataPath: "{{ dataPath }}/users/{{ builderUser }}/user.yaml"
+
+##############################################################################
+# Play 5: This play switches the SSH key from installer to the builder user
+# and runs on the localhost
+# It will do the following:
+#   1. clearLocal: Remove the installer's SSH key files
+#   2. writeSSHKey: Write the builder user's SSH key to data/ssh
+# Note: order matters -- the old key files must be removed before the new
+#       key is written
+##############################################################################
+- name: Switch SSH key (remove installer key, write builder key)
+  hosts:        localhost
+  connection:   local
+  gather_facts: false
+
+  roles:
+    - role: clearLocal
+    - role: writeSSHKey
+      vars:
+        userDataPath: "{{ dataPath }}/users/{{ builderUser }}/user.yaml"
+
+##############################################################################
+# Play 6: This play removes the installer user and upgrades all packages,
+# and runs on the new RPi (initializer, as the builder user)
+# It will do the following:
+#   1. removeUsers: Remove the installer user
+#   2. upgradePackages: apt update + full upgrade + autoremove; reboots
+#      only if the upgrade requires it
+##############################################################################
+- name: Remove installer user and upgrade packages (as builder user)
+  hosts:        initializer
+  become:       true
+  gather_facts: true
+
+  # Builder user's credentials + connection settings (key or password)
+  vars_files:
+    - "{{ dataPath }}/users/{{ builderUser }}/user.yaml"
+    - "{{ pbPath }}/vars/connection.yaml"
+
+  roles:
+    - role: removeUsers
+      vars:
+        userDataPath: "{{ dataPath }}/users/{{ installerUser }}/user.yaml"
+    - role: upgradePackages
+
+##############################################################################
+# Play 7: This play removes the SSH key files and runs on the localhost
+# It will do the following:
+#   1. clearLocal: Remove the builder user's SSH key files from data/ssh
+##############################################################################
+- name: Remove SSH key files
+  hosts:        localhost
+  connection:   local
+  gather_facts: false
+
+  roles:
+    - role: clearLocal

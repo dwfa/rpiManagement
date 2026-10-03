@@ -11,8 +11,8 @@
 #   4. Build DNS server services.
 #
 # REQUIRED VARIABLES:
-#   - buildRPiImageNode: Inventory group/node used by buildRPiImage-pb.yaml.
-#   - postCreateNode: Inventory group/node used by postCreate-pb.yaml.
+#   - buildRPiImageNode: Inventory group/node used by installRPiOS-pb.yaml.
+#   - postCreateNode: Inventory group/node used by initRPi-pb.yaml.
 #   - buildDNSServerNode: Inventory group/node used by buildDNSServer-pb.yaml.
 #
 # Copyright 2026 Douglas WF Acheson (dwfa@dwfa.ca)
@@ -23,7 +23,7 @@
 ##############################################################################
 ---                                            # identifies a YAML config file
 
-- ansible.builtin.import_playbook: buildRPiImage-pb.yaml
+- ansible.builtin.import_playbook: installRPiOS-pb.yaml
   vars:
     buildRPiImageNode: preinstaller
 
@@ -43,7 +43,7 @@
           Insert the storage device into the target RPi, power it on, wait for
           it to appear on the network at the installer IP, then press Enter.
 
-- ansible.builtin.import_playbook: postCreate-pb.yaml
+- ansible.builtin.import_playbook: initRPi-pb.yaml
   vars:
     postCreateNode: installer
 

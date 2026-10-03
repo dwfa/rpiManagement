@@ -101,6 +101,6 @@
 # via include_vars (a "var", not a "fact"), and facts take precedence over
 # vars in Ansible. Setting it to null via set_fact would create a fact
 # that blocks the next include_vars reload, breaking subsequent calls
-# (e.g., when postCreate-pb.yaml reloads credentials for a different user
+# (e.g., when initRPi-pb.yaml reloads credentials for a different user
 # in a later play).
 ##############################################################################

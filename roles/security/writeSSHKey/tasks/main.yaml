@@ -34,12 +34,15 @@
 #   - Must run on localhost (writeSSHKeyFiles refuses anywhere else)
 #   - Vault decryption happens in include_vars (vault_password_file in
 #     ansible.cfg)
+#   - _writeSSHKeyUser is deliberately NOT cleared with set_fact: set_fact
+#     outranks include_vars, so a null left by one call would hide the
+#     user loaded by the next call in the same playbook (key not written)
 #
 # Copyright 2026 Douglas WF Acheson (dwfa@dwfa.ca)
 # Licensed under Apache License 2.0. See LICENSE.md for details.
 #
-# Version: 1.0
-# Date: October 2, 2026
+# Version: 1.1
+# Date: October 3, 2026
 ##############################################################################
 ---                                                   # identifies a YAML file
 
@@ -60,7 +63,3 @@
     file: "{{ taskPath }}/users/writeSSHKeyFiles.yaml"
   vars:
     userData: "{{ _writeSSHKeyUser.userData }}"
-
-- name: Cleanup temporary facts
-  ansible.builtin.set_fact:
-    _writeSSHKeyUser: null

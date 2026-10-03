@@ -45,7 +45,7 @@
 # Copyright 2025 Douglas WF Acheson (dwfa@dwfa.ca)
 # Licensed under Apache License 2.0. See LICENSE.md for details.
 #
-# Version: 6.0
+# Version: 6.1
 # Date: September 29, 2026
 ##############################################################################
 ---                                            # identifies a YAML config file
@@ -61,6 +61,20 @@
     _imagePath: "{{ dataPath }}/images/currentRPiImage.img"
 
 ##############################################################################
+# Resolve the release filename behind the currentRPiImage.img symlink.
+# Deliberately NOT inside the remote-only block below: a delegated task
+# evaluates `when:` as the delegated host (localhost, connection local),
+# so the remote-only condition would always skip it.
+##############################################################################
+- name: Resolve current image release filename
+  ansible.builtin.stat:
+    path:   "{{ dataPath }}/images/currentRPiImage.img"
+    follow: false
+  delegate_to: localhost
+  become:      false
+  register:    _createImageLinkStat
+
+##############################################################################
 # Remote hosts: keep a copy of the image named by its release filename.
 # ansible.builtin.copy checksums both ends and skips the transfer when the
 # existing copy already matches.
@@ -68,14 +82,6 @@
 - name: Copy image to remote host
   when: ansible_connection != 'local'
   block:
-    - name: Resolve current image release filename
-      ansible.builtin.stat:
-        path:   "{{ dataPath }}/images/currentRPiImage.img"
-        follow: false
-      delegate_to: localhost
-      become:      false
-      register:    _createImageLinkStat
-
     - name: Set image path (remote)
       ansible.builtin.set_fact:
         _imagePath: >-

@@ -1,13 +1,13 @@
 ##############################################################################
-# Resolve target host IP — try known, prompt if unreachable
+# Find a host's IP — try the known address, ask if it does not answer
 #
 # USAGE:
 #   Runs on localhost (typically in Play 1 of a playbook, before any remote
 #   play attempts SSH). Tries the target host's inventory IP first; if
 #   unreachable, prompts the user for the actual (e.g. DHCP-assigned) IP.
-#   Stores the resolved address as the global fact `currentIP` on localhost.
+#   Stores the resolved address as the global fact `discoveredRPiIP` on localhost.
 #   Subsequent remote plays reference it directly:
-#       hosts: "{{ hostvars['localhost'].currentIP }}"
+#       hosts: "{{ hostvars['localhost'].discoveredRPiIP }}"
 #
 # REQUIRED VARIABLES:
 #   - targetHost: Inventory host key (IP string in this project's inventory)
@@ -20,27 +20,27 @@
 #   - debugFlag:      Enable debug output
 #
 # OUTPUT VARIABLES:
-#   - currentIP: Resolved IP string (set on localhost). Either equals
+#   - discoveredRPiIP: Resolved IP string (set on localhost). Either equals
 #                targetHost (known IP reachable) or the user-prompted IP.
 #
 # WORKFLOW:
 #   1. Try targetHost on sshPort with short timeout
-#   2. If reachable: currentIP = targetHost
+#   2. If reachable: discoveredRPiIP = targetHost
 #   3. If unreachable: prompt user for DHCP-assigned IP, validate format,
-#      wait for it to be reachable, set currentIP = prompted IP
+#      wait for it to be reachable, set discoveredRPiIP = prompted IP
 #
 # EXAMPLE:
 #   # Play 1 (localhost)
 #   pre_tasks:
-#     - name: Resolve target host IP
+#     - name: Find host IP
 #       include_tasks:
-#         file: "{{ taskPath }}/system/resolveTargetHost.yaml"
+#         file: "{{ taskPath }}/system/findHostIP.yaml"
 #       vars:
 #         targetHost: "{{ groups[nodes] | first }}"
 #
 #   # Play 2 (remote)
 #   - name: Do work on RPi
-#     hosts: "{{ hostvars['localhost'].currentIP }}"
+#     hosts: "{{ hostvars['localhost'].discoveredRPiIP }}"
 #     ...
 #
 # NOTES:
@@ -51,8 +51,8 @@
 # Copyright 2026 Douglas WF Acheson (dwfa@dwfa.ca)
 # Licensed under Apache License 2.0. See LICENSE.md for details.
 #
-# Version: 1.2
-# Date: April 15, 2026
+# Version: 1.3
+# Date: October 3, 2026
 ##############################################################################
 ---                                                   # identifies a YAML file
 
@@ -61,7 +61,7 @@
 ##############################################################################
 - name: Validate targetHost is provided
   ansible.builtin.fail:
-    msg: "[ERROR] *** targetHost is required for resolveTargetHost task"
+    msg: "[ERROR] *** targetHost is required for findHostIP task"
   when: targetHost is not defined
 
 ##############################################################################
@@ -82,15 +82,15 @@
     _rthKnownIPReachable: "{{ hostReachable }}"
 
 ##############################################################################
-# Known IP reachable — set currentIP to targetHost
+# Known IP reachable — set discoveredRPiIP to targetHost
 ##############################################################################
-- name: Set currentIP to known IP
+- name: Set discoveredRPiIP to known IP
   ansible.builtin.set_fact:
-    currentIP: "{{ targetHost }}"
+    discoveredRPiIP: "{{ targetHost }}"
   when: _rthKnownIPReachable
 
 ##############################################################################
-# Fallback: prompt user and set currentIP when known IP unreachable
+# Fallback: prompt user and set discoveredRPiIP when known IP unreachable
 ##############################################################################
 - name: Resolve via user prompt
   block:
@@ -108,32 +108,32 @@
         msg: "[ERROR] *** Invalid IPv4 format: [{{ promptValue }}]"
       when: not (promptValue | regex_search('^([0-9]{1,3}\.){3}[0-9]{1,3}$'))
 
-    - name: Set currentIP to prompted IP
+    - name: Set discoveredRPiIP to prompted IP
       ansible.builtin.set_fact:
-        currentIP: "{{ promptValue }}"
+        discoveredRPiIP: "{{ promptValue }}"
 
     - name: Wait for resolved host to be reachable
       include_tasks: "{{ taskPath }}/system/waitForHost.yaml"
       vars:
-        waitHost:    "{{ currentIP }}"
+        waitHost:    "{{ discoveredRPiIP }}"
         waitPort:    "{{ sshPort        | default(22) }}"
         waitTimeout: "{{ resolveTimeout | default(30) }}"
 
     - name: Fail if prompted host still not reachable
       ansible.builtin.fail:
-        msg: "[ERROR] *** Prompted host [{{ currentIP }}] not reachable on port [{{ sshPort | default(22) }}]."
+        msg: "[ERROR] *** Prompted host [{{ discoveredRPiIP }}] not reachable on port [{{ sshPort | default(22) }}]."
       when: not hostReachable
   when: not _rthKnownIPReachable
 
 ##############################################################################
 # Register resolved target in runtime inventory so subsequent plays can
-# reference it via `hosts: "{{ hostvars['localhost'].currentIP }}"`.
+# reference it via `hosts: "{{ hostvars['localhost'].discoveredRPiIP }}"`.
 # Ansible's hosts: directive only matches hosts that exist in inventory;
 # add_host creates an entry for the resolved IP at runtime.
 ##############################################################################
 - name: Add resolved target to runtime inventory
   ansible.builtin.add_host:
-    name:   "{{ currentIP }}"
+    name:   "{{ discoveredRPiIP }}"
     groups: resolved
 
 ##############################################################################
@@ -141,7 +141,7 @@
 ##############################################################################
 - name: Debug resolved target
   ansible.builtin.debug:
-    msg: "[DEBUG] *** Target [{{ targetHost }}] resolved to [{{ currentIP }}]"
+    msg: "[DEBUG] *** Target [{{ targetHost }}] resolved to [{{ discoveredRPiIP }}]"
   when: debugFlag | default(0) | int == 1
 
 ##############################################################################

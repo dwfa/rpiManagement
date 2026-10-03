@@ -9,7 +9,7 @@
 #
 #   Pure mechanism: this task only switches the IP and verifies the new
 #   address is reachable. Project-specific conventions (updating the
-#   getTargetHostIP `currentIP` fact, registering the new IP in runtime
+#   findHostIP `discoveredRPiIP` fact, registering the new IP in runtime
 #   inventory for `hosts:` matching) live in the wrapping role
 #   (roles/setStaticIP), not here.
 #

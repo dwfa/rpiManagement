@@ -1,40 +1,40 @@
 ##############################################################################
-# Resolve target host IP — try known, prompt if unreachable
+# Find a host's IP — try the known address, ask if it does not answer
 #
 # USAGE:
-#   Thin orchestration role that resolves the target host IP before any
-#   remote play attempts SSH. Wraps tasks/system/resolveTargetHost.yaml.
+#   Thin role that finds the address a host answers on before any remote
+#   play attempts SSH. Wraps tasks/system/findHostIP.yaml.
 #
 # REQUIRED VARIABLES:
 #   - targetHost: Inventory host key to resolve
 #                 (e.g., "{{ groups[nodes] | first }}")
 #
 # OUTPUT VARIABLES:
-#   - currentIP: Resolved IP string (set on localhost). Either equals
+#   - discoveredRPiIP: Resolved IP string (set on localhost). Either equals
 #                targetHost (known IP reachable) or the user-prompted IP.
 #
 # EXAMPLE:
 #   roles:
-#     - role: getTargetHostIP
+#     - role: findHostIP
 #       vars:
 #         targetHost: "{{ groups[nodes] | first }}"
 #
 # NOTES:
 #   - Must run in a localhost play (no SSH to target needed)
 #   - Subsequent remote plays use:
-#     hosts: "{{ hostvars['localhost'].currentIP }}"
+#     hosts: "{{ hostvars['localhost'].discoveredRPiIP }}"
 #
 # Copyright 2026 Douglas WF Acheson (dwfa@dwfa.ca)
 # Licensed under Apache License 2.0. See LICENSE.md for details.
 #
-# Version: 1.0
-# Date: April 16, 2026
+# Version: 1.1
+# Date: October 3, 2026
 ##############################################################################
 ---                                                   # identifies a YAML file
 
 ##############################################################################
-# Resolve target host IP
+# Find host IP
 ##############################################################################
-- name: Resolve target host IP
+- name: Find host IP
   include_tasks:
-    file: "{{ taskPath }}/system/getTargetHostIP.yaml"
+    file: "{{ taskPath }}/system/findHostIP.yaml"

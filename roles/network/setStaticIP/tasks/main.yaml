@@ -37,7 +37,7 @@
 #   # Online (running host)
 #   - hosts: "{{ _currentIP }}"
 #     vars:
-#       _currentIP: "{{ hostvars['localhost'].currentIP }}"
+#       _currentIP: "{{ hostvars['localhost'].discoveredRPiIP }}"
 #     roles:
 #       - role: setStaticIP
 #         vars:

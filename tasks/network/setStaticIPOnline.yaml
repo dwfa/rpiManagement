@@ -26,6 +26,10 @@
 #                       (address, netmask, gateway, dns).
 #
 # OPTIONAL VARIABLES:
+#   - targetAddress:    Address to switch to. Overrides
+#                       ipDetails.address from staticIPDataPath (the
+#                       other ipDetails fields are still used). Lets the
+#                       caller take the address from the inventory.
 #   - debugFlag:        Enable debug output.
 #
 # OUTPUT FACTS:
@@ -70,8 +74,8 @@
 # Copyright 2026 Douglas WF Acheson (dwfa@dwfa.ca)
 # Licensed under Apache License 2.0. See LICENSE.md for details.
 #
-# Version: 1.2
-# Date: May 3, 2026
+# Version: 1.3
+# Date: October 1, 2026
 ##############################################################################
 ---                                                   # identifies a YAML file
 
@@ -95,7 +99,9 @@
 # Apply static IP — skip entirely if host already at the desired address
 ##############################################################################
 - name: Apply static IP
-  when: currentAddress != _ssipnLoaded.ipDetails.address
+  when: currentAddress != _ssipnAddress
+  vars:
+    _ssipnAddress: "{{ targetAddress | default(_ssipnLoaded.ipDetails.address) }}"
   block:
 
     ##########################################################################
@@ -114,7 +120,7 @@
         msg: >-
           [DEBUG] *** Switching host from
           [{{ currentAddress }}] to
-          [{{ _ssipnLoaded.ipDetails.address }}]
+          [{{ _ssipnAddress }}]
 
     ##########################################################################
     # Generate UUID for the new NM connection (custom module on controller)
@@ -137,7 +143,7 @@
         src:   "{{ dataPath }}/network/nm/eth.conf"
       vars:
         autoconnect: "yes"
-        ip4Address:  "address1={{ _ssipnLoaded.ipDetails.address }}/{{ _ssipnLoaded.ipDetails.netmask }},{{ _ssipnLoaded.ipDetails.gateway }}"
+        ip4Address:  "address1={{ _ssipnAddress }}/{{ _ssipnLoaded.ipDetails.netmask }},{{ _ssipnLoaded.ipDetails.gateway }}"
         ip4Dns:      "dns={{ _ssipnLoaded.ipDetails.dns }}"
         ip4Search:   "dns-search={{ _ssipnLoaded.ipDetails.domain }}"
         method:      "manual"
@@ -170,13 +176,13 @@
     - name: Wait for new static IP to be reachable
       include_tasks: "{{ taskPath }}/system/waitForHost.yaml"
       vars:
-        waitHost:    "{{ _ssipnLoaded.ipDetails.address }}"
+        waitHost:    "{{ _ssipnAddress }}"
         waitPort:    22
         waitTimeout: 60
 
     - name: Fail if new static IP not reachable
       ansible.builtin.fail:
-        msg: "[ERROR] *** New static IP [{{ _ssipnLoaded.ipDetails.address }}] not reachable on port 22 after switch."
+        msg: "[ERROR] *** New static IP [{{ _ssipnAddress }}] not reachable on port 22 after switch."
       when: not hostReachable
 
 ##############################################################################

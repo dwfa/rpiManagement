@@ -45,7 +45,7 @@
 # Play 2: Push fresh config to the target host
 ##############################################################################
 - name: Reconfigure DNS server services
-  hosts:        "{{ nodes | default('dns') }}"
+  hosts:        "{{ nodes | default('dnsInstaller') }}"
   become:       true
   gather_facts: true
 

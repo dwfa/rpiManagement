@@ -44,8 +44,8 @@
 # Copyright 2026 Douglas WF Acheson (dwfa@dwfa.ca)
 # Licensed under Apache License 2.0. See LICENSE.md for details.
 #
-# Version: 3.2
-# Date: September 25, 2026
+# Version: 3.3
+# Date: October 1, 2026
 ##############################################################################
 ---                                            # identifies a YAML config file
 
@@ -69,7 +69,7 @@
 # Play 2: Provision DNS server services on the target host
 ##############################################################################
 - name: Provision DNS server services
-  hosts:        "{{ nodes | default('installer') }}"
+  hosts:        "{{ nodes | default('dnsInstaller') }}"
   become:       true
   gather_facts: true
 

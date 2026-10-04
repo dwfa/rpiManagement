@@ -1,0 +1,61 @@
+##############################################################################
+# Install Webmin and its configuration -- thin role wrapper
+#
+# USAGE:
+#   Called by any playbook that wants the Webmin admin UI behind nginx.
+#   Adds Webmin's apt repository, installs webminPackages, then
+#   configures Webmin (localhost only, /admin prefix) and its nginx
+#   location file.
+#
+# REQUIRED VARIABLES:
+#   None at the call site. webminPackages comes from vars/main.yaml;
+#   01_webmin.location lives in this role's files/. The apt repository
+#   and config edits come from data/packages/webmin/metadata.yaml.
+#
+# OPTIONAL VARIABLES:
+#   - debugFlag: Enable debug output
+#
+# EXAMPLE:
+#   - hosts:  "{{ nodes }}"
+#     become: true
+#     roles:
+#       - role: installWebMin
+#
+# WORKFLOW:
+#   1. Add Webmin's apt repository via tasks/system/setupAptRepo.yaml
+#   2. Install webminPackages via tasks/system/installPackage.yaml
+#   3. Configure Webmin via this role's tasks/configureWebmin.yaml
+#
+# NOTES:
+#   - installPackage.yaml uses state=latest, so a re-run upgrades the
+#     packages if newer versions are available
+#   - installProxy must run first -- configureWebmin.yaml adds its nginx
+#     location file and validates nginx
+#   - Run this role LAST: Webmin's install-time module scan only enables
+#     modules for services already installed (bind9, dhcpd, nginx, NUT)
+#   - setupAptRepo.yaml may write Webmin's key fingerprint back into
+#     data/packages/webmin/metadata.yaml
+#
+# Copyright 2026 Douglas WF Acheson (dwfa@dwfa.ca)
+# Licensed under Apache License 2.0. See LICENSE.md for details.
+#
+# Version: 1.0
+# Date: October 4, 2026
+##############################################################################
+---                                                   # identifies a YAML file
+
+- name: Add Webmin apt repository
+  ansible.builtin.include_tasks:
+    file: "{{ taskPath }}/system/setupAptRepo.yaml"
+  vars:
+    packageName: webmin
+
+- name: Install Webmin packages
+  ansible.builtin.include_tasks:
+    file: "{{ taskPath }}/system/installPackage.yaml"
+  vars:
+    packageList: "{{ webminPackages }}"
+
+- name: Configure Webmin
+  ansible.builtin.include_tasks:
+    file: configureWebmin.yaml

@@ -1,0 +1,6 @@
+# /etc/nut/nut.conf -- rendered by installNUT's configureNUT.yaml
+#
+# MODE=netserver on the server  (runs upsd + upsmon + drivers)
+# MODE=netclient on clients     (runs upsmon only)
+
+MODE={{ 'netserver' if nutRole == 'server' else 'netclient' }}

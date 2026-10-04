@@ -3,7 +3,7 @@
 # nutRole passed by the caller.
 #
 # USAGE:
-#   Auto-discovered by installPackages when `nut` is in the packageList.
+#   Step 2 of installNUT's tasks/main.yaml.
 #   Loads data/packages/nut/metadata.yaml + data/users/upsmon/user.yaml,
 #   renders /etc/nut/* from templates, and enables the appropriate
 #   services.
@@ -42,8 +42,8 @@
 # Copyright 2026 Douglas WF Acheson (dwfa@dwfa.ca)
 # Licensed under Apache License 2.0. See LICENSE.md for details.
 #
-# Version: 2.0
-# Date: September 13, 2026
+# Version: 2.1
+# Date: October 4, 2026
 ##############################################################################
 ---                                                   # identifies a YAML file
 
@@ -95,7 +95,7 @@
 ##############################################################################
 - name: Render /etc/nut/nut.conf
   ansible.builtin.template:
-    src:    "{{ dataPath }}/packages/nut/templates/nut.conf.j2"
+    src:    nut.conf.j2
     dest:   /etc/nut/nut.conf
     owner:  root
     group:  nut
@@ -110,7 +110,7 @@
 
     - name: Render /etc/nut/ups.conf
       ansible.builtin.template:
-        src:    "{{ dataPath }}/packages/nut/templates/ups.conf.j2"
+        src:    ups.conf.j2
         dest:   /etc/nut/ups.conf
         owner:  root
         group:  nut
@@ -118,7 +118,7 @@
 
     - name: Render /etc/nut/upsd.conf
       ansible.builtin.template:
-        src:    "{{ dataPath }}/packages/nut/templates/upsd.conf.j2"
+        src:    upsd.conf.j2
         dest:   /etc/nut/upsd.conf
         owner:  root
         group:  nut
@@ -126,7 +126,7 @@
 
     - name: Render /etc/nut/upsd.users
       ansible.builtin.template:
-        src:    "{{ dataPath }}/packages/nut/templates/upsd.users.j2"
+        src:    upsd.users.j2
         dest:   /etc/nut/upsd.users
         owner:  root
         group:  nut
@@ -138,7 +138,7 @@
 ##############################################################################
 - name: Render /etc/nut/upsmon.conf
   ansible.builtin.template:
-    src:    "{{ dataPath }}/packages/nut/templates/upsmon.conf.j2"
+    src:    upsmon.conf.j2
     dest:   /etc/nut/upsmon.conf
     owner:  root
     group:  nut

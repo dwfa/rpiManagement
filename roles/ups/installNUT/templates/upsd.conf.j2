@@ -1,0 +1,11 @@
+# /etc/nut/upsd.conf -- server only; rendered by
+# installNUT's configureNUT.yaml
+#
+# LISTEN addresses come from data/packages/nut/metadata.yaml.
+# For the current scope (DNS Pi as server with only self-client),
+# 127.0.0.1 is sufficient. Add the LAN address to metadata when the
+# first remote NUT client is onboarded.
+
+{% for l in listenAddresses %}
+LISTEN {{ l.address }} {{ l.port }}
+{% endfor %}

@@ -10,7 +10,8 @@
 #
 #   Each step runs the SAME configure task that buildDNSServer-pb.yaml
 #   uses on first build -- no divergence. bind9 and pi-hole come from
-#   installDNSServer (include_role tasks_from). The configure tasks
+#   installDNSServer, dhcpd from installDHCPdServer (include_role
+#   tasks_from). The configure tasks
 #   re-parse data/network/inventory.xlsx via netGen on every run, so
 #   inventory edits flow straight through.
 #
@@ -64,8 +65,9 @@
 # Step 2: isc-dhcp-server -- DHCP reservations driven from inventory.xlsx
 ##############################################################################
 - name: Reconfigure isc-dhcp-server
-  ansible.builtin.include_tasks:
-    file: "{{ taskPath }}/isc-dhcp-server/configure.yaml"
+  ansible.builtin.include_role:
+    name:       installDHCPdServer
+    tasks_from: configureDHCPd
 
 ##############################################################################
 # Step 3: pi-hole -- setupVars.conf + pihole.toml driven from metadata

@@ -9,16 +9,11 @@
 #   prompting.
 #
 # REQUIRED VARIABLES:
-#   None at the call site. The setupVars.conf template uses the play's
-#   userData (loaded from user.yaml via vars_files) for the
-#   WEBPASSWORD default.
+#   None at the call site.
 #
 # OPTIONAL VARIABLES:
-#   - webPassword:     Plaintext pi-hole admin password override.
-#                      When unset, defaults to userData.sudoPWD
-#                      (the sudo password of the user the play
-#                      connects as). Either way the value
-#                      is double-sha256'd before being written.
+#   - webPassword:     Pi-hole web password; set by
+#                      configurePihole.yaml, not here
 #   - piholeInterface: LAN interface for pi-hole to listen on
 #                      (default: eth0)
 #   - ipv4Address:     CIDR address pi-hole reports as its own

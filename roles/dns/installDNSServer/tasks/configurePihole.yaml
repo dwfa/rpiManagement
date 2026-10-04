@@ -10,12 +10,13 @@
 #   default-locations, then reloads pihole-FTL + nginx.
 #
 # REQUIRED VARIABLES:
-#   None at the call site. The setupVars.conf template uses the play's
-#   userData (loaded from user.yaml via vars_files) for the
-#   WEBPASSWORD default.
+#   None at the call site. The web password defaults to the play's
+#   userData.sudoPWD (user.yaml via vars_files).
 #
 # OPTIONAL VARIABLES:
-#   - webPassword, piholeInterface, ipv4Address: see installPihole.yaml
+#   - webPassword:                                Pi-hole web password
+#                                                 (default: userData.sudoPWD)
+#   - piholeInterface, ipv4Address:               see installPihole.yaml
 #   - debugFlag:                                  Enable debug output
 #
 # WORKFLOW:
@@ -25,6 +26,7 @@
 #   3. Validate nginx config (`nginx -t`)
 #   4. Restart pihole-FTL (it re-reads setupVars.conf on restart)
 #   5. Reload nginx
+#   6. Set the web password with `pihole setpassword`
 #
 # NOTES:
 #   - INSTALL_WEB_SERVER=false in setupVars.conf told the installer to
@@ -34,11 +36,14 @@
 #     reverse-proxies /pihole/ to it via 01_pihole.location.
 #   - `pihole-FTL` restart (not reload) is required for setupVars.conf
 #     and pihole.toml changes to take effect.
+#   - Pi-hole v6 keeps the web password in pihole.toml; setupVars.conf's
+#     WEBPASSWORD is not read on a fresh v6 install. Step 6 sets it every
+#     run, so it always reports "changed" (harmless -- same password).
 #
 # Copyright 2026 Douglas WF Acheson (dwfa@dwfa.ca)
 # Licensed under Apache License 2.0. See LICENSE.md for details.
 #
-# Version: 1.1
+# Version: 1.2
 # Date: October 4, 2026
 ##############################################################################
 ---                                                   # identifies a YAML file
@@ -163,3 +168,14 @@
     name:  nginx
     state: reloaded
   when: _pcLocationResult.changed
+
+##############################################################################
+# Step 6: Set the web password (pi-hole v6 stores it in pihole.toml)
+##############################################################################
+- name: Set pi-hole web password
+  ansible.builtin.command:
+    argv:
+      - pihole
+      - setpassword
+      - "{{ (webPassword | default(userData.sudoPWD)) | trim }}"
+  no_log: true

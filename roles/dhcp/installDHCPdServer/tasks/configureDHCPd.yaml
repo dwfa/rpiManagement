@@ -4,8 +4,9 @@
 # (v5 schema) + data/ddns/tsig/*.
 #
 # USAGE:
-#   Auto-discovered by installPackages when `isc-dhcp-server` is in the
-#   packageList. Loads dhcp-specific metadata, loads the network
+#   Step 2 of installDHCPdServer's tasks/main.yaml. reconfigureDNSServer
+#   runs it on its own via include_role tasks_from: configureDHCPd.
+#   Loads dhcp-specific metadata, loads the network
 #   inventory JSON (via the shared parseInventory task), loads the
 #   vault-encrypted TSIG key shared with bind9, renders the config
 #   with DDNS enabled, validates with `dhcpd -t`, then enables +
@@ -45,8 +46,8 @@
 # Copyright 2026 Douglas WF Acheson (dwfa@dwfa.ca)
 # Licensed under Apache License 2.0. See LICENSE.md for details.
 #
-# Version: 2.0
-# Date: September 09, 2026
+# Version: 2.1
+# Date: October 4, 2026
 ##############################################################################
 ---                                                   # identifies a YAML file
 
@@ -75,7 +76,7 @@
 ##############################################################################
 - name: Render /etc/dhcp/dhcpd.conf
   ansible.builtin.template:
-    src:    "{{ dataPath }}/packages/isc-dhcp-server/templates/dhcpd.conf.j2"
+    src:    dhcpd.conf.j2
     dest:   /etc/dhcp/dhcpd.conf
     owner:  root
     group:  root
@@ -95,7 +96,7 @@
 ##############################################################################
 - name: Render /etc/default/isc-dhcp-server
   ansible.builtin.template:
-    src:    "{{ dataPath }}/packages/isc-dhcp-server/templates/defaults.j2"
+    src:    defaults.j2
     dest:   /etc/default/isc-dhcp-server
     owner:  root
     group:  root
@@ -120,7 +121,8 @@
     group: root
     mode:  '0644'
     content: |
-      # Rendered by tasks/isc-dhcp-server/configure.yaml. Do NOT edit by hand.
+      # Rendered by installDHCPdServer's configureDHCPd.yaml.
+      # Do NOT edit by hand.
       #
       # dhcpd needs bind9 running to deliver DDNS updates. Without this
       # ordering, dhcpd can start first at boot and queue update failures

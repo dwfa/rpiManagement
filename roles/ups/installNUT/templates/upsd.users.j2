@@ -1,0 +1,12 @@
+# /etc/nut/upsd.users -- server only; rendered by
+# installNUT's configureNUT.yaml
+#
+# The upsmon protocol user (data/users/upsmon/user.yaml) is what every
+# upsmon (server's self-client and future remote clients) authenticates
+# as. `upsmon master` is the NUT-protocol keyword that lets this user
+# trigger the shutdown broadcast; NUT vocabulary here, unrelated to our
+# server/client role naming.
+
+[{{ upsmonUser }}]
+    password = {{ upsmonPWD }}
+    upsmon master

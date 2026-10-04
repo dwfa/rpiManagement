@@ -73,11 +73,16 @@
 #      video, GPU memory, EEPROM BOOT_ORDER
 #   3. installFish: Install fish
 #   4. installVim: Install vim and its system-wide config
-#   5. installProxy: Install nginx as the HTTPS front door for webmin and
+#   5. installUctLCD: Install the UCTRONICS status LCD daemon
+#   6. installProxy: Install nginx as the HTTPS front door for webmin and
 #      pi-hole
-#   6. installDNSServer: Install and configure bind9 and pi-hole
-#   7. installPackages: Install and configure isc-dhcp-server, nut, webmin
-#   8. installUctLCD: Install the UCTRONICS status LCD daemon
+#   7. installDNSServer: Install and configure bind9 and pi-hole
+#   8. installDHCPdServer: Install and configure isc-dhcp-server (DDNS
+#      updates to bind9)
+#   9. installNUT: Install and configure NUT as the UPS server (UPS
+#      attached by USB)
+#  10. installWebMin: Add Webmin's apt repository, install and configure
+#      Webmin behind nginx at /admin (last, so it sees every service)
 # Note: installProxy must run before webmin and pi-hole -- both add their
 #       nginx location files to it
 ##############################################################################
@@ -100,27 +105,15 @@
     - role: configureBaseRPi
     - role: installFish
     - role: installVim
+    - role: installUctLCD
     - role: installProxy
     - role: installDNSServer
-    # - role: installPackages
-    #   vars:
-    #     packageList:
-    #       - isc-dhcp-server
-    #       - nut
-    #       # webmin listed LAST so its install-time module scan sees
-    #       # every other service already installed on the host and
-    #       # auto-enables the matching webmin modules (bind9, dhcpd,
-    #       # nginx, nut, ...). New services added to this list belong
-    #       # ABOVE webmin for the same reason.
-    #       - webmin
-    #     # Per-package vars are scoped to that package's configure step
-    #     # only (installPackages plumbs them via configurePackage's
-    #     # include_tasks.apply.vars) -- no cross-package leak.
-    #     packageVars:
-    #       nut:
-    #         nutRole: server
-    # # uctLCD is not an apt package, so it has its own install role
-    # - role: installUctLCD
+    - role: installDHCPdServer
+    - role: installNUT
+      vars:
+        nutRole: server
+                                    # webmin installed LAST so it activates
+    - role: installWebMin           # modules for installed pkgs
 
 ##############################################################################
 # Play 4: This play removes the SSH key files and runs on the localhost

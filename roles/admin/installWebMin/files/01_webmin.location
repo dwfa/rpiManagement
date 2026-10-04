@@ -1,0 +1,26 @@
+###############################################################################
+# nginx location block: reverse-proxy /admin/ → local webmin (127.0.0.1:10000)
+#
+# Author: Acheson, Douglas WF (dwfa@dwfa.ca)
+#
+# Copyright 2023 Douglas WF Acheson (dwfa@dwfa.ca)
+# Licensed under Apache License 2.0. See LICENSE.md for details.
+#
+# Version: 2.1
+# Date: May 7, 2026
+#
+# webmin listens on 127.0.0.1:10000 (no SSL — TLS terminates at nginx)
+# and is configured with webprefix=/admin so its self-generated URLs
+# include the proxy prefix. nginx strips the /admin/ prefix when
+# proxying upstream (proxy_pass with trailing slash).
+#
+# Reference: https://superuser.com/questions/1415044/use-nginx-to-proxy-webmin-in-admin
+###############################################################################
+location /admin/
+{
+	proxy_pass         http://127.0.0.1:10000/ ;
+	proxy_set_header   Host              $host ;
+	proxy_set_header   X-Forwarded-For   $http_x_forwarded_for ;
+	proxy_set_header   X-Forwarded-Proto $scheme ;
+	proxy_redirect     http://$host:10000/ /admin/ ;
+}

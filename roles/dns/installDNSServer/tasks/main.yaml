@@ -11,8 +11,8 @@
 #   templates and files live in this role's templates/ and files/.
 #   Site values come from data/packages/bind9/metadata.yaml,
 #   data/packages/pihole/metadata.yaml, data/network/inventory.json and
-#   the TSIG key. pi-hole's WEBPASSWORD default uses the play's userData
-#   (user.yaml via vars_files).
+#   the TSIG key. pi-hole's web password defaults to the play's
+#   userData.sudoPWD (user.yaml via vars_files).
 #
 # OPTIONAL VARIABLES:
 #   - debugFlag: Enable debug output

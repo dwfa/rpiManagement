@@ -20,6 +20,15 @@
 # construction.
 upstreams = [{% for u in dnsUpstreams | default([]) %}"{{ u }}"{% if not loop.last %}, {% endif %}{% endfor %}]
 
+# Listen on port 53 only on the LAN interface's addresses. bind9 owns
+# 127.0.0.2:53 (DDNS target for dhcpd) and starts first at boot. In the
+# default LOCAL mode dnsmasq claims 0.0.0.0:53, which fails with
+# "Address in use" and pi-hole answers no DNS at all. BIND limits it to
+# this interface; except-interface=lo (in [misc]) stops dnsmasq adding
+# loopback on its own, which would hit 127.0.0.2:53 again.
+interface = "{{ piholeInterface | default('eth0') }}"
+listeningMode = "BIND"
+
 [webserver]
 # Listen only on loopback so nginx is the sole public face. Nginx
 # reverse-proxies /pihole/ -> http://127.0.0.1:8080/admin/.
@@ -31,3 +40,7 @@ port = "{{ ftlWebserverPort }}"
 # Without this, FTL emits "/admin/..." redirects which collide with
 # webmin's reverse-proxy location.
 paths.prefix = "/pihole"
+
+[misc]
+# See [dns] listeningMode above -- keep dnsmasq off loopback.
+dnsmasq_lines = ["except-interface=lo"]

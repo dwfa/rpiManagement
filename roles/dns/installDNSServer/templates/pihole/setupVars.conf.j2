@@ -33,7 +33,6 @@ DHCP_ACTIVE=false
 LIGHTTPD_ENABLED=false
 INSTALL_WEB_SERVER=false
 INSTALL_WEB_INTERFACE=true
-WEBPASSWORD={{ (webPassword | default(userData.sudoPWD)) | hash('sha256') | hash('sha256') }}
 WEBUIBOXEDLAYOUT=traditional
 WEBTHEME=default-light
 

@@ -4,12 +4,14 @@
 # Copyright 2026 Douglas WF Acheson (dwfa@dwfa.ca)
 # Licensed under Apache License 2.0. See LICENSE.md for details.
 #
-# Version: 1.0
-# Date: October 3, 2026
+# Version: 1.1
+# Date: October 4, 2026
 ##############################################################################
 ---                                            # identifies a YAML config file
 
+# Debian 13 package names. bind9utils / dnsutils are old names apt
+# maps to these, so asking for them reports "changed" on every run.
 dnsServerPackages:
   - bind9
-  - bind9utils
-  - dnsutils
+  - bind9-utils
+  - bind9-dnsutils

@@ -9,12 +9,11 @@
 # Copyright 2026 Douglas WF Acheson (dwfa@dwfa.ca)
 # Licensed under Apache License 2.0. See LICENSE.md for details.
 #
-# Version: 1.1
-# Date: May 7, 2026
+# Version: 1.3
+# Date: October 3, 2026
 ##############################################################################
 ---                                            # identifies a YAML config file
 
+# vim and fish moved to the installVim and installFish roles
 basePackageList:
-  - vim
   - zsh
-  - fish

@@ -3,6 +3,9 @@
 # data/network/inventory.json (v5 schema) + data/ddns/tsig/*.
 #
 # USAGE:
+#   Step 2 of installDNSServer's tasks/main.yaml. reconfigureDNSServer
+#   runs it on its own via include_role tasks_from: configureBind9.
+#
 #   Loads daemon + domain config from data/packages/bind9/metadata.yaml,
 #   loads the network inventory JSON (via the shared parseInventory
 #   task), loads the vault-encrypted TSIG key, renders zones as
@@ -47,8 +50,8 @@
 # Copyright 2026 Douglas WF Acheson (dwfa@dwfa.ca)
 # Licensed under Apache License 2.0. See LICENSE.md for details.
 #
-# Version: 3.0
-# Date: September 09, 2026
+# Version: 3.1
+# Date: October 4, 2026
 ##############################################################################
 ---                                                   # identifies a YAML file
 
@@ -112,7 +115,7 @@
 ##############################################################################
 - name: Render forward zone
   ansible.builtin.template:
-    src:   "{{ dataPath }}/packages/bind9/templates/forward.j2"
+    src:   bind9/forward.j2
     dest:  "{{ zoneDir }}/db.{{ domain }}"
     owner: root
     group: bind
@@ -123,7 +126,7 @@
 ##############################################################################
 - name: Render reverse zone
   ansible.builtin.template:
-    src:   "{{ dataPath }}/packages/bind9/templates/reverse.j2"
+    src:   bind9/reverse.j2
     dest:  "{{ zoneDir }}/db.{{ zoneSubnets[0].subnetPrefix }}"
     owner: root
     group: bind
@@ -136,7 +139,7 @@
 ##############################################################################
 - name: Render named.conf.local
   ansible.builtin.template:
-    src:    "{{ dataPath }}/packages/bind9/templates/named.conf.local.j2"
+    src:    bind9/named.conf.local.j2
     dest:   /etc/bind/named.conf.local
     owner:  root
     group:  bind
@@ -148,7 +151,7 @@
 ##############################################################################
 - name: Render named.conf.options
   ansible.builtin.template:
-    src:    "{{ dataPath }}/packages/bind9/templates/named.conf.options.j2"
+    src:    bind9/named.conf.options.j2
     dest:   /etc/bind/named.conf.options
     owner:  root
     group:  bind

@@ -1,0 +1,66 @@
+##############################################################################
+# Install the DNS server (bind9 + pi-hole) and its configuration -- thin
+# role wrapper
+#
+# USAGE:
+#   Called by any playbook that builds a DNS server. Installs and
+#   configures bind9, then installs and configures pi-hole in front of it.
+#
+# REQUIRED VARIABLES:
+#   None at the call site. dnsServerPackages comes from vars/main.yaml;
+#   templates and files live in this role's templates/ and files/.
+#   Site values come from data/packages/bind9/metadata.yaml,
+#   data/packages/pihole/metadata.yaml, data/network/inventory.json and
+#   the TSIG key. pi-hole's WEBPASSWORD default uses the play's userData
+#   (user.yaml via vars_files).
+#
+# OPTIONAL VARIABLES:
+#   - debugFlag: Enable debug output
+#
+# EXAMPLE:
+#   - hosts:  "{{ nodes }}"
+#     become: true
+#     roles:
+#       - role: installDNSServer
+#
+# WORKFLOW:
+#   1. Install dnsServerPackages via tasks/system/installPackage.yaml
+#   2. Configure bind9 via this role's tasks/configureBind9.yaml
+#   3. Install pi-hole via this role's tasks/installPihole.yaml
+#   4. Configure pi-hole via this role's tasks/configurePihole.yaml
+#
+# NOTES:
+#   - installPackage.yaml uses state=latest, so a re-run upgrades the
+#     packages if newer versions are available
+#   - installProxy must run first -- configurePihole.yaml adds its nginx
+#     location file and validates nginx
+#   - reconfigureDNSServer runs configureBind9 and configurePihole on
+#     their own via include_role tasks_from (backlog "Rethink
+#     reconfigureDNSServer")
+#   - The TSIG key must exist -- buildDNSServer Play 2 checks for it
+#
+# Copyright 2026 Douglas WF Acheson (dwfa@dwfa.ca)
+# Licensed under Apache License 2.0. See LICENSE.md for details.
+#
+# Version: 1.0
+# Date: October 3, 2026
+##############################################################################
+---                                                   # identifies a YAML file
+
+- name: Install DNS server packages
+  ansible.builtin.include_tasks:
+    file: "{{ taskPath }}/system/installPackage.yaml"
+  vars:
+    packageList: "{{ dnsServerPackages }}"
+
+- name: Configure bind9
+  ansible.builtin.include_tasks:
+    file: configureBind9.yaml
+
+- name: Install pi-hole
+  ansible.builtin.include_tasks:
+    file: installPihole.yaml
+
+- name: Configure pi-hole
+  ansible.builtin.include_tasks:
+    file: configurePihole.yaml

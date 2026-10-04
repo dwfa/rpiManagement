@@ -1,0 +1,45 @@
+##############################################################################
+# Install vim and its system-wide configuration -- thin role wrapper
+#
+# USAGE:
+#   Called by any playbook that wants vim on the target. Installs
+#   vimPackages, then runs vim's configure task.
+#
+# REQUIRED VARIABLES:
+#   None at the call site. vimPackages comes from vars/main.yaml;
+#   config files come from tasks/vim/configure.yaml.
+#
+# OPTIONAL VARIABLES:
+#   - debugFlag: Enable debug output
+#
+# EXAMPLE:
+#   - hosts:  "{{ nodes }}"
+#     become: true
+#     roles:
+#       - role: installVim
+#
+# WORKFLOW:
+#   1. Install vimPackages via tasks/system/installPackage.yaml
+#   2. Copy vim's config files via tasks/vim/configure.yaml
+#
+# NOTES:
+#   - installPackage.yaml uses state=latest, so a re-run upgrades vim
+#     if a newer version is available
+#
+# Copyright 2026 Douglas WF Acheson (dwfa@dwfa.ca)
+# Licensed under Apache License 2.0. See LICENSE.md for details.
+#
+# Version: 1.0
+# Date: October 3, 2026
+##############################################################################
+---                                                   # identifies a YAML file
+
+- name: Install vim packages
+  ansible.builtin.include_tasks:
+    file: "{{ taskPath }}/system/installPackage.yaml"
+  vars:
+    packageList: "{{ vimPackages }}"
+
+- name: Configure vim
+  ansible.builtin.include_tasks:
+    file: "{{ taskPath }}/vim/configure.yaml"

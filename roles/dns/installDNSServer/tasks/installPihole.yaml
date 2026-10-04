@@ -2,22 +2,22 @@
 # Install pi-hole (native, unattended)
 #
 # USAGE:
-#   include_tasks from a playbook on the DNS server host. Idempotent:
+#   Step 3 of installDNSServer's tasks/main.yaml. Idempotent:
 #   if /usr/local/bin/pihole already exists the installer is skipped.
 #   First-run path pre-seeds /etc/pihole/setupVars.conf so the
 #   official unattended installer picks up our config instead of
 #   prompting.
 #
 # REQUIRED VARIABLES:
-#   None at the call site. The setupVars.conf template pulls
-#   userData from hostvars['localhost'] (set by Play 1's
-#   prepareRemoteCredentials role) for the WEBPASSWORD default.
+#   None at the call site. The setupVars.conf template uses the play's
+#   userData (loaded from user.yaml via vars_files) for the
+#   WEBPASSWORD default.
 #
 # OPTIONAL VARIABLES:
 #   - webPassword:     Plaintext pi-hole admin password override.
 #                      When unset, defaults to userData.sudoPWD
-#                      (the sudo password for the admin user
-#                      decrypted in Play 1). Either way the value
+#                      (the sudo password of the user the play
+#                      connects as). Either way the value
 #                      is double-sha256'd before being written.
 #   - piholeInterface: LAN interface for pi-hole to listen on
 #                      (default: eth0)
@@ -38,9 +38,9 @@
 #     sqlite3, etc.) -- this is the cost of going native. See the
 #     "Revisit containerized pi-hole" backlog item for context.
 #   - INSTALL_WEB_SERVER=false in setupVars.conf tells the installer to
-#     skip lighttpd; nginx (already installed earlier in the playbook)
+#     skip lighttpd; nginx (installed by installProxy before this role)
 #     fronts the admin UI via the 01_pihole.location snippet dropped
-#     in configure.yaml.
+#     in configurePihole.yaml.
 #   - We do NOT pipe curl directly into bash -- script is downloaded to
 #     /tmp first so a failed download fails the task instead of
 #     half-executing.
@@ -48,8 +48,8 @@
 # Copyright 2026 Douglas WF Acheson (dwfa@dwfa.ca)
 # Licensed under Apache License 2.0. See LICENSE.md for details.
 #
-# Version: 1.0
-# Date: May 10, 2026
+# Version: 1.1
+# Date: October 4, 2026
 ##############################################################################
 ---                                                   # identifies a YAML file
 
@@ -91,13 +91,11 @@
 
     - name: Pre-seed /etc/pihole/setupVars.conf
       ansible.builtin.template:
-        src:   "{{ dataPath }}/packages/pihole/setupVars.conf.j2"
+        src:   pihole/setupVars.conf.j2
         dest:  /etc/pihole/setupVars.conf
         owner: root
         group: root
         mode:  '0644'
-      vars:
-        userData: "{{ hostvars['localhost'].userData }}"
 
     ##########################################################################
     # Pre-seed pihole.toml with FTL webserver.port set to 8080 BEFORE
@@ -110,7 +108,7 @@
 
     - name: Pre-seed /etc/pihole/pihole.toml (FTL webserver port)
       ansible.builtin.template:
-        src:   "{{ dataPath }}/packages/pihole/pihole.toml.j2"
+        src:   pihole/pihole.toml.j2
         dest:  /etc/pihole/pihole.toml
         owner: root
         group: root

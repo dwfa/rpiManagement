@@ -2,18 +2,20 @@
 # Configure pi-hole on a host where it's already installed
 #
 # USAGE:
-#   include_tasks AFTER tasks/pihole/install.yaml in the playbook.
+#   Step 4 of installDNSServer's tasks/main.yaml, after installPihole.yaml.
+#   reconfigureDNSServer runs it on its own via include_role
+#   tasks_from: configurePihole.
 #   Re-renders setupVars.conf (so metadata changes are picked up on
 #   re-runs), drops the nginx reverse-proxy snippet into nginx's
 #   default-locations, then reloads pihole-FTL + nginx.
 #
 # REQUIRED VARIABLES:
-#   None at the call site. The setupVars.conf template pulls
-#   userData from hostvars['localhost'] (set by Play 1's
-#   prepareRemoteCredentials role) for the WEBPASSWORD default.
+#   None at the call site. The setupVars.conf template uses the play's
+#   userData (loaded from user.yaml via vars_files) for the
+#   WEBPASSWORD default.
 #
 # OPTIONAL VARIABLES:
-#   - webPassword, piholeInterface, ipv4Address: see install.yaml
+#   - webPassword, piholeInterface, ipv4Address: see installPihole.yaml
 #   - debugFlag:                                  Enable debug output
 #
 # WORKFLOW:
@@ -36,8 +38,8 @@
 # Copyright 2026 Douglas WF Acheson (dwfa@dwfa.ca)
 # Licensed under Apache License 2.0. See LICENSE.md for details.
 #
-# Version: 1.0
-# Date: May 10, 2026
+# Version: 1.1
+# Date: October 4, 2026
 ##############################################################################
 ---                                                   # identifies a YAML file
 
@@ -96,19 +98,17 @@
 
 - name: Render /etc/pihole/setupVars.conf
   ansible.builtin.template:
-    src:    "{{ dataPath }}/packages/pihole/setupVars.conf.j2"
+    src:    pihole/setupVars.conf.j2
     dest:   /etc/pihole/setupVars.conf
     owner:  pihole
     group:  pihole
     mode:   '0644'
     backup: true
-  vars:
-    userData: "{{ hostvars['localhost'].userData }}"
   register: _pcSetupVarsResult
 
 - name: Render /etc/pihole/pihole.toml (FTL webserver port)
   ansible.builtin.template:
-    src:    "{{ dataPath }}/packages/pihole/pihole.toml.j2"
+    src:    pihole/pihole.toml.j2
     dest:   /etc/pihole/pihole.toml
     owner:  pihole
     group:  pihole
@@ -121,7 +121,7 @@
 ##############################################################################
 - name: Drop 01_pihole.location into nginx default-locations
   ansible.builtin.copy:
-    src:    "{{ dataPath }}/packages/pihole/01_pihole.location"
+    src:    pihole/01_pihole.location
     dest:   /etc/nginx/sites-available/default-locations/01_pihole.location
     owner:  root
     group:  root

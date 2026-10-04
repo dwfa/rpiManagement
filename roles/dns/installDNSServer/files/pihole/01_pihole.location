@@ -1,0 +1,38 @@
+###############################################################################
+# nginx reverse-proxy location for the pi-hole admin UI.
+#
+# Mounted at https://<host>/pihole/, proxied to pihole-FTL's embedded
+# webserver on 127.0.0.1:8080. Pi-hole's webserver.paths.prefix in
+# pihole.toml is set to "/pihole" so FTL emits absolute URLs with that
+# prefix; nginx strips it on the way in.
+#
+# Reference: https://superuser.com/questions/1415044/use-nginx-to-proxy-webmin-in-admin
+#
+# Copyright 2026 Douglas WF Acheson (dwfa@dwfa.ca)
+# Licensed under Apache License 2.0. See LICENSE.md for details.
+#
+# Version: 2.0
+# Date: May 17, 2026
+###############################################################################
+# Redirect bare /pihole/ -> /pihole/admin/ so bookmarks to the prefix
+# root land on the actual dashboard. Pi-hole's webhome is /admin/, so
+# the externally-visible URL is /pihole/admin/.
+location = /pihole/
+{
+	return 301 /pihole/admin/;
+}
+
+location /pihole/
+{
+	# Strip ONLY the /pihole/ prefix when forwarding.
+	# Pi-hole's webserver.paths.prefix="/pihole" in pihole.toml tells
+	# FTL its external prefix; FTL emits links with /pihole/... and
+	# expects the proxy to strip just /pihole/ before forwarding.
+	# (Old version used /admin/ here, which double-rewrote the path
+	# and caused a redirect loop -- see git history.)
+	proxy_pass       http://127.0.0.1:8080/ ;
+	proxy_set_header Host $host ;
+	proxy_set_header X-Real-IP $remote_addr ;
+	proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for ;
+	proxy_set_header X-Forwarded-Proto $scheme;
+}

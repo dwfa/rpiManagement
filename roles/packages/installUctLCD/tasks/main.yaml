@@ -67,8 +67,8 @@
 # Copyright 2026 Douglas WF Acheson (dwfa@dwfa.ca)
 # Licensed under Apache License 2.0. See LICENSE.md for details.
 #
-# Version: 2.0
-# Date: September 24, 2026
+# Version: 2.1
+# Date: October 6, 2026
 ##############################################################################
 ---                                                   # identifies a YAML file
 
@@ -215,7 +215,7 @@
 
 - name: Render {{ uctLcdConfigPath }}
   ansible.builtin.template:
-    src:    "{{ dataPath }}/packages/uctLCD/templates/config.toml.j2"
+    src:    config.toml.j2
     dest:   "{{ uctLcdConfigPath }}"
     owner:  root
     group:  root
@@ -224,7 +224,7 @@
 
 - name: Render {{ uctLcdUnitPath }}
   ansible.builtin.template:
-    src:    "{{ dataPath }}/packages/uctLCD/templates/uctLCD.service.j2"
+    src:    uctLCD.service.j2
     dest:   "{{ uctLcdUnitPath }}"
     owner:  root
     group:  root

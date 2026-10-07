@@ -4,10 +4,18 @@
 # Copyright 2026 Douglas WF Acheson (dwfa@dwfa.ca)
 # Licensed under Apache License 2.0. See LICENSE.md for details.
 #
-# Version: 1.0
-# Date: October 3, 2026
+# Version: 1.1
+# Date: October 6, 2026
 ##############################################################################
 ---                                            # identifies a YAML config file
 
 vimPackages:
   - vim
+
+# Files copied to the target (tasks/files/copyFiles.yaml fileList)
+vimFiles:
+  - src:    "{{ role_path }}/files/vimrc.local"
+    dest:   /etc/vim/vimrc.local
+    owner:  root
+    group:  root
+    backup: true

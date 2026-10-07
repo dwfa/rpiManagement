@@ -1,0 +1,33 @@
+##############################################################################
+# Eject the install device so it is safe to remove -- thin role wrapper
+#
+# USAGE:
+#   Last role in installRPiOS-pb.yaml Play 3, after initRPiImage.
+#   Wraps tasks/fileSystem/ejectDevice.yaml.
+#
+# REQUIRED VARIABLES:
+#   - installDevice: Target device path (set by getInstallDevice)
+#
+# OPTIONAL VARIABLES:
+#   - debugFlag: Enable debug output
+#
+# EXAMPLE:
+#   roles:
+#     - role: getInstallDevice
+#     - role: createRPiImage
+#     - role: initRPiImage
+#     - role: ejectDevice
+#
+# Copyright 2026 Douglas WF Acheson (dwfa@dwfa.ca)
+# Licensed under Apache License 2.0. See LICENSE.md for details.
+#
+# Version: 1.0
+# Date: October 5, 2026
+##############################################################################
+---                                                   # identifies a YAML file
+
+- name: Eject install device
+  ansible.builtin.include_tasks:
+    file: "{{ taskPath }}/fileSystem/ejectDevice.yaml"
+  vars:
+    device: "{{ installDevice }}"

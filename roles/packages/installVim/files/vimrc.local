@@ -1,0 +1,22 @@
+"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+" System-wide vim configuration (deployed to /etc/vim/vimrc.local)
+"
+" Author: Acheson, Douglas WF (dwfa@dwfa.ca)
+"
+" Copyright 2022 Douglas WF Acheson (dwfa@dwfa.ca)
+" Licensed under Apache License 2.0. See LICENSE.md for details.
+"
+" Version: 1.1
+" Date: May 5, 2026
+"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+set showcmd            " Show (partial) command in status line.
+set showmatch          " Show matching brackets.
+set ignorecase         " Do case insensitive matching
+set smartcase          " Do smart case matching
+set incsearch          " Incremental search
+set autowrite          " Automatically save before commands like :next & :make
+set hidden             " Hide buffers when they are abandoned
+set mouse=a            " Enable mouse usage (all modes)
+set ts=2               " Set tab stop to 2 characters
+syntax on              " Enable syntax high lighting
+set background=dark    " Set this for some reason

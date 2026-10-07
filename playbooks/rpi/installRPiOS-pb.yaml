@@ -26,14 +26,15 @@
 #     4. getInstallDevice: Detect single available external drive
 #     5. createRPiImage: Copy image to target (if remote), write to disk
 #     6. initRPiImage: Copy init files and configure boot partition
+#     7. ejectDevice: Unmount, flush and eject the device (safe to remove)
 #   Play 4 (localhost) - Remove SSH key files:
-#     7. clearLocal: Remove the SSH key files from data/ssh/
+#     8. clearLocal: Remove the SSH key files from data/ssh/
 #
 # Copyright 2025 Douglas WF Acheson (dwfa@dwfa.ca)
 # Licensed under Apache License 2.0. See LICENSE.md for details.
 #
-# Version: 3.0
-# Date: October 3, 2026
+# Version: 3.1
+# Date: October 5, 2026
 ##############################################################################
 ---                                            # identifies a YAML config file
 
@@ -84,6 +85,7 @@
     - role: initRPiImage
       vars:
         userDataPath: "{{ dataPath }}/users/{{ installerUser }}/user.yaml"
+    - role: ejectDevice
 
 ##############################################################################
 # Play 4: Remove SSH key files

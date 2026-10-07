@@ -1,3 +1,6 @@
+# OBSOLETE -- not used. Replaced by
+#   installVim (tasks/files/copyFiles.yaml + vars vimFiles)
+# Remove this file once the role is tested.
 ##############################################################################
 # Configure vim system-wide
 #

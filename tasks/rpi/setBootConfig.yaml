@@ -1,0 +1,76 @@
+##############################################################################
+# Set lines in the RPi boot config (config.txt)
+#
+# USAGE:
+#   Reusable: any task or role that needs config.txt lines set passes a
+#   list. Each entry replaces the line that starts with its key, or adds
+#   the line at the end of the file if no line matches.
+#
+# REQUIRED VARIABLES:
+#   - bootConfigLines: List of entries, each with:
+#       key:  Start of the line that identifies it -- include the "="
+#             (e.g. "gpu_mem=") or, for dtoverlay/dtparam, the name
+#             (e.g. "dtoverlay=gpio-fan", "dtparam=audio=")
+#       line: Full line to write (e.g. "gpu_mem=64")
+#   - bootConfigPath:  usually /boot/firmware/config.txt (baseConfig.yaml)
+#
+# OPTIONAL VARIABLES:
+#   - debugFlag: enable debug output
+#
+# EXAMPLE:
+#   - name: Configure onboard devices
+#     ansible.builtin.include_tasks:
+#       file: "{{ taskPath }}/rpi/setBootConfig.yaml"
+#     vars:
+#       bootConfigLines:
+#         - key:  "dtparam=audio="
+#           line: "dtparam=audio=off"
+#         - key:  "camera_auto_detect="
+#           line: "camera_auto_detect=0"
+#
+# NOTES:
+#   - Idempotent: lineinfile replaces or inserts one line per entry
+#   - The key is matched literally (regex_escape), with leading spaces
+#     allowed
+#   - No backup: /boot/firmware is FAT32 and rejects Ansible's backup
+#     filename (it contains colons)
+#   - Effective only after reboot (the kernel reads config.txt at boot)
+#
+# Copyright 2026 Douglas WF Acheson (dwfa@dwfa.ca)
+# Licensed under Apache License 2.0. See LICENSE.md for details.
+#
+# Version: 1.0
+# Date: October 5, 2026
+##############################################################################
+---                                                   # identifies a YAML file
+
+##############################################################################
+# Set each line in config.txt
+##############################################################################
+- name: Set boot config lines
+  ansible.builtin.lineinfile:
+    path:        "{{ bootConfigPath }}"
+    regexp:      "^\\s*{{ lineIdx.key | regex_escape }}"
+    line:        "{{ lineIdx.line }}"
+    insertafter: EOF
+    state:       present
+  loop: "{{ bootConfigLines }}"
+  loop_control:
+    loop_var: lineIdx
+    label:    "{{ lineIdx.line }}"
+  register: _sbcResult
+
+- name: "Debug: boot config lines"
+  ansible.builtin.debug:
+    msg: >-
+      [DEBUG] *** {{ bootConfigPath }}:
+      {% for r in _sbcResult.results %}[{{ r.lineIdx.line }}]
+      changed=[{{ r.changed }}] {% endfor %}
+  when: debugFlag | default(0) | int == 1
+
+##############################################################################
+# Cleanup temporary facts
+##############################################################################
+- name: Cleanup temporary facts
+  ansible.builtin.set_fact:
+    _sbcResult: null

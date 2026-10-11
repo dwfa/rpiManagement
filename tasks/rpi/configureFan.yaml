@@ -29,8 +29,7 @@
 #
 # NOTES:
 #   - Written for the 52Pi Armor Lite ZP-0110: red -> pin 4 (5V),
-#     black -> pin 6 (GND), blue -> pin 12 (GPIO 18). Not pin 8
-#     (GPIO 14 / TXD): the UCTRONICS Pi 4 sled's pogo pins touch it
+#     black -> pin 6 (GND), blue -> pin 12 (GPIO 18)
 #   - The prompt pauses the play; set fanInstalled for unattended runs
 #   - pwm-fan uses the Pi's hardware PWM, which the 3.5 mm audio jack
 #     shares -- keep audioEnabled false on a Pi with this fan

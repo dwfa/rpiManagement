@@ -1,8 +1,8 @@
 ---
 ##############################################################################
-# One connection file for both auth modes (replaces connectionKey.yaml +
-# connectionPWD.yaml). Expects userData already loaded via vars_files
-# (data/users/<user>/user.yaml) -- no localhost hand-off.
+# One connection file for both auth modes (SSH key or password).
+# Expects userData already loaded via vars_files
+# (data/users/<user>/user.yaml).
 # Secrets are trimmed: ansible-vault encrypt_string values can decrypt
 # with a trailing newline.
 ##############################################################################

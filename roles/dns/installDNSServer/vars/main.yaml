@@ -9,8 +9,6 @@
 ##############################################################################
 ---                                            # identifies a YAML config file
 
-# Debian 13 package names. bind9utils / dnsutils are old names apt
-# maps to these, so asking for them reports "changed" on every run.
 dnsServerPackages:
   - bind9
   - bind9-utils

@@ -44,7 +44,6 @@
 #   - nginx.conf runs the workers as proxyUser; that account must
 #     exist (e.g. via createUsers) before this role runs.
 #   - Reload (not restart) keeps existing connections alive.
-#   - Replaces tasks/nginx/configure.yaml and data/packages/nginx/.
 #
 # Copyright 2026 Douglas WF Acheson (dwfa@dwfa.ca)
 # Licensed under Apache License 2.0. See LICENSE.md for details.

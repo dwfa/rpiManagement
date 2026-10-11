@@ -14,6 +14,5 @@
 ##############################################################################
 ---                                            # identifies a YAML config file
 
-# vim and fish moved to the installVim and installFish roles
 basePackageList:
   - zsh

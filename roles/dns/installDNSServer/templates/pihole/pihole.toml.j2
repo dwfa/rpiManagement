@@ -20,12 +20,9 @@
 # construction.
 upstreams = [{% for u in dnsUpstreams | default([]) %}"{{ u }}"{% if not loop.last %}, {% endif %}{% endfor %}]
 
-# Listen on port 53 only on the LAN interface's addresses. bind9 owns
-# 127.0.0.2:53 (DDNS target for dhcpd) and starts first at boot. In the
-# default LOCAL mode dnsmasq claims 0.0.0.0:53, which fails with
-# "Address in use" and pi-hole answers no DNS at all. BIND limits it to
-# this interface; except-interface=lo (in [misc]) stops dnsmasq adding
-# loopback on its own, which would hit 127.0.0.2:53 again.
+# Listen on port 53 only on this interface's addresses; bind9 owns
+# 127.0.0.2:53. except-interface=lo (in [misc]) keeps dnsmasq off
+# loopback.
 interface = "{{ piholeInterface | default('eth0') }}"
 listeningMode = "BIND"
 
@@ -42,5 +39,5 @@ port = "{{ ftlWebserverPort }}"
 paths.prefix = "/pihole"
 
 [misc]
-# See [dns] listeningMode above -- keep dnsmasq off loopback.
+# Keep dnsmasq off loopback (bind9 owns 127.0.0.2:53).
 dnsmasq_lines = ["except-interface=lo"]

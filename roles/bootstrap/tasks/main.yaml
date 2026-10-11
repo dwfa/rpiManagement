@@ -6,7 +6,7 @@
 # localhost only.
 #
 # REQUIREMENTS SOURCE:
-#   data/bootstrap/requirements.yaml — lists of pyModules and
+#   this role's files/requirements.yaml — lists of pyModules and
 #   ansibleModules. Add entries there, not here.
 #
 # BEHAVIOR:
@@ -32,8 +32,8 @@
 # Copyright 2026 Douglas WF Acheson (dwfa@dwfa.ca)
 # Licensed under Apache License 2.0. See LICENSE.md for details.
 #
-# Version: 1.4
-# Date: September 10, 2026
+# Version: 1.5
+# Date: October 7, 2026
 ##############################################################################
 ---                                            # identifies a YAML config file
 
@@ -69,7 +69,7 @@
   ansible.builtin.include_vars:
     file: "{{ _requirementsFile }}"
   vars:
-    _requirementsFile: "{{ dataPath }}/bootstrap/requirements.yaml"
+    _requirementsFile: "{{ role_path }}/files/requirements.yaml"
 
 ##############################################################################
 # Hash gate — compare current requirements.yaml SHA-256 to the hash
@@ -77,7 +77,7 @@
 ##############################################################################
 - name: Compute current requirements hash
   ansible.builtin.set_fact:
-    _reqHash: "{{ lookup('file', dataPath ~ '/bootstrap/requirements.yaml') | hash('sha256') }}"
+    _reqHash: "{{ lookup('file', role_path ~ '/files/requirements.yaml') | hash('sha256') }}"
 
 - name: Stat bootstrap marker
   ansible.builtin.stat:
@@ -146,7 +146,7 @@
     content: |
       ##############################################################################
       # Bootstrap cache marker — DO NOT EDIT BY HAND.
-      # Rewritten by roles/local/bootstrap after each successful full run.
+      # Rewritten by roles/bootstrap after each successful full run.
       # Delete this file to force a bootstrap rerun.
       ##############################################################################
       ---

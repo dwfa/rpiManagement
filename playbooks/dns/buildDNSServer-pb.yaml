@@ -91,12 +91,11 @@
   become:       true
   gather_facts: true
 
-  # Builder user's credentials + connection settings (key or password),
-  # and the DNS server's user list (dnsUsers)
+  # Builder user's credentials + connection settings (key or password).
+  # dnsUsers comes from data/group_vars/dns.yaml
   vars_files:
     - "{{ dataPath }}/users/{{ builderUser }}/user.yaml"
     - "{{ pbPath }}/vars/connection.yaml"
-    - "{{ dataPath }}/dnsServer/users.yaml"
 
   roles:
     - role: createUsers

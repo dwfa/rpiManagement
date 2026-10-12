@@ -3,7 +3,7 @@
 #
 # Pushes fresh DNS / DHCP / pi-hole configuration to a host where
 # bind9, isc-dhcp-server, and pi-hole are already installed. Use this
-# whenever data/network/inventory.xlsx changes (new host, IP shuffle,
+# whenever data/network/inventory.json changes (new host, IP shuffle,
 # MAC update, etc.) or when per-package metadata changes -- no
 # reinstall, no service restart unless a config file actually changed.
 #
@@ -20,8 +20,8 @@
 # Copyright 2026 Douglas WF Acheson (dwfa@dwfa.ca)
 # Licensed under Apache License 2.0. See LICENSE.md for details.
 #
-# Version: 1.0
-# Date: May 16, 2026
+# Version: 1.1
+# Date: October 12, 2026
 ##############################################################################
 ---                                            # identifies a YAML config file
 

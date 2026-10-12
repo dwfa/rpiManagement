@@ -11,8 +11,8 @@
 # Copyright 2026 Douglas WF Acheson (dwfa@dwfa.ca)
 # Licensed under Apache License 2.0. See LICENSE.md for details.
 #
-# Version: 1.0
-# Date: August 22, 2026
+# Version: 1.1
+# Date: October 12, 2026
 ##############################################################################
 ---
 
@@ -36,9 +36,9 @@ ansibleModules:
   # Provides authorized_key (used by tasks/users/addSSHKeys) and other
   # posix-only modules. Not shipped with ansible-core.
   - ansible.posix
-  # Provides ipaddr / ipmath / cidr filters. Used by dhcpd.conf.j2 to
-  # derive the netmask from metadata.subnets[0].cidr — keeps
-  # inventory.json as the single source of truth for subnet facts.
+  # Provides ipaddr / keep_keys filters. Used by
+  # tasks/network/parseInventory.yaml to derive the network address,
+  # netmask, and DDNS host when building netInventory.
   - ansible.utils
   # Provides openssl_privatekey / openssl_csr / x509_certificate.
   # Used by roles/pki/installInternalCA and roles/pki/manageTSIG for

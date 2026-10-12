@@ -11,9 +11,9 @@
 #   Each step runs the SAME configure task that buildDNSServer-pb.yaml
 #   uses on first build -- no divergence. bind9 and pi-hole come from
 #   installDNSServer, dhcpd from installDHCPdServer (include_role
-#   tasks_from). The configure tasks
-#   re-parse data/network/inventory.xlsx via netGen on every run, so
-#   inventory edits flow straight through.
+#   tasks_from). The configure tasks build netInventory from
+#   data/network/inventory.json on every run, so inventory edits flow
+#   straight through.
 #
 # REQUIRED VARIABLES:
 #   - userData: decrypted by prepareRemoteCredentials in Play 1.
@@ -48,13 +48,13 @@
 # Copyright 2026 Douglas WF Acheson (dwfa@dwfa.ca)
 # Licensed under Apache License 2.0. See LICENSE.md for details.
 #
-# Version: 1.1
-# Date: October 4, 2026
+# Version: 1.2
+# Date: October 12, 2026
 ##############################################################################
 ---                                                   # identifies a YAML file
 
 ##############################################################################
-# Step 1: bind9 -- DNS zone files driven from inventory.xlsx
+# Step 1: bind9 -- DNS zone files driven from netInventory
 ##############################################################################
 - name: Reconfigure bind9
   ansible.builtin.include_role:
@@ -62,7 +62,7 @@
     tasks_from: configureBind9
 
 ##############################################################################
-# Step 2: isc-dhcp-server -- DHCP reservations driven from inventory.xlsx
+# Step 2: isc-dhcp-server -- DHCP reservations driven from netInventory
 ##############################################################################
 - name: Reconfigure isc-dhcp-server
   ansible.builtin.include_role:

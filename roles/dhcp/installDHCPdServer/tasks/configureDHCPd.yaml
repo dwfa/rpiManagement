@@ -1,13 +1,13 @@
 ##############################################################################
 # Configure isc-dhcp-server: render /etc/dhcp/dhcpd.conf + the
-# /etc/default/isc-dhcp-server file from data/network/inventory.json
-# (v5 schema) + data/ddns/tsig/*.
+# /etc/default/isc-dhcp-server file from the network inventory
+# (netInventory) + data/ddns/tsig/*.
 #
 # USAGE:
 #   Step 2 of installDHCPdServer's tasks/main.yaml. reconfigureDNSServer
 #   runs it on its own via include_role tasks_from: configureDHCPd.
-#   Loads dhcp-specific metadata, loads the network
-#   inventory JSON (via the shared parseInventory task), loads the
+#   Loads dhcp-specific metadata, builds netInventory (via the
+#   shared parseInventory adapter), loads the
 #   vault-encrypted TSIG key shared with bind9, renders the config
 #   with DDNS enabled, validates with `dhcpd -t`, then enables +
 #   restarts the service. A systemd drop-in ensures dhcpd starts
@@ -16,16 +16,15 @@
 # REQUIRED VARIABLES:
 #   None at the call site. Driven by:
 #     - data/packages/isc-dhcp-server/metadata.yaml
-#     - data/network/inventory.json (loaded via parseInventory)
+#     - netInventory (built by tasks/network/parseInventory.yaml)
 #     - data/ddns/tsig/{{ domain }}.tsig.key.yaml (TSIG key)
 #
 # OPTIONAL VARIABLES:
 #   - debugFlag: Enable debug output
 #
 # WORKFLOW:
-#   1. Load dhcp metadata (lease times, listen interface, TSIG path,
-#      DDNS primary + port)
-#   2. Load network inventory JSON (cached as netInventory)
+#   1. Load dhcp metadata (listen interface, TSIG path)
+#   2. Build netInventory (cached per play)
 #   3. Load TSIG key YAML (vault-encrypted secret decrypted in-task)
 #   4. Render /etc/dhcp/dhcpd.conf (DDNS block + reservations)
 #   5. Render /etc/default/isc-dhcp-server (listen interface)
@@ -46,8 +45,8 @@
 # Copyright 2026 Douglas WF Acheson (dwfa@dwfa.ca)
 # Licensed under Apache License 2.0. See LICENSE.md for details.
 #
-# Version: 2.1
-# Date: October 4, 2026
+# Version: 3.0
+# Date: October 11, 2026
 ##############################################################################
 ---                                                   # identifies a YAML file
 
@@ -59,7 +58,7 @@
     file: "{{ dataPath }}/packages/isc-dhcp-server/metadata.yaml"
 
 ##############################################################################
-# Step 2: Parse the canonical network inventory (JSON, cached per play)
+# Step 2: Build netInventory (cached per play)
 ##############################################################################
 - name: Ensure network inventory is parsed
   ansible.builtin.include_tasks: "{{ taskPath }}/network/parseInventory.yaml"
@@ -82,14 +81,6 @@
     group:  root
     mode:   '0644'
     backup: true
-  vars:
-    network:       "{{ netInventory.metadata.network }}"
-    hostGroups:    "{{ netInventory.groups }}"
-    dhcpPools:     "{{ netInventory.dhcpPools }}"
-    zoneSubnets:   "{{ netInventory.metadata.subnets }}"
-    networkCidr:   "{{ netInventory.metadata.subnets[0].cidr }}"
-    networkSubnet: "{{ netInventory.metadata.subnets[0].cidr | ansible.utils.ipaddr('network') }}"
-    tsigKey:       "{{ tsigKey }}"
 
 ##############################################################################
 # Step 5: Render /etc/default/isc-dhcp-server (sets listen interface)

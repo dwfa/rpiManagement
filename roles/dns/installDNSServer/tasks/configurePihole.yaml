@@ -43,8 +43,8 @@
 # Copyright 2026 Douglas WF Acheson (dwfa@dwfa.ca)
 # Licensed under Apache License 2.0. See LICENSE.md for details.
 #
-# Version: 1.2
-# Date: October 4, 2026
+# Version: 1.3
+# Date: October 11, 2026
 ##############################################################################
 ---                                                   # identifies a YAML file
 
@@ -65,15 +65,11 @@
 # Rather than hand-copy bind9's listen address/port into pi-hole's
 # metadata (drift risk when bind9 moves), we read bind9's metadata
 # here and derive dnsUpstreams from its non-loopback listenIPv4
-# entries. inventory.json's metadata.network must be in scope so
-# bind9's metadata references (e.g. {{ network.dnsServer }}) resolve.
+# entries. netInventory must be built so bind9's metadata references
+# (e.g. {{ netInventory.dns.ddns.host }}) resolve.
 ##############################################################################
 - name: Ensure network inventory is parsed
   ansible.builtin.include_tasks: "{{ taskPath }}/network/parseInventory.yaml"
-
-- name: Set network fact for bind9 metadata references
-  ansible.builtin.set_fact:
-    network: "{{ netInventory.metadata.network }}"
 
 - name: Load bind9 metadata (for upstream derivation)
   ansible.builtin.include_vars:
@@ -85,9 +81,9 @@
 # live LAN IP as seen at play time, which follows the box if it
 # moves (staging IP today, production tomorrow). Port comes from
 # bind9's non-loopback listener entry in bind9/metadata.yaml, so a
-# port change in bind9 flows through here automatically. The
-# loopback listener (127.0.0.2:53) is skipped — it exists for dhcpd
-# DDNS only, not for pi-hole upstream traffic.
+# port change in bind9 flows through here automatically. The DDNS
+# listener (netInventory.dns.ddns.host:53) is skipped — it exists for
+# dhcpd DDNS only, not for pi-hole upstream traffic.
 ##############################################################################
 - name: Derive pi-hole dnsUpstreams from bind9's LAN listener port
   ansible.builtin.set_fact:
@@ -99,7 +95,7 @@
   loop: "{{ bindMeta.listenIPv4 }}"
   loop_control:
     label: "port {{ item.port }}"
-  when: '"127.0.0.2" not in item.addresses'
+  when: netInventory.dns.ddns.host not in item.addresses
 
 - name: Render /etc/pihole/setupVars.conf
   ansible.builtin.template:

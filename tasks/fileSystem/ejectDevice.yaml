@@ -34,8 +34,8 @@
 # Copyright 2026 Douglas WF Acheson (dwfa@dwfa.ca)
 # Licensed under Apache License 2.0. See LICENSE.md for details.
 #
-# Version: 1.0
-# Date: October 5, 2026
+# Version: 1.1
+# Date: October 12, 2026
 ##############################################################################
 ---                                                   # identifies a YAML file
 
@@ -45,8 +45,6 @@
 - name: Unmount all partitions before eject
   ansible.builtin.include_tasks:
     file: "{{ taskPath }}/fileSystem/unmountDevice.yaml"
-  vars:
-    device: "{{ device }}"
 
 ##############################################################################
 # Step 2: Flush pending writes to the device

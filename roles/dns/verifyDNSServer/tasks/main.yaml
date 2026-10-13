@@ -130,6 +130,8 @@
       printf 'forward\t%s\n' "$(dig +short +time=2 +tries=1 -p {{ _vdsExp.bindPort }} @127.0.0.1 {{ _vdsExp.static.name }}.{{ netInventory.dns.domain }})"
       printf 'reverse\t%s\n' "$(dig +short +time=2 +tries=1 -p {{ _vdsExp.bindPort }} @127.0.0.1 -x {{ _vdsExp.static.ip }})"
       printf 'recurse\t%s\n' "$(dig +short +time=2 +tries=1 -p {{ _vdsExp.bindPort }} @127.0.0.1 example.org | head -1)"
+      printf 'zoneWritable\t%s\n' "$(runuser -u bind -- test -w {{ _vdsBindMeta.zoneDir }} && echo yes || echo no)"
+      printf 'zoneFiles\t%s\n' "$(sed -n 's/^ *file "\(.*\)";/\1/p' /etc/bind/named.conf.local | paste -sd, -)"
       printf 'updateKeys\t%s\n' "$(grep -c 'allow-update { key' /etc/bind/named.conf.local)"
   changed_when: false
   register: _vdsBind
@@ -269,6 +271,12 @@
         expected: "an answer"
         found:    "{{ b.recurse or 'no answer' }}"
         ok:       "{{ b.recurse | length > 0 }}"
+      - check:    "bind9 can write its zones (DDNS journals) in {{ _vdsBindMeta.zoneDir }}"
+        effect:   "Every DDNS update fails with SERVFAIL, so device names never appear"
+        fix:      "Re-run configureBind9; zone files belong in {{ _vdsBindMeta.zoneDir }}, owned by bind"
+        expected: "writable, zones in {{ _vdsBindMeta.zoneDir }}"
+        found:    "{{ 'writable' if b.zoneWritable == 'yes' else 'not writable' }}, zones {{ b.zoneFiles | replace(',', ', ') }}"
+        ok:       "{{ b.zoneWritable == 'yes' and (b.zoneFiles.split(',') | reject('match', _vdsBindMeta.zoneDir ~ '/') | list | length == 0) }}"
       - check:    "Only holders of the TSIG key can update either zone"
         effect:   "DDNS updates are refused, or anyone on the LAN can change DNS"
         fix:      "Re-run configureBind9 (allow-update in named.conf.local)"

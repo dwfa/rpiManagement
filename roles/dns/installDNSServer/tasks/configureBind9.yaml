@@ -38,7 +38,8 @@
 #   9. Reload bind9 (graceful — existing connections survive)
 #
 # NOTES:
-#   - Zone files are owned root:bind 0644 so bind can read them
+#   - Zone files live in /var/lib/bind, owned bind:bind 0644: DDNS
+#     updates make bind9 write a journal beside each zone file
 #   - SOA serial is the controller's epoch at render time — strictly
 #     monotonic, which is all bind cares about for replication
 #   - Static records are netInventory.dns.staticRecords; DDNS-managed
@@ -49,8 +50,8 @@
 # Copyright 2026 Douglas WF Acheson (dwfa@dwfa.ca)
 # Licensed under Apache License 2.0. See LICENSE.md for details.
 #
-# Version: 4.0
-# Date: October 11, 2026
+# Version: 4.1
+# Date: October 13, 2026
 ##############################################################################
 ---                                                   # identifies a YAML file
 
@@ -99,7 +100,7 @@
   ansible.builtin.template:
     src:   bind9/forward.j2
     dest:  "{{ forwardZoneFile }}"
-    owner: root
+    owner: bind
     group: bind
     mode:  '0644'
 
@@ -110,7 +111,7 @@
   ansible.builtin.template:
     src:   bind9/reverse.j2
     dest:  "{{ reverseZoneFile }}"
-    owner: root
+    owner: bind
     group: bind
     mode:  '0644'
 

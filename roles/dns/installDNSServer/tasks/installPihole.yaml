@@ -16,8 +16,6 @@
 #                      configurePihole.yaml, not here
 #   - piholeInterface: LAN interface for pi-hole to listen on
 #                      (default: eth0)
-#   - ipv4Address:     CIDR address pi-hole reports as its own
-#                      (default: ansible_default_ipv4.address + /16)
 #   - debugFlag:       Enable debug output
 #
 # WORKFLOW:
@@ -43,8 +41,8 @@
 # Copyright 2026 Douglas WF Acheson (dwfa@dwfa.ca)
 # Licensed under Apache License 2.0. See LICENSE.md for details.
 #
-# Version: 1.1
-# Date: October 4, 2026
+# Version: 1.2
+# Date: October 13, 2026
 ##############################################################################
 ---                                                   # identifies a YAML file
 

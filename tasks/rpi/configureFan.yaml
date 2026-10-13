@@ -24,8 +24,8 @@
 #   2. On a Pi 4B with fanInstalled unset: ask whether a PWM fan is
 #      wired to GPIO fanGPIO
 #   3. On a Pi 4B with a fan: validate the settings, remove any old
-#      on/off gpio-fan line, and set the dtoverlay=pwm-fan curve line
-#      via setBootConfig.yaml
+#      gpio-fan or single-line pwm-fan entry, and write the pwm-fan block:
+#      the overlay line followed by one dtparam= line per setting
 #
 # NOTES:
 #   - Written for the 52Pi Armor Lite ZP-0110: red -> pin 4 (5V),
@@ -35,14 +35,18 @@
 #     shares -- keep audioEnabled false on a Pi with this fan
 #   - A PWM value of 0 (below the first step) fully stops this fan
 #   - Answering no does not remove an existing fan line
-#   - Idempotent: one config.txt line, replaced in place
+#   - The settings are separate dtparam= lines, not one long overlay
+#     line: the firmware reads only bootConfigMaxLine characters of a
+#     line and drops the rest. A dtparam= applies to the overlay above
+#     it, so the lines are written as one marked block.
+#   - Idempotent: one marked block, replaced in place
 #   - Effective only after reboot (configureBaseRPi reboots at the end)
 #
 # Copyright 2026 Douglas WF Acheson (dwfa@dwfa.ca)
 # Licensed under Apache License 2.0. See LICENSE.md for details.
 #
-# Version: 1.2
-# Date: October 5, 2026
+# Version: 2.0
+# Date: October 13, 2026
 ##############################################################################
 ---                                                   # identifies a YAML file
 
@@ -100,24 +104,38 @@
               exactly 4 fanCurve steps
             quiet: true
 
-        - name: Build pwm-fan overlay line
+        - name: Build pwm-fan block
           ansible.builtin.set_fact:
-            _cfLine: >-
-              dtoverlay=pwm-fan,fan_gpio_{{ fanGPIO }}{% for s in fanCurve %},fan_temp{{ loop.index0 }}={{ s.tempC * 1000 }},fan_temp{{ loop.index0 }}_hyst={{ fanHystC * 1000 }},fan_temp{{ loop.index0 }}_speed={{ (s.speedPct * 255 / 100) | round | int }}{% endfor %}
+            _cfBlock: |-
+              dtoverlay=pwm-fan,fan_gpio_{{ fanGPIO }}
+              {% for s in fanCurve %}
+              dtparam=fan_temp{{ loop.index0 }}={{ s.tempC * 1000 }}
+              dtparam=fan_temp{{ loop.index0 }}_hyst={{ fanHystC * 1000 }}
+              dtparam=fan_temp{{ loop.index0 }}_speed={{ (s.speedPct * 255 / 100) | round | int }}
+              {% endfor %}
 
-        - name: Remove old on/off gpio-fan line
+        - name: Check pwm-fan block line lengths
+          ansible.builtin.assert:
+            that: _cfBlock.splitlines() | map('length') | max <= bootConfigMaxLine | int
+            fail_msg: >-
+              [ERROR] *** a pwm-fan line is longer than the
+              {{ bootConfigMaxLine }} characters the firmware reads
+            quiet: true
+
+        - name: Remove old gpio-fan and single-line pwm-fan entries
           ansible.builtin.lineinfile:
             path:   "{{ bootConfigPath }}"
-            regexp: '^\s*dtoverlay=gpio-fan'
+            regexp: '^\s*dtoverlay=(gpio-fan|pwm-fan,.*fan_temp)'
             state:  absent
 
-        - name: Set pwm-fan curve in config.txt
-          ansible.builtin.include_tasks:
-            file: "{{ taskPath }}/rpi/setBootConfig.yaml"
-          vars:
-            bootConfigLines:
-              - key:  "dtoverlay=pwm-fan"
-                line: "{{ _cfLine }}"
+        - name: Set pwm-fan block in config.txt
+          ansible.builtin.blockinfile:
+            path:   "{{ bootConfigPath }}"
+            marker: "# {mark} ANSIBLE MANAGED BLOCK pwm-fan"
+            block:  "{{ _cfBlock }}"
+            create: false
+            # backup: off -- /boot/firmware is FAT32 and rejects Ansible's
+            # backup filename (it contains colons)
 
 ##############################################################################
 # Cleanup temporary facts
@@ -127,4 +145,4 @@
     _cfModelRaw: null
     _cfModel:    null
     _cfHasFan:   null
-    _cfLine:     null
+    _cfBlock:    null

@@ -67,7 +67,7 @@
 # Copyright 2026 Douglas WF Acheson (dwfa@dwfa.ca)
 # Licensed under Apache License 2.0. See LICENSE.md for details.
 #
-# Version: 2.2
+# Version: 2.3
 # Date: October 12, 2026
 ##############################################################################
 ---                                                   # identifies a YAML file
@@ -88,9 +88,8 @@
 #   dtparam=i2c_arm_baudrate=600000 -- clock at 600 kHz (panel spec)
 #
 # The sled's button is wired to GPIO uctLcdButtonGPIO (header pin 7).
-# dtoverlay=gpio-shutdown turns a press into a clean shutdown. It
-# cannot power the Pi back on: a halted Pi 4 wakes only on GPIO 3,
-# which the LCD uses as its I2C clock.
+# dtoverlay=gpio-shutdown turns a press into a clean shutdown; a press
+# on the halted Pi powers it back on (tested on a Pi 4B in the RM0004).
 #
 # blockinfile fences them under a named marker so they land together,
 # stay together, and can be cleanly removed on uninstall. blockinfile

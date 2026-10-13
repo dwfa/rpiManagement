@@ -20,6 +20,11 @@
 # construction.
 upstreams = [{% for u in dnsUpstreams | default([]) %}"{{ u }}"{% if not loop.last %}, {% endif %}{% endfor %}]
 
+# Reverse lookups for the LAN go to bind9 too. Without this, pi-hole's
+# bogusPriv default answers every private-range reverse lookup with
+# "no such domain" itself. Format: enabled,network,server,domain.
+revServers = ["true,{{ netInventory.network.cidr }},{{ dnsUpstreams | first }},{{ netInventory.dns.domain }}"]
+
 # Listen on port 53 only on this interface's addresses; bind9 owns
 # 127.0.0.2:53. except-interface=lo (in [misc]) keeps dnsmasq off
 # loopback.

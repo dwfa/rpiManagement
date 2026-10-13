@@ -13,6 +13,7 @@
 #             (e.g. "dtoverlay=gpio-fan", "dtparam=audio=")
 #       line: Full line to write (e.g. "gpu_mem=64")
 #   - bootConfigPath:  usually /boot/firmware/config.txt (baseConfig.yaml)
+#   - bootConfigMaxLine: longest line the firmware reads (baseConfig.yaml)
 #
 # OPTIONAL VARIABLES:
 #   - debugFlag: enable debug output
@@ -35,14 +36,31 @@
 #   - No backup: /boot/firmware is FAT32 and rejects Ansible's backup
 #     filename (it contains colons)
 #   - Effective only after reboot (the kernel reads config.txt at boot)
+#   - Fails on any line longer than bootConfigMaxLine: the firmware would
+#     silently drop the rest of it
 #
 # Copyright 2026 Douglas WF Acheson (dwfa@dwfa.ca)
 # Licensed under Apache License 2.0. See LICENSE.md for details.
 #
-# Version: 1.0
-# Date: October 5, 2026
+# Version: 1.1
+# Date: October 13, 2026
 ##############################################################################
 ---                                                   # identifies a YAML file
+
+##############################################################################
+# Refuse lines the firmware would truncate
+##############################################################################
+- name: Check boot config line lengths
+  ansible.builtin.assert:
+    that: lineIdx.line | length <= bootConfigMaxLine | int
+    fail_msg: >-
+      [ERROR] *** config.txt line is {{ lineIdx.line | length }} characters;
+      the firmware reads only {{ bootConfigMaxLine }}: [{{ lineIdx.line }}]
+    quiet: true
+  loop: "{{ bootConfigLines }}"
+  loop_control:
+    loop_var: lineIdx
+    label:    "{{ lineIdx.key }}"
 
 ##############################################################################
 # Set each line in config.txt

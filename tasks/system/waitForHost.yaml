@@ -11,7 +11,9 @@
 # OPTIONAL VARIABLES:
 #   - waitHost:    Hostname or IP to probe (default: inventory_hostname)
 #   - waitPort:    TCP port to probe (default: sshPort, then 22)
-#   - waitTimeout: Max seconds to wait (default: 300)
+#   - waitTimeout: Max seconds to wait (default: 300). Probes repeat every
+#                  5s until the host answers or this runs out; 5s or
+#                  less is a single probe
 #   - debugFlag:   Enable debug output
 #
 # OUTPUT VARIABLES:
@@ -28,39 +30,41 @@
 # NOTES:
 #   - Delegates to localhost (waits from control machine)
 #   - Uses inventory_hostname as target
+#   - Each probe is one TCP connect from the controller's Python with a
+#     timeout of at most 5s; the until/retries loop keeps probing every
+#     5s across a reboot. macOS nc is not used: its -w does not
+#     bound the connect, so one probe of an absent host takes ~75s.
 #
 # Copyright 2025 Douglas WF Acheson (dwfa@dwfa.ca)
 # Licensed under Apache License 2.0. See LICENSE.md for details.
 #
-# Version: 1.0
-# Date: February 22, 2026
+# Version: 2.0
+# Date: October 13, 2026
 ##############################################################################
 ---                                                   # identifies a YAML file
 
 ##############################################################################
 # Wait for host to accept TCP connections on the target port.
 #
-# NOTE: uses `nc -z` via the command module rather than
-# ansible.builtin.wait_for. On this controller (ansible-core 2.21 +
+# NOTE: probes with one TCP connect from the controller's Python rather
+# than ansible.builtin.wait_for. On this controller (ansible-core 2.21 +
 # Python 3.14) wait_for hangs the full timeout even when the socket is
-# trivially reachable — verified by shell `nc` and a raw venv-Python
-# socket both connecting to the same target in <10ms during the same
-# window that wait_for timed out at 30s. nc via command is a small
-# dependency (present by default on macOS + all Debian-family targets
-# we care about) and behaves reliably. Revisit if/when we downgrade
-# Python or upgrade past a wait_for fix — the commented-out block
-# below preserves the original implementation for easy restoration.
+# trivially reachable. The commented-out block below preserves the
+# wait_for implementation for easy restoration.
 ##############################################################################
 - name: Wait for host [{{ waitHost | default(inventory_hostname) }}:{{ waitPort | default(sshPort | default(22)) }}]
   ansible.builtin.command:
     argv:
-      - nc
-      - -z
-      - -w
-      - "{{ waitTimeout | default(300) }}"
+      - "{{ ansible_playbook_python }}"
+      - -c
+      - "import socket, sys; socket.create_connection((sys.argv[1], int(sys.argv[2])), float(sys.argv[3])).close()"
       - "{{ waitHost | default(inventory_hostname) }}"
       - "{{ waitPort | default(sshPort | default(22)) }}"
+      - "{{ [waitTimeout | default(300) | int, 5] | min }}"
   register:     _wfhResult
+  until:        _wfhResult.rc == 0
+  retries:      "{{ [(waitTimeout | default(300) | int) // 5 - 1, 0] | max }}"
+  delay:        5
   changed_when: false
   failed_when:  false
   delegate_to:  localhost

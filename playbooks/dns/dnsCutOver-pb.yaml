@@ -5,8 +5,9 @@
 #   Moves an already-provisioned DNS server host off its imager /
 #   post-install address (the inventory host's ansible_host, from
 #   data/network/staticIP/installer.yaml) onto its final address from
-#   data/network/staticIP/dns.yaml. NetworkManager handles the live
-#   switch via a fresh .nmconnection file.
+#   data/network/staticIP/dns.yaml. The active NetworkManager
+#   connection is changed in place, the box reboots onto the new
+#   address, and verifyDNSServer checks the result there.
 #
 #   `nodes` names one inventory HOST (default dnsInstaller -- the box
 #   that was just built), not a group. The dns group also holds
@@ -30,11 +31,14 @@
 #     2. prepareRemoteCredentials: Load builder user credentials
 #   Play 2 (target host `nodes`, default dnsInstaller - as builder):
 #     3. setStaticIP: Online strategy against
-#        data/network/staticIP/dns.yaml. Writes eth0-manual.nmconnection
-#        and switches the live NM connection; waits for SSH on the new
-#        address.
-#   Play 3 (localhost):
-#     4. clearLocal: Remove materialized SSH keys
+#        data/network/staticIP/dns.yaml. Changes the eth0 connection
+#        in place, asks before rebooting (take the old server off the
+#        address then), reboots, waits for SSH on the new address.
+#   Play 3 (dnsLive - the new address, as builder):
+#     4. verifyDNSServer: DNS server contract at the new address; also
+#        checks no file under /etc still holds the installer address
+#   Play 4 (localhost):
+#     5. clearLocal: Remove materialized SSH keys
 #
 # PREREQUISITES:
 #   - DNS host already provisioned (bind9, dhcpd, pi-hole, etc.
@@ -51,17 +55,17 @@
 #     host's ansible_host, so a re-run cannot connect until the
 #     inventory is updated (dnsLive = the new box, dnsInstaller = the
 #     installer address for the next build).
-#   - No service reconfiguration is required on the DNS server: bind9
-#     and dhcpd listen on 0.0.0.0 / all interfaces, so they follow the
-#     new address automatically.
+#   - The reboot restarts every service on the new address. Services
+#     that bind to their start-up address (pi-hole) need it; a live
+#     address switch leaves them on the old address.
 #   - Any stale DHCP lease for the imager address on the DHCP server
 #     should be released or purged separately -- out of scope here.
 #
 # Copyright 2026 Douglas WF Acheson (dwfa@dwfa.ca)
 # Licensed under Apache License 2.0. See LICENSE.md for details.
 #
-# Version: 1.2
-# Date: October 1, 2026
+# Version: 2.0
+# Date: October 13, 2026
 ##############################################################################
 ---                                            # identifies a YAML config file
 
@@ -99,9 +103,28 @@
         currentAddress:   "{{ ansible_host }}"
         targetAddress:    "{{ hostvars['dnsLive'].ansible_host }}"
         staticIPDataPath: "{{ dataPath }}/network/staticIP/dns.yaml"
+        confirmSwitch:    true
 
 ##############################################################################
-# Play 3: Cleanup materialized SSH keys on the controller
+# Play 3: Verify the DNS server at its new address (dnsLive)
+##############################################################################
+- name: Verify DNS server at the new address
+  hosts:        dnsLive
+  become:       true
+  gather_facts: false
+
+  # Load remote connection vars (connectionKey.yaml or connectionPWD.yaml)
+  vars_files:
+    - "{{ pbPath }}/vars/connection{{ hostvars['localhost'].userData.file }}.yaml"
+
+  roles:
+    - role: verifyDNSServer
+      vars:
+        expectedHostname: >-
+          {{ (lookup('file', dataPath ~ '/network/staticIP/dns.yaml') | from_yaml).ipDetails.hostname | default('') }}
+
+##############################################################################
+# Play 4: Cleanup materialized SSH keys on the controller
 ##############################################################################
 - name: Cleanup materialized SSH keys
   hosts:        localhost

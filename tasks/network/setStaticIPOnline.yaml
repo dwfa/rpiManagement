@@ -2,10 +2,11 @@
 # Set static IP — online strategy (apply to running host via NetworkManager)
 #
 # USAGE:
-#   Internal strategy of setStaticIP.yaml. Writes an eth0-manual
-#   .nmconnection file to the running target's filesystem, reloads
-#   NetworkManager, and switches the host from eth0-auto (DHCP) to
-#   eth0-manual without a reboot.
+#   Internal strategy of setStaticIP.yaml. Changes the NetworkManager
+#   connection active on eth0 in place (address with prefix, gateway,
+#   DNS, search domain), then reboots the host so the new address and
+#   every service start clean on it, and waits for SSH on the new
+#   address.
 #
 #   Pure mechanism: this task only switches the IP and verifies the new
 #   address is reachable. Project-specific conventions (updating the
@@ -23,9 +24,12 @@
 #                       desired address) and for the diagnostic message
 #                       describing the switch.
 #   - staticIPDataPath: Path to YAML file containing ipDetails
-#                       (address, netmask, gateway, dns).
+#                       (address, netmask, gateway, dns list, domain,
+#                       and optionally hostname).
 #
 # OPTIONAL VARIABLES:
+#   - confirmSwitch:    true asks for confirmation just before the reboot
+#                       (default false)
 #   - targetAddress:    Address to switch to. Overrides
 #                       ipDetails.address from staticIPDataPath (the
 #                       other ipDetails fields are still used). Lets the
@@ -45,27 +49,28 @@
 #   2. Skip block if currentAddress already equals the desired static
 #      address (idempotent)
 #   3. Mark _ssipnChanged=true so wrappers know the switch happened
-#   4. Generate UUID for the new NM connection (controller-side)
-#   5. Template eth0-manual.nmconnection into /etc/NetworkManager/
-#      system-connections/ on the target
-#   6. Reload NM connections so the new file is picked up
-#   7. Async-switch (down eth0-auto, up eth0-manual) so the task can
-#      return before the IP change tears down the SSH session
-#   8. Wait from localhost for the new address's :22 to confirm
-#      reachability before letting the play continue
+#   4. Find the NetworkManager connection active on eth0
+#   5. nmcli connection modify: write address/prefix, gateway, DNS and
+#      search domain into it (saved settings only; the live address
+#      does not change yet)
+#   6. When ipDetails.hostname is set: set the hostname and point it
+#      at the new address in /etc/hosts
+#   7. When confirmSwitch: ask before rebooting; stop on anything but yes
+#   8. Async reboot so the task returns before the SSH session drops
+#   9. Wait from localhost for the new address's :22 to confirm the box
+#      came back on it
 #
 # NOTES:
-#   - Reuses data/network/nm/eth.conf Jinja2 template (shared with the
-#     offline strategy — both produce identical .nmconnection files)
-#   - File permissions set to 0600 owner/group root (NM requirement)
-#   - The async/poll:0 nmcli switch is essential: without it, the
-#     handshake-bearing IP would disappear under the active SSH session
-#     and the task would hang until timeout
-#   - The leading `sleep 3` in the switch shell command lets the SSH ack
-#     reliably traverse back to the controller before nmcli tears the
-#     network down — defends against a race in fast/quiet environments
-#   - Companion eth0-auto connection is left intact so the host can
-#     still fall back to DHCP if eth0-manual is later removed
+#   - The address is always written with its prefix from netmask; an
+#     address without one becomes /32 and breaks LAN traffic.
+#   - modify keeps the same connection and UUID, so no second profile
+#     is created and nothing switches before the reboot.
+#   - The reboot restarts every service on the new address; services
+#     that bind to their start-up address (pi-hole) follow the move.
+#   - The async/poll:0 reboot is essential: the SSH session dies with
+#     the host and a synchronous task would hang. The leading `sleep 3`
+#     lets the task's result reach the controller first.
+#   - Ansible's reboot module is not used: it waits on the old address.
 #   - _ssipnChanged is set on localhost (delegate_to) so the role's
 #     main.yaml — which runs on the same play but reads via
 #     hostvars-style scope — sees it consistently
@@ -74,8 +79,8 @@
 # Copyright 2026 Douglas WF Acheson (dwfa@dwfa.ca)
 # Licensed under Apache License 2.0. See LICENSE.md for details.
 #
-# Version: 1.3
-# Date: October 1, 2026
+# Version: 2.0
+# Date: October 13, 2026
 ##############################################################################
 ---                                                   # identifies a YAML file
 
@@ -123,50 +128,109 @@
           [{{ _ssipnAddress }}]
 
     ##########################################################################
-    # Generate UUID for the new NM connection (custom module on controller)
+    # Find the NetworkManager connection active on eth0
     ##########################################################################
-    - name: Generate UUID for NM connection
-      generateUUID:
-      delegate_to: localhost
-      become:      false
-      register:    _ssipnUUID
-
-    ##########################################################################
-    # Template the eth0-manual .nmconnection file onto the running target
-    ##########################################################################
-    - name: Write eth0-manual NM connection file
-      ansible.builtin.template:
-        dest:  "/etc/NetworkManager/system-connections/eth0-manual.nmconnection"
-        group: root
-        mode:  '0600'
-        owner: root
-        src:   "{{ dataPath }}/network/nm/eth.conf"
-      vars:
-        autoconnect: "yes"
-        ip4Address:  "address1={{ _ssipnAddress }}/{{ _ssipnLoaded.ipDetails.netmask }},{{ _ssipnLoaded.ipDetails.gateway }}"
-        ip4Dns:      "dns={{ _ssipnLoaded.ipDetails.dns }}"
-        ip4Search:   "dns-search={{ _ssipnLoaded.ipDetails.domain }}"
-        method:      "manual"
-        uuid:        "{{ _ssipnUUID.uuid }}"
-
-    ##########################################################################
-    # Reload NM so the new connection file is recognized
-    ##########################################################################
-    - name: Reload NetworkManager connections
+    - name: Find the active eth0 connection
       ansible.builtin.command:
-        cmd: nmcli connection reload
+        argv: [nmcli, -g, "NAME,DEVICE", connection, show, --active]
+      changed_when: false
+      register: _ssipnActive
+
+    - name: Select the eth0 connection
+      ansible.builtin.set_fact:
+        _ssipnConn: >-
+          {{ (_ssipnActive.stdout_lines
+              | select('match', '.*:eth0$')
+              | map('regex_replace', ':eth0$', '')
+              | first) | default('') }}
+
+    - name: Fail if no connection is active on eth0
+      ansible.builtin.fail:
+        msg: "[ERROR] *** No NetworkManager connection is active on eth0"
+      when: _ssipnConn | length == 0
 
     ##########################################################################
-    # Switch active connection. async/poll:0 lets the task return before
-    # the IP change tears down the SSH session. The leading `sleep 3`
-    # ensures the SSH ack returns to the controller before nmcli touches
-    # the network.
+    # Write the static settings into that connection. modify changes the
+    # saved settings only; the live address moves at the reboot below.
     ##########################################################################
-    - name: Switch from eth0-auto to eth0-manual
-      ansible.builtin.shell: >-
-        sleep 3;
-        nmcli connection down eth0-auto || true;
-        nmcli connection up   eth0-manual
+    - name: Write static IP settings to the eth0 connection
+      ansible.builtin.command:
+        argv:
+          - nmcli
+          - connection
+          - modify
+          - "{{ _ssipnConn }}"
+          - ipv4.method
+          - manual
+          - ipv4.addresses
+          - "{{ _ssipnAddress }}/{{ _ssipnLoaded.ipDetails.netmask }}"
+          - ipv4.gateway
+          - "{{ _ssipnLoaded.ipDetails.gateway }}"
+          - ipv4.dns
+          - "{{ _ssipnLoaded.ipDetails.dns | join(',') }}"
+          - ipv4.dns-search
+          - "{{ _ssipnLoaded.ipDetails.domain }}"
+          - connection.autoconnect
+          - "yes"
+
+    ##########################################################################
+    # Set the hostname when the static-IP data names one, so the name and
+    # the address change together at the reboot.
+    ##########################################################################
+    - name: Set hostname from static IP data
+      when: _ssipnLoaded.ipDetails.hostname is defined
+      block:
+
+        - name: Set hostname [{{ _ssipnLoaded.ipDetails.hostname }}]
+          ansible.builtin.hostname:
+            name: "{{ _ssipnLoaded.ipDetails.hostname }}"
+
+        # The box's own address, not 127.0.1.1 (Debian's stand-in for
+        # DHCP hosts): pi-hole answers from /etc/hosts, so a loopback
+        # line would be handed to every LAN client asking for this name.
+        - name: Point the hostname at the box's address in /etc/hosts
+          ansible.builtin.lineinfile:
+            path:   /etc/hosts
+            regexp: "^(127\\.0\\.1\\.1|\\S+\\s+{{ (_ssipnLoaded.ipDetails.hostname ~ '.' ~ _ssipnLoaded.ipDetails.domain) | regex_escape }})\\s"
+            line:   "{{ _ssipnAddress }}\t{{ _ssipnLoaded.ipDetails.hostname }}.{{ _ssipnLoaded.ipDetails.domain }} {{ _ssipnLoaded.ipDetails.hostname }}"
+
+    ##########################################################################
+    # Optional confirmation just before the reboot. The settings are saved
+    # but not live; the box moves only when it reboots, so this is the
+    # moment to clear the new address on the LAN.
+    ##########################################################################
+    - name: Confirm reboot onto the new address
+      when: confirmSwitch | default(false) | bool
+      block:
+
+        - name: Ask to reboot onto [{{ _ssipnAddress }}]
+          ansible.builtin.include_tasks:
+            file: "{{ taskPath }}/ui/niceInput.yaml"
+          vars:
+            title: "Reboot onto {{ _ssipnAddress }}?"
+            data: |-
+              Settings for {{ _ssipnAddress }}{{ (' (' ~ _ssipnLoaded.ipDetails.hostname ~ ')') if _ssipnLoaded.ipDetails.hostname is defined else '' }} are saved on this box; it moves when it reboots.
+              Make sure nothing else holds {{ _ssipnAddress }} on the LAN.
+              Reboot now? [y/N]
+
+        - name: Stop when the reboot is declined
+          ansible.builtin.include_role:
+            name: niceFail
+          vars:
+            title: "Reboot declined"
+            data: |-
+              The box is still on {{ currentAddress }}, but its saved settings now point at {{ _ssipnAddress }}.
+              It will move at its next reboot. Re-run this playbook to finish, or
+              restore the previous settings (data/network/staticIP/dnsNewTo1291.sh) before any reboot.
+          when: promptValue | default('') | lower not in ['y', 'yes']
+
+    ##########################################################################
+    # Reboot so the address and every service come up clean on it.
+    # async/poll:0 returns before the SSH session dies with the host.
+    ##########################################################################
+    - name: Reboot to apply the new address
+      ansible.builtin.shell:
+        cmd: sleep 3; systemctl reboot
       async: 10
       poll:  0
 
@@ -178,11 +242,11 @@
       vars:
         waitHost:    "{{ _ssipnAddress }}"
         waitPort:    22
-        waitTimeout: 60
+        waitTimeout: 180
 
     - name: Fail if new static IP not reachable
       ansible.builtin.fail:
-        msg: "[ERROR] *** New static IP [{{ _ssipnAddress }}] not reachable on port 22 after switch."
+        msg: "[ERROR] *** New static IP [{{ _ssipnAddress }}] not reachable on port 22 after reboot."
       when: not hostReachable
 
 ##############################################################################
@@ -192,4 +256,5 @@
 - name: Cleanup temporary facts
   ansible.builtin.set_fact:
     _ssipnLoaded: null
-    _ssipnUUID:   null
+    _ssipnActive: null
+    _ssipnConn:   null

@@ -1,0 +1,63 @@
+##############################################################################
+# Verify a DNS server box against the DNS server contract
+#
+# Read-only. Runs every check in docs/dnsServerContract.md on the target
+# and shows one pass/fail report; the play fails if any clause failed.
+#
+# VARIABLES:
+#   - nodes:           inventory host to verify (default: dnsInstaller)
+#   - expectedAddress: the box's eth0 address (default: the host's
+#                      ansible_host)
+#   - previousAddress: address the box moved off; enables the old-address check
+#
+# EXAMPLE:
+#   ansible-playbook playbooks/dns/verifyDNSServer-pb.yaml
+#   ansible-playbook -e nodes=dnsLive playbooks/dns/verifyDNSServer-pb.yaml
+#
+# Copyright 2026 Douglas WF Acheson (dwfa@dwfa.ca)
+# Licensed under Apache License 2.0. See LICENSE.md for details.
+#
+# Version: 1.0
+# Date: October 13, 2026
+##############################################################################
+---                                            # identifies a YAML config file
+
+##############################################################################
+# Play 1: Load credentials on the controller
+##############################################################################
+- name: Prepare local resources
+  hosts:        localhost
+  connection:   local
+  gather_facts: false
+
+  roles:
+    - role: bootstrap
+    - role: prepareRemoteCredentials
+      vars:
+        userDataPath: "{{ dataPath }}/users/{{ builderUser }}/user.yaml"
+
+##############################################################################
+# Play 2: Verify the target host
+##############################################################################
+- name: Verify DNS server
+  hosts:        "{{ nodes | default('dnsInstaller') }}"
+  become:       true
+  gather_facts: false
+
+  # Load remote connection vars (connectionKey.yaml or connectionPWD.yaml)
+  vars_files:
+    - "{{ pbPath }}/vars/connection{{ hostvars['localhost'].userData.file }}.yaml"
+
+  roles:
+    - role: verifyDNSServer
+
+##############################################################################
+# Play 3: Cleanup materialized SSH keys on the controller
+##############################################################################
+- name: Cleanup materialized SSH keys
+  hosts:        localhost
+  connection:   local
+  gather_facts: false
+
+  roles:
+    - clearLocal

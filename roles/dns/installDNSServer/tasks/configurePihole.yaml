@@ -16,7 +16,7 @@
 # OPTIONAL VARIABLES:
 #   - webPassword:                                Pi-hole web password
 #                                                 (default: userData.sudoPWD)
-#   - piholeInterface, ipv4Address:               see installPihole.yaml
+#   - piholeInterface:                            see installPihole.yaml
 #   - debugFlag:                                  Enable debug output
 #
 # WORKFLOW:
@@ -43,8 +43,8 @@
 # Copyright 2026 Douglas WF Acheson (dwfa@dwfa.ca)
 # Licensed under Apache License 2.0. See LICENSE.md for details.
 #
-# Version: 1.3
-# Date: October 11, 2026
+# Version: 1.5
+# Date: October 13, 2026
 ##############################################################################
 ---                                                   # identifies a YAML file
 
@@ -77,20 +77,20 @@
     name:  bindMeta
 
 ##############################################################################
-# Address comes from the target's own default-route interface — the
-# live LAN IP as seen at play time, which follows the box if it
-# moves (staging IP today, production tomorrow). Port comes from
-# bind9's non-loopback listener entry in bind9/metadata.yaml, so a
-# port change in bind9 flows through here automatically. The DDNS
-# listener (netInventory.dns.ddns.host:53) is skipped — it exists for
-# dhcpd DDNS only, not for pi-hole upstream traffic.
+# Address is 127.0.0.1: bind9 is on the same box and its service
+# listener binds every address, so loopback reaches it whatever the
+# box's LAN address is (installer address before cutover, final
+# address after). Port comes from bind9's service listener entry in
+# bind9/metadata.yaml, so a port change in bind9 flows through here.
+# The DDNS listener (netInventory.dns.ddns.host:53) is skipped — it
+# exists for dhcpd DDNS only, not for pi-hole upstream traffic.
 ##############################################################################
 - name: Derive pi-hole dnsUpstreams from bind9's LAN listener port
   ansible.builtin.set_fact:
     dnsUpstreams: >-
       {{
         dnsUpstreams | default([])
-          + [ ansible_default_ipv4.address ~ '#' ~ item.port ]
+          + [ '127.0.0.1#' ~ item.port ]
       }}
   loop: "{{ bindMeta.listenIPv4 }}"
   loop_control:

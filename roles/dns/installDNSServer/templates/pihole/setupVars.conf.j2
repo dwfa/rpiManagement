@@ -42,7 +42,6 @@ WEBTHEME=default-light
 ##############################################################################
 PIHOLE_INTERFACE={{ piholeInterface | default('eth0') }}
 DNSMASQ_LISTENING=single
-IPV4_ADDRESS={{ ipv4Address | default(ansible_default_ipv4.address + '/16') }}
 IPV6_ADDRESS=
 
 ##############################################################################

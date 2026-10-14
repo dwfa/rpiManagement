@@ -28,7 +28,7 @@
 ##############################################################################
 # Play 1: Load credentials on the controller
 ##############################################################################
-- name: Prepare local resources
+- name: Playbook Initialization
   hosts:        localhost
   connection:   local
   gather_facts: false
@@ -59,7 +59,7 @@
 ##############################################################################
 # Play 3: Cleanup materialized SSH keys on the controller
 ##############################################################################
-- name: Cleanup materialized SSH keys
+- name: Playbook Cleanup
   hosts:        localhost
   connection:   local
   gather_facts: false

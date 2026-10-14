@@ -1,12 +1,12 @@
 ##############################################################################
-# Verify a DNS server box against the DNS server contract
+# Verify a DNS server box (network, pi-hole, bind9, dhcpd)
 #
 # USAGE:
 #   Read-only. Collects the box's network, pi-hole, bind9 and dhcpd state,
 #   compares it with the values the build declares (netInventory, bind9
 #   and isc-dhcp-server metadata) and logs every check. Failures stop
 #   the play via niceFail; a clean run shows one pass line via
-#   niceDisplay. The checks follow docs/dnsServerContract.md.
+#   niceDisplay.
 #
 # OPTIONAL VARIABLES:
 #   - expectedAddress: the box's eth0 address (installer address after a
@@ -51,8 +51,8 @@
 # Copyright 2026 Douglas WF Acheson (dwfa@dwfa.ca)
 # Licensed under Apache License 2.0. See LICENSE.md for details.
 #
-# Version: 1.0
-# Date: October 13, 2026
+# Version: 1.1
+# Date: October 14, 2026
 ##############################################################################
 ---                                                   # identifies a YAML file
 

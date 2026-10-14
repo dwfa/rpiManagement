@@ -55,7 +55,7 @@
 #   1. verifyWildcardCert: Fail if the wildcard cert is not in data/pki
 #   2. verifyTSIGKey: Fail if the DDNS TSIG key is not in data
 ##############################################################################
-- name: Verify prerequisites
+- name: Playbook Initialization
   hosts:        localhost
   connection:   local
   gather_facts: false
@@ -119,7 +119,7 @@
 # It will do the following:
 #   1. clearLocal: Remove the builder user's SSH key files from data/ssh
 ##############################################################################
-- name: Remove SSH key files
+- name: Playbook Cleanup
   hosts:        localhost
   connection:   local
   gather_facts: false

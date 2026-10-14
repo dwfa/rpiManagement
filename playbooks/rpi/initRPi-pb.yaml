@@ -174,7 +174,7 @@
 # It will do the following:
 #   1. clearLocal: Remove the builder user's SSH key files from data/ssh
 ##############################################################################
-- name: Remove SSH key files
+- name: Playbook Cleanup
   hosts:        localhost
   connection:   local
   gather_facts: false

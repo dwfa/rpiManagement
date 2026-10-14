@@ -1,8 +1,8 @@
 ##############################################################################
-# Verify a DNS server box against the DNS server contract
+# Verify a DNS server box (network, pi-hole, bind9, dhcpd)
 #
-# Read-only. Runs every check in docs/dnsServerContract.md on the target
-# and shows one pass/fail report; the play fails if any clause failed.
+# Read-only. Runs the verifyDNSServer checks on the target and shows one
+# pass/fail report; the play fails if any check failed.
 #
 # VARIABLES:
 #   - nodes:           inventory host to verify (default: dnsInstaller)
@@ -17,15 +17,15 @@
 # Copyright 2026 Douglas WF Acheson (dwfa@dwfa.ca)
 # Licensed under Apache License 2.0. See LICENSE.md for details.
 #
-# Version: 1.0
-# Date: October 13, 2026
+# Version: 1.1
+# Date: October 14, 2026
 ##############################################################################
 ---                                            # identifies a YAML config file
 
 ##############################################################################
 # Play 1: Load credentials on the controller
 ##############################################################################
-- name: Prepare local resources
+- name: Playbook Initialization
   hosts:        localhost
   connection:   local
   gather_facts: false
@@ -54,7 +54,7 @@
 ##############################################################################
 # Play 3: Cleanup materialized SSH keys on the controller
 ##############################################################################
-- name: Cleanup materialized SSH keys
+- name: Playbook Cleanup
   hosts:        localhost
   connection:   local
   gather_facts: false

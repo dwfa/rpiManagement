@@ -73,7 +73,7 @@
 # Play 1: Load builder credentials (localhost)
 # Note: Vault decryption works on localhost (task-level include_vars)
 ##############################################################################
-- name: Load builder credentials
+- name: Playbook Initialization
   hosts:        localhost
   connection:   local
   gather_facts: false
@@ -126,7 +126,7 @@
 ##############################################################################
 # Play 4: Cleanup materialized SSH keys on the controller
 ##############################################################################
-- name: Cleanup materialized SSH keys
+- name: Playbook Cleanup
   hosts:        localhost
   connection:   local
   gather_facts: false

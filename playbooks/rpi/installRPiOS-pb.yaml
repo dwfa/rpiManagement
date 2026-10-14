@@ -90,7 +90,7 @@
 ##############################################################################
 # Play 4: Remove SSH key files
 ##############################################################################
-- name: Remove SSH key files
+- name: Playbook Cleanup
   hosts:        localhost
   connection:   local
   gather_facts: false

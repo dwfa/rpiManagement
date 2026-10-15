@@ -6,22 +6,30 @@
 #   Idempotent: succeeds gracefully if device not mounted.
 #   Supports macOS and Linux.
 #
+#   On macOS this task is the gate for the destructive steps that follow
+#   (writeImage, mountPartition): it asks diskutil about the live device
+#   and refuses to continue unless it reports (external, physical).
+#
 # REQUIRED VARIABLES:
-#   - device: Device path (e.g., /dev/disk4)
+#   - device: Device path (e.g., /dev/disk4). On macOS a full diskutil
+#             line ("/dev/disk4 (external, physical):") is also accepted;
+#             only the /dev/diskN part is used.
 #
 # OPTIONAL VARIABLES:
 #   - debugFlag: Enable debug output
 #
 # WORKFLOW:
 #   1. Validate platform (macOS or Linux)
-#   2. Unmount all partitions on device:
-#      - macOS: diskutil unmountDisk (single command)
-#      - Linux: lsblk to find mounted partitions, loop unmount each
-#   3. Handle errors:
+#   2. macOS:
+#      a. Query the device with `diskutil list /dev/diskN`
+#      b. Fail unless diskutil reports it as (external, physical)
+#      c. diskutil unmountDisk (single command)
+#   3. Linux: lsblk to find mounted partitions, loop unmount each
+#   4. Handle errors:
 #      - Success if already unmounted (idempotent)
 #      - Fail only on real errors (busy, permissions, etc.)
-#   4. Display status (debug mode only)
-#   5. Cleanup temporary variables
+#   5. Display status (debug mode only)
+#   6. Cleanup temporary variables
 #
 # EXAMPLE:
 #   - name: Unmount device before writing image
@@ -31,6 +39,8 @@
 #       device: "{{ installDevice }}"
 #
 # NOTES:
+#   - macOS: validation checks the device's live state, not the text of
+#     the `device` value, so a bare /dev/diskN is enough
 #   - macOS: Uses `diskutil unmountDisk` to unmount all partitions
 #   - Linux: Uses `lsblk -J` to find partitions, loops with unmountPartition.yaml
 #   - Idempotent: Success whether device mounted or not
@@ -40,8 +50,8 @@
 # Copyright 2025 Douglas WF Acheson (dwfa@dwfa.ca)
 # Licensed under Apache License 2.0. See LICENSE.md for details.
 #
-# Version: 2.0
-# Date: January 27, 2026
+# Version: 3.0
+# Date: September 29, 2026
 ##############################################################################
 ---                                            # identifies a YAML config file
 
@@ -49,111 +59,102 @@
 # Validate platform is supported
 ##############################################################################
 - name: Validate platform is supported
+  when: ansible_facts['system'] not in ['Darwin', 'Linux']
   ansible.builtin.fail:
     msg: "[ERROR] *** Platform [{{ ansible_facts['system'] }}] not supported for unmountDevice."
-  when: ansible_facts['system'] not in ['Darwin', 'Linux']
 
 ##############################################################################
-# Validate device is a diskutil-style external physical descriptor (macOS).
-#
-# Expected input shape (from `diskutil list external`):
-#   /dev/diskN (external, physical):
-#
-# Defence-in-depth: even if the producer of `device` promises a clean path,
-# this consumer refuses to run `diskutil unmountDisk` unless the input
-# clearly identifies an external physical device. Fails loudly with the
-# raw value and the specific checks that failed.
+# macOS: validate the live device, then unmount all its partitions.
+# _devicePath is the bare /dev/diskN taken from `device`; empty if none,
+# which makes diskutil fail and the validation refuse.
 ##############################################################################
-- name: Validate device descriptor (macOS)
-  ansible.builtin.fail:
-    msg: >-
-      [ERROR] *** Refusing to unmount [{{ device }}] — not a valid macOS
-      external physical device descriptor.
-      Missing checks: {{ _missing | join(', ') }}.
-      Expected shape: "/dev/diskN (external, physical):"
-  vars:
-    _lower:    "{{ device | lower }}"
-    _hasPath:  "{{ device is match('.*/dev/disk\\d+.*') }}"
-    _hasExt:   "{{ 'external' in _lower }}"
-    _hasPhys:  "{{ 'physical' in _lower }}"
-    _missing: >-
-      {{ (['/dev/diskN'] if not _hasPath else [])
-         + (['external']  if not _hasExt  else [])
-         + (['physical']  if not _hasPhys else []) }}
-  when:
-    - ansible_facts['system'] == 'Darwin'
-    - not (_hasPath and _hasExt and _hasPhys)
-
-##############################################################################
-# Unmount all partitions on device (macOS)
-# _devicePath is extracted from the validated descriptor at task scope so it
-# does not leak past this task.
-##############################################################################
-- name: Unmount all partitions on device (macOS)
-  ansible.builtin.command:
-    argv:
-      - diskutil
-      - unmountDisk
-      - "{{ _devicePath }}"
-  vars:
-    _devicePath: "{{ device | regex_search('/dev/disk\\d+') }}"
-  register: _unmountDeviceResult
-  failed_when:
-    - _unmountDeviceResult.rc != 0
-    - "'not mounted' not in _unmountDeviceResult.stderr | lower"
-    - "'already unmounted' not in _unmountDeviceResult.stderr | lower"
-  changed_when: _unmountDeviceResult.rc == 0
+- name: Validate and unmount device (macOS)
   when: ansible_facts['system'] == 'Darwin'
+  vars:
+    _devicePath: "{{ device | regex_search('/dev/disk\\d+') | default('', true) }}"
+    _isExtPhys: >-
+      {{ (_unmountDeviceInfo.rc | default(1)) == 0 and
+         ((_unmountDeviceInfo.stdout_lines | default([]) | first | default(''))
+           is search('\(external, physical\)')) }}
+  block:
+    - name: Query device from diskutil (macOS)
+      ansible.builtin.command:
+        argv:
+          - diskutil
+          - list
+          - "{{ _devicePath }}"
+      register:     _unmountDeviceInfo
+      changed_when: false
+      failed_when:  false
 
-- name: Display unmount status (macOS)
-  debug:
-    msg: "[DEBUG] *** Unmounted all partitions on device [{{ device }}]"
-  when:
-    - debugFlag is defined
-    - ansible_facts['system'] == 'Darwin'
-    - _unmountDeviceResult is changed
+    - name: Refuse device that is not external + physical (macOS)
+      when: not _isExtPhys
+      ansible.builtin.include_tasks: "{{ taskPath }}/ui/niceFail.yaml"
+      vars:
+        title: "Refusing to unmount device"
+        data:
+          - "device   = [{{ device }}]"
+          - "diskutil = [{{ _unmountDeviceInfo.stdout_lines | default([]) | first | default('no such device') }}]"
+          - "Expected: /dev/diskN (external, physical)"
+
+    - name: Unmount all partitions on device (macOS)
+      ansible.builtin.command:
+        argv:
+          - diskutil
+          - unmountDisk
+          - "{{ _devicePath }}"
+      register: _unmountDeviceResult
+      failed_when:
+        - _unmountDeviceResult.rc != 0
+        - "'not mounted' not in _unmountDeviceResult.stderr | lower"
+        - "'already unmounted' not in _unmountDeviceResult.stderr | lower"
+      changed_when: _unmountDeviceResult.rc == 0
+
+    - name: Display unmount status (macOS)
+      when:
+        - debugFlag is defined
+        - _unmountDeviceResult is changed
+      debug:
+        msg: "[DEBUG] *** Unmounted all partitions on device [{{ _devicePath }}]"
 
 ##############################################################################
-# Unmount all partitions on device (Linux)
+# Linux: unmount all partitions on device
 # Note: Linux lacks a single "unmount all" command like diskutil unmountDisk
 # Strategy: Query mounted partitions via lsblk, loop and unmount each
 ##############################################################################
-- name: Get mounted partitions on device (Linux)
-  ansible.builtin.shell:
-    cmd: lsblk -J -o NAME,MOUNTPOINT {{ device }}
-  register: _lsblkResult
-  changed_when: false
+- name: Unmount device (Linux)
   when: ansible_facts['system'] == 'Linux'
+  block:
+    - name: Get mounted partitions on device (Linux)
+      ansible.builtin.shell:
+        cmd: lsblk -J -o NAME,MOUNTPOINT {{ device }}
+      register: _lsblkResult
+      changed_when: false
 
-- name: Extract mounted partitions list (Linux)
-  set_fact:
-    _mountedPartitions: >-
-      {{ (_lsblkResult.stdout | from_json).blockdevices[0].children | default([])
-         | selectattr('mountpoint', 'ne', none) | list }}
-  when: ansible_facts['system'] == 'Linux'
+    - name: Extract mounted partitions list (Linux)
+      set_fact:
+        _mountedPartitions: >-
+          {{ (_lsblkResult.stdout | from_json).blockdevices[0].children | default([])
+             | selectattr('mountpoint', 'ne', none) | list }}
 
-- name: Unmount each mounted partition (Linux)
-  include_tasks:
-    file: "{{ taskPath }}/fileSystem/unmountPartition.yaml"
-  vars:
-    mountPoint: "/dev/{{ item.name }}"
-  loop: "{{ _mountedPartitions }}"
-  loop_control:
-    label: "/dev/{{ item.name }}"
-  when:
-    - ansible_facts['system'] == 'Linux'
-    - _mountedPartitions | length > 0
+    - name: Unmount each mounted partition (Linux)
+      when: _mountedPartitions | length > 0
+      include_tasks:
+        file: "{{ taskPath }}/fileSystem/unmountPartition.yaml"
+      vars:
+        mountPoint: "/dev/{{ item.name }}"
+      loop: "{{ _mountedPartitions }}"
+      loop_control:
+        label: "/dev/{{ item.name }}"
 
-- name: Display unmount status (Linux)
-  debug:
-    msg: >-
-      {{ '[DEBUG] *** Unmounted [' + (_mountedPartitions | length | string) +
-         '] partitions on device [' + device + ']'
-           if _mountedPartitions | length > 0 else
-         '[DEBUG] *** No mounted partitions found on device [' + device + ']' }}
-  when:
-    - debugFlag is defined
-    - ansible_facts['system'] == 'Linux'
+    - name: Display unmount status (Linux)
+      when: debugFlag is defined
+      debug:
+        msg: >-
+          {{ '[DEBUG] *** Unmounted [' + (_mountedPartitions | length | string) +
+             '] partitions on device [' + device + ']'
+               if _mountedPartitions | length > 0 else
+             '[DEBUG] *** No mounted partitions found on device [' + device + ']' }}
 
 ##############################################################################
 # Cleanup temporary facts
@@ -162,4 +163,5 @@
   set_fact:
     _lsblkResult: null
     _mountedPartitions: null
+    _unmountDeviceInfo: null
     _unmountDeviceResult: null

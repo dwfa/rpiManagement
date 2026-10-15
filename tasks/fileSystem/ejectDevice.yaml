@@ -1,0 +1,73 @@
+##############################################################################
+# Ansible task to eject a storage device so it is safe to remove
+#
+# USAGE:
+#   Unmounts every partition, flushes pending writes, then ejects the
+#   device. Supports macOS and Linux.
+#
+# REQUIRED VARIABLES:
+#   - device: Device path (e.g., /dev/sda, /dev/disk4). On macOS a full
+#             diskutil line ("/dev/disk4 (external, physical):") is also
+#             accepted; only the /dev/diskN part is used.
+#
+# OPTIONAL VARIABLES:
+#   - debugFlag: Enable debug output
+#
+# WORKFLOW:
+#   1. Unmount all partitions via unmountDevice.yaml
+#   2. sync -- flush pending writes
+#   3. Linux: udisksctl power-off (removes the device from the kernel and
+#      cuts USB power); macOS: diskutil eject
+#
+# EXAMPLE:
+#   - name: Eject the install device
+#     include_tasks:
+#       file: "{{ taskPath }}/fileSystem/ejectDevice.yaml"
+#     vars:
+#       device: "{{ installDevice }}"
+#
+# NOTES:
+#   - Linux needs udisks2 (udisksctl). power-off refuses while anything
+#     on the device is mounted, which is why step 1 runs first
+#   - Safe for SD card readers, USB sticks and USB SSDs
+#
+# Copyright 2026 Douglas WF Acheson (dwfa@dwfa.ca)
+# Licensed under Apache License 2.0. See LICENSE.md for details.
+#
+# Version: 1.1
+# Date: October 12, 2026
+##############################################################################
+---                                                   # identifies a YAML file
+
+##############################################################################
+# Step 1: Unmount every partition (reuses unmountDevice.yaml)
+##############################################################################
+- name: Unmount all partitions before eject
+  ansible.builtin.include_tasks:
+    file: "{{ taskPath }}/fileSystem/unmountDevice.yaml"
+
+##############################################################################
+# Step 2: Flush pending writes to the device
+##############################################################################
+- name: Flush pending writes
+  ansible.builtin.command:
+    argv: [sync]
+  changed_when: false
+
+##############################################################################
+# Step 3: Eject -- Linux powers the device off; macOS ejects it
+##############################################################################
+- name: Power off device (Linux)
+  ansible.builtin.command:
+    argv: [udisksctl, power-off, -b, "{{ device }}"]
+  when: ansible_facts['system'] == 'Linux'
+
+- name: Eject device (macOS)
+  ansible.builtin.command:
+    argv: [diskutil, eject, "{{ device | regex_search('/dev/disk\\d+') }}"]
+  when: ansible_facts['system'] == 'Darwin'
+
+- name: "Debug: eject"
+  ansible.builtin.debug:
+    msg: "[DEBUG] *** Ejected [{{ device }}]; safe to remove"
+  when: debugFlag | default(0) | int == 1

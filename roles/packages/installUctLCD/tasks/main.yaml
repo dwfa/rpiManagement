@@ -22,8 +22,8 @@
 #
 # WORKFLOW:
 #   1. Load uctLCD metadata (version, paths, config values).
-#   2. Enable I2C in /boot/firmware/config.txt (blockinfile with a
-#      named marker).
+#   2. Enable I2C and the shutdown button in /boot/firmware/config.txt
+#      (blockinfile with a named marker).
 #   3. Autoload i2c-dev on every boot via /etc/modules-load.d.
 #   4. Resolve the effective release version (pinned or "latest").
 #      When "latest", the .so filename is derived from the release
@@ -67,8 +67,8 @@
 # Copyright 2026 Douglas WF Acheson (dwfa@dwfa.ca)
 # Licensed under Apache License 2.0. See LICENSE.md for details.
 #
-# Version: 2.0
-# Date: September 24, 2026
+# Version: 2.3
+# Date: October 12, 2026
 ##############################################################################
 ---                                                   # identifies a YAML file
 
@@ -80,24 +80,31 @@
     file: "{{ dataPath }}/packages/uctLCD/metadata.yaml"
 
 ##############################################################################
-# Enable I2C in /boot/firmware/config.txt
+# Enable I2C and the shutdown button in /boot/firmware/config.txt
 #
 # The UCTRONICS SKU_RM0004 LCD talks I2C, not SPI. Two settings must
 # be present before the daemon can drive the panel:
 #   dtparam=i2c_arm=on              -- enable the ARM I2C bus
 #   dtparam=i2c_arm_baudrate=600000 -- clock at 600 kHz (panel spec)
 #
+# The sled's button is wired to GPIO uctLcdButtonGPIO (header pin 7).
+# dtoverlay=gpio-shutdown turns a press into a clean shutdown; a press
+# on the halted Pi powers it back on (tested on a Pi 4B in the RM0004).
+#
 # blockinfile fences them under a named marker so they land together,
-# stay together, and can be cleanly removed on uninstall. A change
-# here triggers the reboot step below.
+# stay together, and can be cleanly removed on uninstall. blockinfile
+# finds the block by its marker, so the marker text must not change:
+# a new marker would leave the old block and add a second one. A
+# change here triggers the reboot step below.
 ##############################################################################
-- name: Ensure I2C is enabled in /boot/firmware/config.txt
+- name: Ensure I2C and shutdown button are set in /boot/firmware/config.txt
   ansible.builtin.blockinfile:
     path:   /boot/firmware/config.txt
     marker: "# {mark} ANSIBLE MANAGED BLOCK uctLCD (I2C for SKU_RM0004)"
     block: |
       dtparam=i2c_arm=on
       dtparam=i2c_arm_baudrate=600000
+      dtoverlay=gpio-shutdown,gpio_pin={{ uctLcdButtonGPIO }},active_low=1,gpio_pull=up
     create: false
     # backup: intentionally OFF -- /boot/firmware is vfat and rejects
     # the ':' / '@' characters Ansible embeds in its backup filenames
@@ -215,7 +222,7 @@
 
 - name: Render {{ uctLcdConfigPath }}
   ansible.builtin.template:
-    src:    "{{ dataPath }}/packages/uctLCD/templates/config.toml.j2"
+    src:    config.toml.j2
     dest:   "{{ uctLcdConfigPath }}"
     owner:  root
     group:  root
@@ -224,7 +231,7 @@
 
 - name: Render {{ uctLcdUnitPath }}
   ansible.builtin.template:
-    src:    "{{ dataPath }}/packages/uctLCD/templates/uctLCD.service.j2"
+    src:    uctLCD.service.j2
     dest:   "{{ uctLcdUnitPath }}"
     owner:  root
     group:  root

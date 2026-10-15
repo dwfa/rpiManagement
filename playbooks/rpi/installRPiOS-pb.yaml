@@ -1,0 +1,99 @@
+##############################################################################
+# Install Raspberry Pi OS onto a storage device
+#
+# USAGE:
+#   Builds RPi OS images onto removable storage (SD cards, USB drives).
+#   Supports both local (macOS) and remote (Linux) target hosts.
+#
+# EXAMPLE:
+#   # Build on this Mac (default nodes=localhost)
+#   ansible-playbook playbooks/rpi/installRPiOS-pb.yaml
+#   # Build on a remote Linux build host
+#   ansible-playbook --extra-vars "nodes=dnsInstaller" playbooks/rpi/installRPiOS-pb.yaml
+#
+# WORKFLOW:
+#   Play 1 (localhost) - Playbook Initialization:
+#     1. bootstrap: Ensure required ansible and python packages are installed
+#     2. writeSSHKey: Write the builder user's SSH key to data/ssh/
+#        (skips if the user has no key -- password auth is used instead)
+#   Play 2 (localhost) - Get Latest RPi Image:
+#     3. updateRPiImage: Download the latest RPi OS image to data/images/
+#        if a newer one is available (or use rpiImagePin if set)
+#   Play 3 (target host) - Create RPi Image:
+#     Loads the builder user's user.yaml and vars/connection.yaml via
+#     vars_files (key or password auth chosen there) -- no hand-off
+#     through hostvars['localhost'].
+#     4. getInstallDevice: Detect single available external drive
+#     5. createRPiImage: Copy image to target (if remote), write to disk
+#     6. initRPiImage: Copy init files and configure boot partition
+#     7. ejectDevice: Unmount, flush and eject the device (safe to remove)
+#   Play 4 (localhost) - Remove SSH key files:
+#     8. clearLocal: Remove the SSH key files from data/ssh/
+#
+# Copyright 2025 Douglas WF Acheson (dwfa@dwfa.ca)
+# Licensed under Apache License 2.0. See LICENSE.md for details.
+#
+# Version: 3.1
+# Date: October 5, 2026
+##############################################################################
+---                                            # identifies a YAML config file
+
+##############################################################################
+# Play 1: This is the Playbook Initialization play which runs on the localhost
+# It will do the following:
+#   1. bootstrap: Ensure required ansible and python packages are installed
+#   2. writeSSHKey: Write the builder user's SSH key to data/ssh
+##############################################################################
+- name: Playbook Initialization
+  hosts:        localhost
+  connection:   local
+  gather_facts: false
+
+  roles:
+    - role: bootstrap
+    - role: writeSSHKey
+      vars:
+        userDataPath: "{{ dataPath }}/users/{{ builderUser }}/user.yaml"
+
+##############################################################################
+# Play 2: This play gets (DLs) the latest RPi image if one is available
+##############################################################################
+- name: Get Latest RPi Image
+  hosts:        localhost
+  connection:   local
+  gather_facts: false
+
+  roles:
+    - role: updateRPiImage
+
+##############################################################################
+# Play 3: Execute on target hosts
+##############################################################################
+- name: Create RPi Image
+  hosts:        "{{ nodes | default('localhost') }}"
+  become:       true
+  gather_facts: true
+
+  # Builder user's credentials + connection settings (key or password)
+  vars_files:
+    - "{{ dataPath }}/users/{{ builderUser }}/user.yaml"
+    - "{{ pbPath }}/vars/connection.yaml"
+
+  roles:
+    - role: getInstallDevice
+    - role: createRPiImage
+    - role: initRPiImage
+      vars:
+        userDataPath: "{{ dataPath }}/users/{{ installerUser }}/user.yaml"
+    - role: ejectDevice
+
+##############################################################################
+# Play 4: Remove SSH key files
+##############################################################################
+- name: Playbook Cleanup
+  hosts:        localhost
+  connection:   local
+  gather_facts: false
+
+  roles:
+    - role: clearLocal

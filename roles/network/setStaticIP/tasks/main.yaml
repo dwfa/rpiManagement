@@ -21,6 +21,9 @@
 #                       offline strategy.
 #
 # OPTIONAL VARIABLES:
+#   - targetAddress:    Online strategy only. Address to switch to,
+#                       overriding ipDetails.address from
+#                       staticIPDataPath.
 #   - debugFlag:        Enable debug output.
 #
 # EXAMPLES:
@@ -34,7 +37,7 @@
 #   # Online (running host)
 #   - hosts: "{{ _currentIP }}"
 #     vars:
-#       _currentIP: "{{ hostvars['localhost'].currentIP }}"
+#       _currentIP: "{{ hostvars['localhost'].discoveredRPiIP }}"
 #     roles:
 #       - role: setStaticIP
 #         vars:
@@ -48,8 +51,8 @@
 # Copyright 2026 Douglas WF Acheson (dwfa@dwfa.ca)
 # Licensed under Apache License 2.0. See LICENSE.md for details.
 #
-# Version: 2.0
-# Date: August 22, 2026
+# Version: 2.1
+# Date: October 1, 2026
 ##############################################################################
 ---                                                   # identifies a YAML file
 

@@ -16,7 +16,8 @@
 # WORKFLOW:
 #   1. Ensure /var/log/journal exists (journald reads this at start to
 #      decide persistent vs volatile).
-#   2. Drop /etc/systemd/journald.conf.d/00-persist.conf with size caps.
+#   2. Create /etc/systemd/journald.conf.d (not shipped on every RPi OS
+#      image), then drop 00-persist.conf into it with size caps.
 #   3. Restart systemd-journald if either of the above changed so the
 #      new mode + caps take effect immediately (older journal from
 #      the volatile /run/log/journal is discarded at that point --
@@ -33,8 +34,8 @@
 # Copyright 2026 Douglas WF Acheson (dwfa@dwfa.ca)
 # Licensed under Apache License 2.0. See LICENSE.md for details.
 #
-# Version: 1.0
-# Date: September 13, 2026
+# Version: 1.1
+# Date: October 3, 2026
 ##############################################################################
 ---                                                   # identifies a YAML file
 
@@ -53,6 +54,14 @@
 ##############################################################################
 # Step 2: Cap journal storage via drop-in
 ##############################################################################
+- name: Ensure /etc/systemd/journald.conf.d exists
+  ansible.builtin.file:
+    path:  /etc/systemd/journald.conf.d
+    state: directory
+    owner: root
+    group: root
+    mode:  "0755"
+
 - name: Drop journald size-cap override
   ansible.builtin.copy:
     dest:  /etc/systemd/journald.conf.d/00-persist.conf

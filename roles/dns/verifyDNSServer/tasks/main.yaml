@@ -1,0 +1,389 @@
+##############################################################################
+# Verify a DNS server box (network, pi-hole, bind9, dhcpd)
+#
+# USAGE:
+#   Read-only. Collects the box's network, pi-hole, bind9 and dhcpd state,
+#   compares it with the values the build declares (netInventory, bind9
+#   and isc-dhcp-server metadata) and logs every check. Failures stop
+#   the play via niceFail; a clean run shows one pass line via
+#   niceDisplay.
+#
+# OPTIONAL VARIABLES:
+#   - expectedAddress: the box's eth0 address (installer address after a
+#                      build, the live address after a cutover); defaults
+#                      to the host's ansible_host
+#   - expectedHostname: name the box should carry; empty skips the
+#                      hostname check (default: empty)
+#   - previousAddress: address the box moved off; enables the check that
+#                      no file under /etc still contains it. Defaults to
+#                      the installer host's address when expectedAddress
+#                      is the live host's address, else empty (check not
+#                      applicable)
+#
+# EXAMPLE:
+#   - hosts:  "{{ nodes }}"
+#     become: true
+#     roles:
+#       - role: verifyDNSServer
+#         vars:
+#           expectedAddress: "{{ ansible_host }}"
+#
+# WORKFLOW:
+#   1. Build netInventory; load bind9 + isc-dhcp-server metadata
+#   2. Collect network state (eth0, route, lo, resolver, NM connection)
+#   3. Collect pi-hole state (upstream, dnsmasq lines, :53 answers, log)
+#   4. Collect bind9 state (listeners, ACL, zones, recursion, updates)
+#   5. Collect dhcpd state (service, interface, options, DDNS zones)
+#   6. Collect files under /etc holding previousAddress (when set)
+#   7. Judge and score every check
+#   8. Log every check; on failure stop via niceFail, else show one pass
+#      line via niceDisplay
+#
+# NOTES:
+#   - Each collect step prints "key<TAB>value" lines; values holding
+#     several items are comma-joined.
+#   - The DDNS round trip (a lease creates DNS records) and "the old
+#     server is off the network" need a person; they and the old-address
+#     check outside a cutover are logged but not scored.
+#   - After a cutover, running this at the new address shows any service
+#     that did not follow the move.
+#
+# Copyright 2026 Douglas WF Acheson (dwfa@dwfa.ca)
+# Licensed under Apache License 2.0. See LICENSE.md for details.
+#
+# Version: 1.1
+# Date: October 14, 2026
+##############################################################################
+---                                                   # identifies a YAML file
+
+##############################################################################
+# Step 1: Expected values
+##############################################################################
+- name: Ensure network inventory is parsed
+  ansible.builtin.include_tasks: "{{ taskPath }}/network/parseInventory.yaml"
+
+- name: Load bind9 metadata
+  ansible.builtin.include_vars:
+    file: "{{ dataPath }}/packages/bind9/metadata.yaml"
+    name: _vdsBindMeta
+
+- name: Load isc-dhcp-server metadata
+  ansible.builtin.include_vars:
+    file: "{{ dataPath }}/packages/isc-dhcp-server/metadata.yaml"
+    name: _vdsDhcpMeta
+
+- name: Derive expected values
+  ansible.builtin.set_fact:
+    _vdsExp:
+      address:   "{{ expectedAddress }}/{{ netInventory.network.cidr.split('/')[1] }}"
+      bindPort:  >-
+        {{ (_vdsBindMeta.listenIPv4
+            | rejectattr('addresses', 'contains', netInventory.dns.ddns.host)
+            | first).port }}
+      soa:       "{{ netInventory.dns.primaryNS }}.{{ netInventory.dns.domain }}."
+      static:    "{{ netInventory.dns.staticRecords | first }}"
+
+##############################################################################
+# Step 2: Network state
+##############################################################################
+- name: Collect network state
+  ansible.builtin.shell:
+    cmd: |
+      printf 'eth0Addr\t%s\n' "$(ip -4 -o addr show eth0 | awk '{print $4}' | paste -sd, -)"
+      printf 'gateway\t%s\n'  "$(ip route show default | awk '{print $3; exit}')"
+      printf 'loAddr\t%s\n'   "$(ip -4 -o addr show lo | awk '{print $4}' | paste -sd, -)"
+      printf 'resolvers\t%s\n' "$(awk '/^nameserver/ {print $2}' /etc/resolv.conf | paste -sd, -)"
+      printf 'lookup\t%s\n'   "$(getent hosts {{ _vdsExp.static.name }}.{{ netInventory.dns.domain }} | awk '{print $1}')"
+      printf 'hostname\t%s\n' "$(hostname)"
+      printf 'nmAddr\t%s\n'   "$(nmcli -g ipv4.addresses connection show "$(nmcli -g NAME,DEVICE connection show --active | awk -F: '$2=="eth0" {print $1; exit}')")"
+  changed_when: false
+  register: _vdsNet
+
+##############################################################################
+# Step 3: pi-hole state. A fresh probe name makes pi-hole forward the query.
+##############################################################################
+- name: Collect pi-hole state
+  ansible.builtin.shell:
+    cmd: |
+      probe="vds-$(date +%s).example.org"
+      printf 'upstreams\t%s\n' "$(pihole-FTL --config dns.upstreams | tr -d '[] ' )"
+      printf 'dnsmasqLines\t%s\n' "$(pihole-FTL --config misc.dnsmasq_lines | tr -d '[] ')"
+      printf 'udpSoa\t%s\n' "$(dig +short +time=2 +tries=1 @{{ expectedAddress }} {{ netInventory.dns.domain }} SOA | awk '{print $1}')"
+      printf 'tcpSoa\t%s\n' "$(dig +short +tcp +time=2 +tries=1 @{{ expectedAddress }} {{ netInventory.dns.domain }} SOA | awk '{print $1}')"
+      printf 'phName\t%s\n' "$(dig +short +time=2 +tries=1 @{{ expectedAddress }} {{ netInventory.dns.primaryNS }}.{{ netInventory.dns.domain }})"
+      printf 'phReverse\t%s\n' "$(dig +short +time=2 +tries=1 @{{ expectedAddress }} -x {{ _vdsExp.static.ip }})"
+      dig +short +time=2 +tries=1 @{{ expectedAddress }} "$probe" >/dev/null
+      sleep 1
+      printf 'forwardedTo\t%s\n' "$(grep -h "forwarded $probe to" /var/log/pihole/pihole.log | tail -1 | awk '{print $NF}')"
+  changed_when: false
+  register: _vdsPihole
+
+##############################################################################
+# Step 4: bind9 state
+##############################################################################
+- name: Collect bind9 state
+  ansible.builtin.shell:
+    cmd: |
+      printf 'port53\t%s\n'  "$(ss -Hlunp | awk '/named/ && $4 ~ /:53$/ {print $4}' | sort -u | paste -sd, -)"
+      printf 'portSvc\t%s\n' "$(ss -Hlunp | awk '/named/ && $4 ~ /:{{ _vdsExp.bindPort }}$/ {print $4}' | sort -u | paste -sd, -)"
+      printf 'acl\t%s\n'     "$(sed -n '/acl "lan"/,/};/p' /etc/bind/named.conf.options | grep -oE '[0-9.]+/[0-9]+' | paste -sd, -)"
+      printf 'forward\t%s\n' "$(dig +short +time=2 +tries=1 -p {{ _vdsExp.bindPort }} @127.0.0.1 {{ _vdsExp.static.name }}.{{ netInventory.dns.domain }})"
+      printf 'reverse\t%s\n' "$(dig +short +time=2 +tries=1 -p {{ _vdsExp.bindPort }} @127.0.0.1 -x {{ _vdsExp.static.ip }})"
+      printf 'recurse\t%s\n' "$(dig +short +time=2 +tries=1 -p {{ _vdsExp.bindPort }} @127.0.0.1 example.org | head -1)"
+      printf 'zoneWritable\t%s\n' "$(runuser -u bind -- test -w {{ _vdsBindMeta.zoneDir }} && echo yes || echo no)"
+      printf 'zoneFiles\t%s\n' "$(sed -n 's/^ *file "\(.*\)";/\1/p' /etc/bind/named.conf.local | paste -sd, -)"
+      printf 'updateKeys\t%s\n' "$(grep -c 'allow-update { key' /etc/bind/named.conf.local)"
+  changed_when: false
+  register: _vdsBind
+
+##############################################################################
+# Step 5: dhcpd state
+##############################################################################
+- name: Collect dhcpd state
+  ansible.builtin.shell:
+    cmd: |
+      conf=/etc/dhcp/dhcpd.conf
+      printf 'active\t%s\n'     "$(systemctl is-active isc-dhcp-server)"
+      printf 'iface\t%s\n'      "$(sed -n 's/^INTERFACESv4="\(.*\)"/\1/p' /etc/default/isc-dhcp-server)"
+      printf 'domain\t%s\n'     "$(awk '/^option domain-name / {gsub(/[";]/, "", $3); print $3}' $conf)"
+      printf 'dnsServer\t%s\n'  "$(awk '/^option domain-name-servers/ {gsub(/;/, "", $3); print $3}' $conf)"
+      printf 'routers\t%s\n'    "$(awk '/^option routers/ {gsub(/;/, "", $3); print $3}' $conf)"
+      printf 'netmask\t%s\n'    "$(awk '/^option subnet-mask/ {gsub(/;/, "", $3); print $3}' $conf)"
+      printf 'ddnsZones\t%s\n'  "$(awk '/^zone/ {sub(/\.$/, "", $2); print $2}' $conf | paste -sd, -)"
+      printf 'ddnsTarget\t%s\n' "$(awk '/primary/ {gsub(/;/, "", $2); print $2}' $conf | sort -u | paste -sd, -)"
+  changed_when: false
+  register: _vdsDhcp
+
+##############################################################################
+# Step 6: Files under /etc still holding the previous address. Only text
+# settings count: binary files (pi-hole's query database), Ansible's `~`
+# backups and pi-hole's backup folders are skipped.
+##############################################################################
+- name: Collect files holding the previous address
+  ansible.builtin.shell:
+    cmd: |
+      grep -rlsIF --exclude='*~' --exclude-dir=config_backups \
+        --exclude-dir='migration_backup*' '{{ previousAddress }}' /etc | paste -sd, -
+  changed_when: false
+  failed_when: false
+  register: _vdsOld
+  when: previousAddress | length > 0
+
+##############################################################################
+# Step 7: Judge every clause
+##############################################################################
+- name: Judge contract clauses
+  vars:
+    n: "{{ dict(_vdsNet.stdout_lines | map('split', '\t')) }}"
+    p: "{{ dict(_vdsPihole.stdout_lines | map('split', '\t')) }}"
+    b: "{{ dict(_vdsBind.stdout_lines | map('split', '\t')) }}"
+    d: "{{ dict(_vdsDhcp.stdout_lines | map('split', '\t')) }}"
+    svc: "127.0.0.1#{{ _vdsExp.bindPort }}"
+  ansible.builtin.set_fact:
+    _vdsClauses:
+      # ---- Network ---------------------------------------------------------
+      - check:    "eth0 has the expected address and netmask"
+        effect:   "Other machines cannot reach the box, or reach it only through the gateway"
+        fix:      "Set the address with its prefix on the NetworkManager connection (nmcli con mod <conn> ipv4.addresses {{ _vdsExp.address }})"
+        expected: "{{ _vdsExp.address }}"
+        found:    "{{ n.eth0Addr }}"
+      - check:    "The saved network setting holds the same address"
+        effect:   "The box comes back on a different address after a reboot"
+        fix:      "Set ipv4.addresses on the active NetworkManager connection"
+        expected: "{{ _vdsExp.address }}"
+        found:    "{{ n.nmAddr }}"
+      - check:    "The hostname is {{ expectedHostname or 'set by the cutover' }}"
+        effect:   "Logs, prompts and tools show the wrong machine name"
+        fix:      "Set hostname in the static-IP data and re-run the cutover, or hostnamectl set-hostname {{ expectedHostname }}"
+        expected: "{{ expectedHostname }}"
+        found:    "{{ n.hostname }}"
+        note:     "{{ '' if expectedHostname | length > 0 else 'no expected name' }}"
+      - check:    "The default route is the inventory gateway"
+        effect:   "The box cannot reach anything outside the LAN"
+        fix:      "Set ipv4.gateway on the NetworkManager connection to {{ netInventory.network.gateway }}"
+        expected: "{{ netInventory.network.gateway }}"
+        found:    "{{ n.gateway }}"
+      - check:    "Loopback carries the DDNS address {{ netInventory.dns.ddns.address }}"
+        effect:   "dhcpd's DNS updates have nowhere to go, so device names never appear"
+        fix:      "Re-run configureBind9 (it adds the address to lo)"
+        expected: "{{ netInventory.dns.ddns.address }}"
+        found:    "{{ n.loAddr | replace(',', ', ') }}"
+        ok:       "{{ netInventory.dns.ddns.address in n.loAddr.split(',') }}"
+      - check:    "The box looks up names through the LAN DNS server {{ netInventory.dns.server }} first"
+        effect:   "The box's own lookups (apt, time sync) fail or bypass the LAN DNS"
+        fix:      "Correct the dns: list in the static-IP data and re-apply the connection"
+        expected: "{{ netInventory.dns.server }} first, names resolve"
+        found:    "{{ (n.resolvers | replace(',', ', ')) or 'no servers' }}{{ '' if n.lookup == _vdsExp.static.ip else ', names fail' }}"
+        ok:       "{{ (n.resolvers.split(',') | first) == netInventory.dns.server and n.lookup == _vdsExp.static.ip }}"
+      # ---- pi-hole ---------------------------------------------------------
+      - check:    "pi-hole answers DNS from the LAN on port 53 (UDP and TCP)"
+        effect:   "LAN clients get no DNS answers"
+        fix:      "Restart pihole-FTL and check it listens on {{ expectedAddress }}"
+        expected: "UDP yes, TCP yes"
+        found:    "UDP {{ 'yes' if p.udpSoa == _vdsExp.soa else 'no' }}, TCP {{ 'yes' if p.tcpSoa == _vdsExp.soa else 'no' }}"
+      - check:    "pi-hole gives bind9's answers for {{ netInventory.dns.domain }} names and reverse lookups"
+        effect:   "LAN clients get wrong or missing answers for local names, or reverse lookups fail"
+        fix:      "Check /etc/hosts for a stale line for this name, and revServers in pihole.toml (re-run configurePihole)"
+        expected: "{{ netInventory.dns.primaryNS }} = {{ netInventory.dns.server }}; {{ _vdsExp.static.ip }} = {{ _vdsExp.static.name }}.{{ netInventory.dns.domain }}."
+        found:    "{{ netInventory.dns.primaryNS }} = {{ p.phName or 'no answer' }}; {{ _vdsExp.static.ip }} = {{ p.phReverse or 'no answer' }}"
+      - check:    "pi-hole stays off loopback, leaving 127.0.0.2:53 to bind9"
+        effect:   "pi-hole and bind9 clash on loopback port 53 and DDNS updates can fail"
+        fix:      "Re-run configurePihole (dnsmasq_lines except-interface=lo)"
+        expected: except-interface=lo
+        found:    "{{ p.dnsmasqLines }}"
+        ok:       "{{ 'except-interface=lo' in p.dnsmasqLines.split(',') }}"
+      - check:    "pi-hole is set to forward queries to bind9 on {{ svc }}"
+        effect:   "DNS breaks for the whole LAN when the box changes address"
+        fix:      "Re-run configurePihole"
+        expected: "{{ svc }}"
+        found:    "{{ p.upstreams }}"
+      - check:    "Queries pi-hole forwards actually reach bind9 on {{ svc }}"
+        effect:   "LAN lookups fail or go to the wrong server"
+        fix:      "Re-run configurePihole, then restart pihole-FTL"
+        expected: "{{ svc }}"
+        found:    "{{ p.forwardedTo or 'not forwarded' }}"
+      # ---- bind9 -----------------------------------------------------------
+      - check:    "bind9 uses port 53 only on the DDNS address {{ netInventory.dns.ddns.host }}"
+        effect:   "bind9 and pi-hole clash on port 53"
+        fix:      "Check listenIPv4 in bind9 metadata and re-run configureBind9"
+        expected: "{{ netInventory.dns.ddns.host }}:53"
+        found:    "{{ b.port53 }}"
+      - check:    "bind9 serves port {{ _vdsExp.bindPort }} on loopback and the LAN address"
+        effect:   "pi-hole cannot reach bind9, so LAN lookups fail"
+        fix:      "Re-run configureBind9, then restart bind9"
+        expected: "127.0.0.1:{{ _vdsExp.bindPort }}, {{ expectedAddress }}:{{ _vdsExp.bindPort }}"
+        found:    "{{ b.portSvc | replace(',', ', ') }}"
+        ok:       "{{ ('127.0.0.1:' ~ _vdsExp.bindPort) in b.portSvc.split(',') and (expectedAddress ~ ':' ~ _vdsExp.bindPort) in b.portSvc.split(',') }}"
+      - check:    "bind9 accepts queries only from the LAN and loopback"
+        effect:   "LAN clients are refused, or bind9 answers machines outside the LAN"
+        fix:      "Check lanCIDRs in bind9 metadata and re-run configureBind9"
+        expected: "{{ netInventory.network.cidr }}, 127.0.0.0/8"
+        found:    "{{ b.acl | replace(',', ', ') }}"
+        ok:       "{{ b.acl.split(',') | sort == [netInventory.network.cidr, '127.0.0.0/8'] | sort }}"
+      - check:    "bind9 answers {{ netInventory.dns.domain }} names and reverse lookups from its own zones"
+        effect:   "Local names do not resolve"
+        fix:      "Re-run configureBind9 and check the zone files with named-checkzone"
+        expected: "{{ _vdsExp.static.ip }} / {{ _vdsExp.static.name }}.{{ netInventory.dns.domain }}."
+        found:    "{{ b.forward or 'no answer' }} / {{ b.reverse or 'no answer' }}"
+      - check:    "bind9 resolves outside names through its forwarders"
+        effect:   "Internet names do not resolve on the LAN"
+        fix:      "Check the forwarders in the inventory (Services dialog) and the box's internet access"
+        expected: "an answer"
+        found:    "{{ b.recurse or 'no answer' }}"
+        ok:       "{{ b.recurse | length > 0 }}"
+      - check:    "bind9 can write its zones (DDNS journals) in {{ _vdsBindMeta.zoneDir }}"
+        effect:   "Every DDNS update fails with SERVFAIL, so device names never appear"
+        fix:      "Re-run configureBind9; zone files belong in {{ _vdsBindMeta.zoneDir }}, owned by bind"
+        expected: "writable, zones in {{ _vdsBindMeta.zoneDir }}"
+        found:    "{{ 'writable' if b.zoneWritable == 'yes' else 'not writable' }}, zones {{ b.zoneFiles | replace(',', ', ') }}"
+        ok:       "{{ b.zoneWritable == 'yes' and (b.zoneFiles.split(',') | reject('match', _vdsBindMeta.zoneDir ~ '/') | list | length == 0) }}"
+      - check:    "Only holders of the TSIG key can update either zone"
+        effect:   "DDNS updates are refused, or anyone on the LAN can change DNS"
+        fix:      "Re-run configureBind9 (allow-update in named.conf.local)"
+        expected: "2 zones"
+        found:    "{{ b.updateKeys }} zones"
+      # ---- dhcpd -----------------------------------------------------------
+      - check:    "dhcpd is running on {{ _vdsDhcpMeta.listenInterface }}"
+        effect:   "No device on the LAN gets an address"
+        fix:      "Check systemctl status isc-dhcp-server and re-run configureDHCPd"
+        expected: "active on {{ _vdsDhcpMeta.listenInterface }}"
+        found:    "{{ d.active }} on {{ d.iface }}"
+      - check:    "dhcpd hands out the inventory's domain, DNS server, gateway and netmask"
+        effect:   "Devices get the wrong network settings"
+        fix:      "Re-run configureDHCPd"
+        expected: "{{ netInventory.dns.domain }}, {{ netInventory.dns.server }}, {{ netInventory.network.gateway }}, {{ netInventory.network.netmask }}"
+        found:    "{{ d.domain }}, {{ d.dnsServer }}, {{ d.routers }}, {{ d.netmask }}"
+      - check:    "dhcpd sends DNS updates for both zones to bind9 at {{ netInventory.dns.ddns.host }}"
+        effect:   "Device names never appear in DNS"
+        fix:      "Re-run configureDHCPd"
+        expected: "{{ netInventory.dns.domain }}, {{ netInventory.dns.reverseOrigin }} to {{ netInventory.dns.ddns.host }}"
+        found:    "{{ d.ddnsZones | replace(',', ', ') }} to {{ d.ddnsTarget }}"
+      - check:    "A new DHCP lease creates the device's DNS records"
+        note:     check by hand
+      # ---- Cutover ---------------------------------------------------------
+      - check:    "No file under /etc still mentions the old address{{ ' ' ~ previousAddress if previousAddress else '' }}"
+        effect:   "A service still points at the old address and breaks"
+        fix:      "Edit or re-render the files listed under Found"
+        expected: "none"
+        found:    "{{ (_vdsOld.stdout | default('') | replace(',', ', ')) or 'none' }}"
+        note:     "{{ '' if previousAddress | length > 0 else 'not a cutover' }}"
+      - check:    "The old server is off the network"
+        note:     check by hand
+
+# A clause passes on its own ok, else when found equals expected;
+# a clause with a note is not scored.
+- name: Reset clause results
+  ansible.builtin.set_fact:
+    _vdsResults: []
+
+- name: Score each clause
+  ansible.builtin.set_fact:
+    _vdsResults: >-
+      {{ _vdsResults + [item | combine({'ok':
+           none if (item.note | default('')) != ''
+           else ((item.ok | bool) if item.ok is defined else (item.expected == item.found))})] }}
+  loop: "{{ _vdsClauses }}"
+  loop_control:
+    label: "{{ item.check }}"
+
+- name: Collect failed clauses
+  ansible.builtin.set_fact:
+    _vdsFailed: "{{ _vdsResults | selectattr('ok', 'sameas', false) | list }}"
+    _vdsScored: "{{ _vdsResults | rejectattr('ok', 'none') | list | length }}"
+
+##############################################################################
+# Step 8: Report — every clause to the log; failures stop the play via
+# niceFail, a clean run shows one pass line via niceDisplay
+##############################################################################
+- name: DNS server contract clause
+  ansible.builtin.debug:
+    msg: >-
+      🧪 [INFO] *** [{{ 'pass' if item.ok is sameas true else 'FAIL' if item.ok is sameas false else item.note }}]
+      {{ item.check }}; found [{{ item.found | default('-') }}]; expected [{{ item.expected | default('-') }}]
+  loop: "{{ _vdsResults }}"
+  loop_control:
+    label: "{{ item.check }}"
+
+- name: "Fail with DNS server contract failures @ar:hide"
+  ansible.builtin.include_role:
+    name: niceFail
+  vars:
+    title: "DNS server contract: {{ _vdsFailed | length }} of {{ _vdsScored }} failed on {{ expectedAddress }}"
+    data: |-
+      {% for c in _vdsFailed %}
+      {red}❌ {{ c.check }}{/red}
+           Effect: {{ c.effect }}
+           Fix:    {{ c.fix }}
+           Found:  {{ c.found }}
+           Expect: {{ c.expected }}
+      {% if not loop.last %}
+
+      {% endif %}
+      {% endfor %}
+  when: _vdsFailed | length > 0
+
+- name: "Show DNS server contract pass @ar:hide"
+  ansible.builtin.include_role:
+    name: niceDisplay
+  vars:
+    title: "DNS server contract"
+    data:  "✅ All {{ _vdsScored }} checks passed on {{ expectedAddress }}"
+  when: _vdsFailed | length == 0
+
+##############################################################################
+# Cleanup temporary facts
+##############################################################################
+- name: Cleanup temporary facts
+  ansible.builtin.set_fact:
+    _vdsBindMeta: null
+    _vdsDhcpMeta: null
+    _vdsExp:      null
+    _vdsClauses:  null
+    _vdsResults:  null
+    _vdsFailed:   null
+    _vdsScored:   null
+    _vdsNet:      null
+    _vdsPihole:   null
+    _vdsBind:     null
+    _vdsDhcp:     null
+    _vdsOld:      null

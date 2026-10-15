@@ -1,0 +1,65 @@
+##############################################################################
+# Write a user's SSH key to disk for Ansible to connect with
+#
+# USAGE:
+#   Loads the user's vault-encrypted user.yaml and writes their SSH key to
+#   data/ssh/key.prv (and key.pub) via writeSSHKeyFiles.yaml. Users with
+#   no SSH key are skipped silently -- they connect with their password.
+#   Run in a localhost play BEFORE any play that connects to a remote host;
+#   remove the files afterwards with clearLocal (or removeSSHKeyFiles.yaml).
+#
+#   Only writes the key. Remote plays load their own credentials with
+#   vars_files (user.yaml + vars/connection.yaml) -- nothing is handed
+#   off through hostvars['localhost'].
+#
+# REQUIRED VARIABLES:
+#   - userDataPath: Path to the user's user.yaml (contains userData with
+#                   uName, pwd, sudoPWD, sshKeys)
+#
+# OPTIONAL VARIABLES:
+#   - sshKeyPath: Directory for key.prv / key.pub
+#                 (default "{{ dataPath }}/ssh", see writeSSHKeyFiles)
+#   - debugFlag:  Enable debug output
+#
+# EXAMPLE:
+#   - hosts:        localhost
+#     connection:   local
+#     gather_facts: false
+#     roles:
+#       - role: writeSSHKey
+#         vars:
+#           userDataPath: "{{ dataPath }}/users/{{ builderUser }}/user.yaml"
+#
+# NOTES:
+#   - Must run on localhost (writeSSHKeyFiles refuses anywhere else)
+#   - Vault decryption happens in include_vars (vault_password_file in
+#     ansible.cfg)
+#   - _writeSSHKeyUser is deliberately NOT cleared with set_fact: set_fact
+#     outranks include_vars, so a null left by one call would hide the
+#     user loaded by the next call in the same playbook (key not written)
+#
+# Copyright 2026 Douglas WF Acheson (dwfa@dwfa.ca)
+# Licensed under Apache License 2.0. See LICENSE.md for details.
+#
+# Version: 1.1
+# Date: October 3, 2026
+##############################################################################
+---                                                   # identifies a YAML file
+
+- name: Validate userDataPath is provided
+  when: userDataPath is not defined or userDataPath == ''
+  ansible.builtin.include_tasks: "{{ taskPath }}/ui/niceFail.yaml"
+  vars:
+    title: "writeSSHKey: missing userDataPath"
+    data:  "userDataPath is required (path to the user's user.yaml)"
+
+- name: Load user data
+  ansible.builtin.include_vars:
+    file: "{{ userDataPath }}"
+    name: _writeSSHKeyUser
+
+- name: Write SSH key to disk
+  ansible.builtin.include_tasks:
+    file: "{{ taskPath }}/users/writeSSHKeyFiles.yaml"
+  vars:
+    userData: "{{ _writeSSHKeyUser.userData }}"

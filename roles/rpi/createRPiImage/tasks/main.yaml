@@ -12,12 +12,16 @@
 #   - taskPath: Path to tasks directory (inherited from common role)
 #   - debugFlag: (optional) Enable debug output
 #
+# OPTIONAL VARIABLES:
+#   - buildImageDir: Where images are kept on a remote build host
+#       (default /usr/local/src/rpiImages, see defaults/main.yaml)
+#
 # WORKFLOW:
 #   1. Set _imagePath based on local/remote execution context
-#   2. Copy image from localhost to /tmp (remote targets only)
+#   2. Remote only: copy the image to buildImageDir/<release filename>.
+#      Skipped when an identical copy is already there (checksum match)
 #   3. Unmount all partitions on target device (prevents dd "device busy" errors)
 #   4. Write image to device using writeImage.yaml task
-#   5. Cleanup temporary image from /tmp (remote targets only)
 #
 # EXAMPLE:
 #   - hosts: localhost
@@ -33,43 +37,76 @@
 #   - Validation performed in writeImage.yaml task
 #   - Must run getInstallDevice and updateRPiImage roles first
 #   - initRPiImage role should follow to initialize boot partition
-#   - For remote targets, image copied to /tmp with SHA256 checksum verification,
-#       then deleted after successful write to conserve disk space
+#   - Remote targets keep their image copies in buildImageDir between
+#       builds; ansible.builtin.copy checksums source and destination and
+#       only transfers when they differ (missing, partial or changed file).
+#       Old images are not pruned automatically.
 #
 # Copyright 2025 Douglas WF Acheson (dwfa@dwfa.ca)
 # Licensed under Apache License 2.0. See LICENSE.md for details.
 #
-# Version: 5.1
-# Date: February 21, 2026
+# Version: 6.1
+# Date: September 29, 2026
 ##############################################################################
 ---                                            # identifies a YAML config file
 
 ##############################################################################
 # Set image path based on execution context
-# Note: Image filename is always currentRPiImage.img
-#       - local connection: {{ dataPath }}/images/currentRPiImage.img
-#       - remote connection: /tmp/currentRPiImage.img (copied from localhost)
+#   - local connection: {{ dataPath }}/images/currentRPiImage.img
+#   - remote connection: {{ buildImageDir }}/<release filename>
 ##############################################################################
 - name: Set image path (local)
+  when: ansible_connection == 'local'
   ansible.builtin.set_fact:
     _imagePath: "{{ dataPath }}/images/currentRPiImage.img"
-  when: ansible_connection == 'local'
-
-- name: Set image path (remote)
-  ansible.builtin.set_fact:
-    _imagePath: "/tmp/currentRPiImage.img"
-  when: ansible_connection != 'local'
 
 ##############################################################################
-# Copy image for remote hosts (remote targets only)
-# Note: ansible.builtin.copy verifies integrity via internal checksum
+# Resolve the release filename behind the currentRPiImage.img symlink.
+# Deliberately NOT inside the remote-only block below: a delegated task
+# evaluates `when:` as the delegated host (localhost, connection local),
+# so the remote-only condition would always skip it.
+##############################################################################
+- name: Resolve current image release filename
+  ansible.builtin.stat:
+    path:   "{{ dataPath }}/images/currentRPiImage.img"
+    follow: false
+  delegate_to: localhost
+  become:      false
+  register:    _createImageLinkStat
+
+##############################################################################
+# Remote hosts: keep a copy of the image named by its release filename.
+# ansible.builtin.copy checksums both ends and skips the transfer when the
+# existing copy already matches.
 ##############################################################################
 - name: Copy image to remote host
-  ansible.builtin.copy:
-    src:  "{{ dataPath }}/images/currentRPiImage.img"
-    dest: "{{ _imagePath }}"
-    mode: '0644'
   when: ansible_connection != 'local'
+  block:
+    - name: Set image path (remote)
+      ansible.builtin.set_fact:
+        _imagePath: >-
+          {{ buildImageDir }}/{{ _createImageLinkStat.stat.lnk_target | basename
+             if (_createImageLinkStat.stat.islnk | default(false))
+             else 'currentRPiImage.img' }}
+
+    - name: Ensure image directory exists on remote host
+      ansible.builtin.file:
+        path:  "{{ buildImageDir }}"
+        state: directory
+        mode:  '0755'
+
+    - name: Copy image to remote host (skipped if identical copy exists)
+      ansible.builtin.copy:
+        src:  "{{ dataPath }}/images/currentRPiImage.img"
+        dest: "{{ _imagePath }}"
+        mode: '0644'
+      register: _createImageCopy
+
+    - name: Report image copy
+      ansible.builtin.debug:
+        msg: >-
+          [INFO] *** {{ 'Copied image to' if _createImageCopy.changed
+                        else 'Reused existing image at' }} [{{ _imagePath }}]
 
 ##############################################################################
 # Unmount all partitions on target device before writing
@@ -92,18 +129,10 @@
     useImagePath: "{{ _imagePath }}"
 
 ##############################################################################
-# Cleanup temporary image from remote host (remote targets only)
-# Note: Frees ~2GB disk space in /tmp after successful image write
-##############################################################################
-- name: Remove temporary image from remote host
-  ansible.builtin.file:
-    path: "{{ _imagePath }}"
-    state: absent
-  when: ansible_connection != 'local'
-
-##############################################################################
 # Cleanup temporary facts
 ##############################################################################
 - name: Cleanup temporary facts
   ansible.builtin.set_fact:
     _imagePath: null
+    _createImageLinkStat: null
+    _createImageCopy: null

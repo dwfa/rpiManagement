@@ -1,0 +1,24 @@
+# /etc/nut/upsmon.conf -- rendered by installNUT's configureNUT.yaml
+#
+# Server: one MONITOR line per UPS in upsList, targeting 127.0.0.1
+#         (self-client). NUT-protocol `master` flag: this host owns
+#         the UPS driver and manages its own shutdown.
+# Client: one MONITOR line per UPS in upsList, targeting nutServer.ip.
+#         NUT-protocol `slave` flag: this host only shuts down when
+#         told to.
+#
+# The client relies on knowing the server's upsList; the configure
+# task loads data/packages/nut/metadata.yaml on every host regardless
+# of role for exactly this reason.
+
+{% for ups in upsList %}
+MONITOR {{ ups.name }}@{{ '127.0.0.1' if nutRole == 'server' else nutServer.ip }} 1 {{ upsmonUser }} {{ upsmonPWD }} {{ 'master' if nutRole == 'server' else 'slave' }}
+{% endfor %}
+
+MINSUPPLIES 1
+SHUTDOWNCMD "/sbin/shutdown -h now"
+POLLFREQ 5
+POLLFREQALERT 5
+HOSTSYNC {{ hostSync }}
+DEADTIME {{ deadTime }}
+FINALDELAY {{ finalDelay }}

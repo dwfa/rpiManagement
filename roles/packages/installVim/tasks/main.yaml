@@ -1,0 +1,49 @@
+##############################################################################
+# Install vim and its system-wide configuration -- thin role wrapper
+#
+# USAGE:
+#   Called by any playbook that wants vim on the target. Installs
+#   vimPackages, then copies vimFiles (vimrc.local) to the target.
+#
+# REQUIRED VARIABLES:
+#   None at the call site. vimPackages and vimFiles come from
+#   vars/main.yaml; vimrc.local lives in this role's files/.
+#
+# OPTIONAL VARIABLES:
+#   - debugFlag: Enable debug output
+#
+# EXAMPLE:
+#   - hosts:  "{{ nodes }}"
+#     become: true
+#     roles:
+#       - role: installVim
+#
+# WORKFLOW:
+#   1. Install vimPackages via tasks/system/installPackage.yaml
+#   2. Copy vimFiles via tasks/files/copyFiles.yaml
+#
+# NOTES:
+#   - installPackage.yaml uses state=latest, so a re-run upgrades vim
+#     if a newer version is available
+#   - User-level vim config (~/.vimrc) is not handled here -- it belongs
+#     in the user's data/users/<uName>/files/ tree (installUserFiles)
+#
+# Copyright 2026 Douglas WF Acheson (dwfa@dwfa.ca)
+# Licensed under Apache License 2.0. See LICENSE.md for details.
+#
+# Version: 1.1
+# Date: October 6, 2026
+##############################################################################
+---                                                   # identifies a YAML file
+
+- name: Install vim packages
+  ansible.builtin.include_tasks:
+    file: "{{ taskPath }}/system/installPackage.yaml"
+  vars:
+    packageList: "{{ vimPackages }}"
+
+- name: Copy vim config files
+  ansible.builtin.include_tasks:
+    file: "{{ taskPath }}/files/copyFiles.yaml"
+  vars:
+    fileList: "{{ vimFiles }}"

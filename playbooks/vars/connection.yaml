@@ -1,0 +1,16 @@
+---
+##############################################################################
+# One connection file for both auth modes (SSH key or password).
+# Expects userData already loaded via vars_files
+# (data/users/<user>/user.yaml).
+# Secrets are trimmed: ansible-vault encrypt_string values can decrypt
+# with a trailing newline.
+##############################################################################
+_connHasKey: "{{ userData.sshKeys.private | default('') | length > 0 }}"
+
+ansible_user:                 "{{ userData.uName }}"
+ansible_ssh_common_args:      "-o UserKnownHostsFile={{ dataPath }}/ssh/knownHosts"
+ansible_ssh_private_key_file: "{{ (dataPath ~ '/ssh/key.prv') if _connHasKey else omit }}"
+ansible_ssh_pass:             "{{ omit if _connHasKey else (userData.pwd | trim) }}"
+ansible_become:               "{{ becomeFlag | default('true') }}"
+ansible_become_password:      "{{ userData.sudoPWD | trim }}"

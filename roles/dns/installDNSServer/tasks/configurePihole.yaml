@@ -1,0 +1,177 @@
+##############################################################################
+# Configure pi-hole on a host where it's already installed
+#
+# USAGE:
+#   Step 4 of installDNSServer's tasks/main.yaml, after installPihole.yaml.
+#   reconfigureDNSServer runs it on its own via include_role
+#   tasks_from: configurePihole.
+#   Re-renders setupVars.conf (so metadata changes are picked up on
+#   re-runs), drops the nginx reverse-proxy snippet into nginx's
+#   default-locations, then reloads pihole-FTL + nginx.
+#
+# REQUIRED VARIABLES:
+#   None at the call site. The web password defaults to the play's
+#   userData.sudoPWD (user.yaml via vars_files).
+#
+# OPTIONAL VARIABLES:
+#   - webPassword:                                Pi-hole web password
+#                                                 (default: userData.sudoPWD)
+#   - piholeInterface:                            see installPihole.yaml
+#   - debugFlag:                                  Enable debug output
+#
+# WORKFLOW:
+#   1. Re-render /etc/pihole/setupVars.conf (idempotent overwrite)
+#   2. Drop 01_pihole.location into nginx's default-locations
+#      (available + enabled symlink)
+#   3. Validate nginx config (`nginx -t`)
+#   4. Restart pihole-FTL (it re-reads setupVars.conf on restart)
+#   5. Reload nginx
+#   6. Set the web password with `pihole setpassword`
+#
+# NOTES:
+#   - INSTALL_WEB_SERVER=false in setupVars.conf told the installer to
+#     skip lighttpd, so the admin UI is served by pi-hole-FTL's own
+#     embedded HTTP server. FTL listens on 127.0.0.1:8080 per the
+#     `webserver.port` setting in our pihole.toml template; nginx
+#     reverse-proxies /pihole/ to it via 01_pihole.location.
+#   - `pihole-FTL` restart (not reload) is required for setupVars.conf
+#     and pihole.toml changes to take effect.
+#   - Pi-hole v6 keeps the web password in pihole.toml; setupVars.conf's
+#     WEBPASSWORD is not read on a fresh v6 install. Step 6 sets it every
+#     run, so it always reports "changed" (harmless -- same password).
+#
+# Copyright 2026 Douglas WF Acheson (dwfa@dwfa.ca)
+# Licensed under Apache License 2.0. See LICENSE.md for details.
+#
+# Version: 1.5
+# Date: October 13, 2026
+##############################################################################
+---                                                   # identifies a YAML file
+
+##############################################################################
+# Step 1: Re-render setupVars.conf + pihole.toml so on-disk config
+# matches metadata. Load pi-hole metadata first so ftlWebserverPort
+# is in scope for the toml template.
+##############################################################################
+- name: Load pi-hole metadata
+  ansible.builtin.include_vars:
+    file: "{{ dataPath }}/packages/pihole/metadata.yaml"
+
+##############################################################################
+# Step 1b: Derive DNS upstream from bind9's LAN listener
+#
+# pi-hole forwards every query to the co-located bind9 (which owns the
+# dwfa.ca zone and forwards everything else to its own forwarders).
+# Rather than hand-copy bind9's listen address/port into pi-hole's
+# metadata (drift risk when bind9 moves), we read bind9's metadata
+# here and derive dnsUpstreams from its non-loopback listenIPv4
+# entries. netInventory must be built so bind9's metadata references
+# (e.g. {{ netInventory.dns.ddns.host }}) resolve.
+##############################################################################
+- name: Ensure network inventory is parsed
+  ansible.builtin.include_tasks: "{{ taskPath }}/network/parseInventory.yaml"
+
+- name: Load bind9 metadata (for upstream derivation)
+  ansible.builtin.include_vars:
+    file: "{{ dataPath }}/packages/bind9/metadata.yaml"
+    name:  bindMeta
+
+##############################################################################
+# Address is 127.0.0.1: bind9 is on the same box and its service
+# listener binds every address, so loopback reaches it whatever the
+# box's LAN address is (installer address before cutover, final
+# address after). Port comes from bind9's service listener entry in
+# bind9/metadata.yaml, so a port change in bind9 flows through here.
+# The DDNS listener (netInventory.dns.ddns.host:53) is skipped — it
+# exists for dhcpd DDNS only, not for pi-hole upstream traffic.
+##############################################################################
+- name: Derive pi-hole dnsUpstreams from bind9's LAN listener port
+  ansible.builtin.set_fact:
+    dnsUpstreams: >-
+      {{
+        dnsUpstreams | default([])
+          + [ '127.0.0.1#' ~ item.port ]
+      }}
+  loop: "{{ bindMeta.listenIPv4 }}"
+  loop_control:
+    label: "port {{ item.port }}"
+  when: netInventory.dns.ddns.host not in item.addresses
+
+- name: Render /etc/pihole/setupVars.conf
+  ansible.builtin.template:
+    src:    pihole/setupVars.conf.j2
+    dest:   /etc/pihole/setupVars.conf
+    owner:  pihole
+    group:  pihole
+    mode:   '0644'
+    backup: true
+  register: _pcSetupVarsResult
+
+- name: Render /etc/pihole/pihole.toml (FTL webserver port)
+  ansible.builtin.template:
+    src:    pihole/pihole.toml.j2
+    dest:   /etc/pihole/pihole.toml
+    owner:  pihole
+    group:  pihole
+    mode:   '0644'
+    backup: true
+  register: _pcPiholeTomlResult
+
+##############################################################################
+# Step 2: Install the nginx reverse-proxy snippet for the admin UI
+##############################################################################
+- name: Drop 01_pihole.location into nginx default-locations
+  ansible.builtin.copy:
+    src:    pihole/01_pihole.location
+    dest:   /etc/nginx/sites-available/default-locations/01_pihole.location
+    owner:  root
+    group:  root
+    mode:   '0644'
+    backup: true
+  register: _pcLocationResult
+
+- name: Enable 01_pihole.location via sites-enabled symlink
+  ansible.builtin.file:
+    src:   /etc/nginx/sites-available/default-locations/01_pihole.location
+    dest:  /etc/nginx/sites-enabled/default-locations/01_pihole.location
+    owner: root
+    group: root
+    state: link
+
+##############################################################################
+# Step 3: Validate the nginx config before reloading
+##############################################################################
+- name: Validate nginx configuration
+  ansible.builtin.command:
+    cmd: nginx -t
+  changed_when: false
+
+##############################################################################
+# Step 4: Restart pihole-FTL so it picks up setupVars.conf changes
+##############################################################################
+- name: Restart pihole-FTL
+  ansible.builtin.systemd:
+    name:    pihole-FTL
+    enabled: true
+    state:   restarted
+  when: _pcSetupVarsResult.changed or _pcPiholeTomlResult.changed
+
+##############################################################################
+# Step 5: Reload nginx so the new /pihole/ location is live
+##############################################################################
+- name: Reload nginx
+  ansible.builtin.systemd:
+    name:  nginx
+    state: reloaded
+  when: _pcLocationResult.changed
+
+##############################################################################
+# Step 6: Set the web password (pi-hole v6 stores it in pihole.toml)
+##############################################################################
+- name: Set pi-hole web password
+  ansible.builtin.command:
+    argv:
+      - pihole
+      - setpassword
+      - "{{ (webPassword | default(userData.sudoPWD)) | trim }}"
+  no_log: true

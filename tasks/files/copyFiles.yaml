@@ -1,25 +1,41 @@
 ##############################################################################
-# Ansible task to copy files from source to destination based on metadata
+# Ansible task to copy files from source to destination
 #
 # USAGE:
-#   Generic task to copy files from a source directory to a destination directory.
-#   Files to copy are defined in a metadata YAML file with an '_initFiles' list.
-#   Source and destination can be overridden or use defaults from metadata.
+#   Generic task to copy files. Two ways to call it:
+#   - metadataPath: Files are defined in a metadata YAML file with an
+#     '_initFiles' list, copied from one source directory to one
+#     destination directory. Source and destination can be overridden
+#     or use defaults from metadata.
+#   - fileList: Caller passes the list of files directly; each entry has
+#     its own src and dest. No metadata file needed.
 #   Caller is responsible for mounting/unmounting if needed.
 #
-# REQUIRED VARIABLES:
+# REQUIRED VARIABLES (one of):
 #   - metadataPath: Path to metadata YAML file defining files to copy
+#   - fileList:     List of files to copy; each entry has:
+#                     src    (required) source path
+#                     dest   (required) destination path
+#                     mode   (optional, default: 0644)
+#                     owner  (optional, default: unchanged)
+#                     group  (optional, default: unchanged)
+#                     backup (optional, default: false)
 #
 # OPTIONAL VARIABLES:
-#   - sourceDir: Override source directory (metadata default: _srcDir)
-#   - destDir: Override destination directory (metadata default: _destDir)
+#   - sourceDir: Override source directory (metadataPath only;
+#                metadata default: _srcDir)
+#   - destDir:   Override destination directory (metadataPath only;
+#                metadata default: _destDir)
 #   - debugFlag: Enable debug output
 #
 # WORKFLOW:
-#   1. Load file configuration from metadataFile (_srcDir, _destDir, _initFiles)
-#   2. Copy each file from _srcDir to _destDir (using passed overrides if provided)
-#   3. Display copy status (debug mode only)
-#   4. Cleanup temporary variables
+#   metadataPath (when fileList is not passed):
+#     1. Load file configuration from metadataFile (_srcDir, _destDir, _initFiles)
+#     2. Copy each file from _srcDir to _destDir (using passed overrides if provided)
+#     3. Display copy status (debug mode only)
+#     4. Cleanup temporary variables
+#   fileList:
+#     1. Copy each fileList entry from src to dest
 #
 # EXAMPLE:
 #   - name: Copy RPi init files using metadata defaults
@@ -35,62 +51,103 @@
 #       metadataPath: "{{ dataPath }}/rpi/imageBuild.yaml"
 #       destDir: "/custom/destination"
 #
+#   - name: Copy vim config files
+#     include_tasks:
+#       file: "{{ taskPath }}/files/copyFiles.yaml"
+#     vars:
+#       fileList:
+#         - src:    "{{ role_path }}/files/vimrc.local"
+#           dest:   /etc/vim/vimrc.local
+#           owner:  root
+#           group:  root
+#           backup: true
+#
 # NOTES:
 #   - Metadata file must contain '_initFiles' list and optionally _srcDir/_destDir
 #   - Metadata defines: _srcDir (with sourceDir override), _destDir (with destDir override)
 #   - Each _initFiles entry can specify: file (required), mode (optional, default: 0644)
 #   - Example metadata: _srcDir: "{{ sourceDir | default(dataPath + '/rpi') }}"
+#   - fileList src paths should be absolute (e.g. "{{ role_path }}/files/...")
+#     so they do not depend on Ansible's file search path
 #   - Caller must ensure destDir is accessible (mounted if needed)
 #   - Requires write permissions to destDir
 #   - Generic: can copy from any source to any destination with any metadata
 #   - fileIdx is the loop_var per the project's <noun>Idx convention; each
-#     iteration's value is the list element (a dict with file/mode keys)
+#     iteration's value is the list element (a dict with file/mode keys,
+#     or src/dest/... keys for fileList)
 #
 # Copyright 2025 Douglas WF Acheson (dwfa@dwfa.ca)
 # Licensed under Apache License 2.0. See LICENSE.md for details.
 #
-# Version: 5.0
-# Date: May 7, 2026
+# Version: 5.1
+# Date: October 3, 2026
 ##############################################################################
 ---                                            # identifies a YAML config file
 
 ##############################################################################
-# Load file configuration from metadata
+# metadataPath: copy files listed in a metadata file
 ##############################################################################
-- name: Load file configuration from metadata
-  include_vars:
-    file: "{{ metadataPath }}"
+- name: Copy files from metadata
+  when: fileList is not defined
+  block:
+    ##########################################################################
+    # Load file configuration from metadata
+    ##########################################################################
+    - name: Load file configuration from metadata
+      include_vars:
+        file: "{{ metadataPath }}"
+
+    ##########################################################################
+    # Copy files from source to destination
+    ##########################################################################
+    - name: Copy files from source to destination
+      ansible.builtin.copy:
+        dest: "{{ _destDir }}/{{ fileIdx.file }}"
+        mode: "{{ fileIdx.mode | default('0644') }}"
+        src:  "{{ _srcDir }}/{{ fileIdx.file }}"
+      # loop is evaluated before when -- empty list keeps a null
+      # _initFiles (left by an earlier call's cleanup) from failing here
+      loop: "{{ [] if fileList is defined else _initFiles }}"
+      loop_control:
+        loop_var: fileIdx
+        label:    "{{ fileIdx.file }}"
+      register: _cifResult
+
+    - name: Display copy status
+      debug:
+        msg: >-
+          {{ '[DEBUG] *** Copied [' + (_cifResult.results | length | string) + '] files from [' + _srcDir + '] to [' + _destDir + ']'
+               if _cifResult is succeeded else
+             '[DEBUG] *** Failed to copy files' }}
+      when: debugFlag is defined
+
+    ##########################################################################
+    # Cleanup temporary facts
+    # Note: Clean up all variables loaded from metadata file and registered vars
+    ##########################################################################
+    - name: Cleanup temporary facts
+      set_fact:
+        _cifResult: null
+        _destDir: null
+        _srcDir: null
+        _fileSystems: null
+        _initFiles: null
 
 ##############################################################################
-# Copy files from source to destination
+# fileList: copy files passed by the caller
 ##############################################################################
-- name: Copy files from source to destination
-  ansible.builtin.copy:
-    dest: "{{ _destDir }}/{{ fileIdx.file }}"
-    mode: "{{ fileIdx.mode | default('0644') }}"
-    src:  "{{ _srcDir }}/{{ fileIdx.file }}"
-  loop: "{{ _initFiles }}"
-  loop_control:
-    loop_var: fileIdx
-    label:    "{{ fileIdx.file }}"
-  register: _cifResult
-
-- name: Display copy status
-  debug:
-    msg: >-
-      {{ '[DEBUG] *** Copied [' + (_cifResult.results | length | string) + '] files from [' + _srcDir + '] to [' + _destDir + ']'
-           if _cifResult is succeeded else
-         '[DEBUG] *** Failed to copy files' }}
-  when: debugFlag is defined
-
-##############################################################################
-# Cleanup temporary facts
-# Note: Clean up all variables loaded from metadata file and registered vars
-##############################################################################
-- name: Cleanup temporary facts
-  set_fact:
-    _cifResult: null
-    _destDir: null
-    _srcDir: null
-    _fileSystems: null
-    _initFiles: null
+- name: Copy files from fileList
+  when: fileList is defined
+  block:
+    - name: Copy each fileList entry to its dest
+      ansible.builtin.copy:
+        backup: "{{ fileIdx.backup | default(false) }}"
+        src:    "{{ fileIdx.src }}"
+        dest:   "{{ fileIdx.dest }}"
+        mode:   "{{ fileIdx.mode | default('0644') }}"
+        owner:  "{{ fileIdx.owner | default(omit) }}"
+        group:  "{{ fileIdx.group | default(omit) }}"
+      loop: "{{ fileList }}"
+      loop_control:
+        loop_var: fileIdx
+        label:    "{{ fileIdx.dest }}"

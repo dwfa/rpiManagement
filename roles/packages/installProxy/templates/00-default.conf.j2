@@ -1,0 +1,88 @@
+###############################################################################
+# nginx server configuration for the default virtual host
+#
+# Author: Acheson, Douglas WF (dwfa@dwfa.ca)
+#
+# Copyright 2023 Douglas WF Acheson (dwfa@dwfa.ca)
+# Licensed under Apache License 2.0. See LICENSE.md for details.
+#
+# Version: 3.0
+# Date: September 25, 2026
+#
+# Rendered by roles/packages/installProxy. Site values come from
+# proxyServerName and proxyCertName (see the role's defaults).
+#
+# Two server blocks:
+#   - port 80:  if $host is an IP address, return a friendly HTML page
+#               telling the user to visit by hostname (the wildcard cert
+#               doesn't cover IPs); otherwise 301 redirect to HTTPS,
+#               preserving the request URI
+#   - port 443: serves the default virtual host; pulls all locations
+#               from /etc/nginx/sites-enabled/default-locations/*.location
+#               (e.g. 99_catchall.location, 01_webmin.location, etc.)
+#
+# The wildcard cert is issued by the project's internal CA — install
+# the CA certificate (under data/pki/) into your admin devices' trust
+# stores once to avoid browser warnings.
+#
+# $isIP is set in nginx.conf via a map directive on $host.
+###############################################################################
+
+###############################################################################
+# Port 80 — IP-aware redirect / informational page
+###############################################################################
+server
+{
+	listen 80 default_server;
+	server_name _;
+
+	location /
+	{
+		# default_type at location scope (forbidden inside if blocks).
+		# Harmless for the 301 branch — redirects don't carry a body.
+		default_type text/html;
+
+		# nginx return takes exactly two args (status + body). The body
+		# is a single quoted string; single quotes span newlines fine.
+		# Apostrophes are avoided in the body to keep the quoting simple.
+		if ($isIP)
+		{
+			return 200 '<!DOCTYPE html><html><body>
+<h2>Use https://{{ proxyServerName }}$request_uri instead</h2>
+<p>This server certificate covers DNS names, not IP addresses. Visit by hostname for an encrypted connection.</p>
+<p><a href="https://{{ proxyServerName }}$request_uri">https://{{ proxyServerName }}$request_uri</a></p>
+</body></html>';
+		}
+
+		return 301 https://$host$request_uri;
+	}
+}
+
+###############################################################################
+# Port 443 — the actual default virtual host
+###############################################################################
+server
+{
+	listen 443 ssl default_server;
+	http2 on;
+
+	#############################################################################
+	# set the server name to nothing (in this case '_')
+	#############################################################################
+	server_name _;
+
+	#############################################################################
+	# wildcard cert (installed by tasks/pki/installWildcardCert.yaml)
+	#############################################################################
+	ssl_certificate     /etc/ssl/private/{{ proxyCertName }}.crt;
+	ssl_certificate_key /etc/ssl/private/{{ proxyCertName }}.key;
+
+	include /etc/nginx/sites-enabled/default-locations/*.location ;
+
+	#############################################################################
+	# Per-vhost logs. Global error_log in nginx.conf still catches startup /
+	# config errors that aren't tied to any server block.
+	#############################################################################
+	access_log /var/log/nginx/default-access.log longFormat;
+	error_log  /var/log/nginx/default-error.log;
+}

@@ -1,0 +1,40 @@
+##############################################################################
+# Find a host's IP — try the known address, ask if it does not answer
+#
+# USAGE:
+#   Thin role that finds the address a host answers on before any remote
+#   play attempts SSH. Wraps tasks/system/findHostIP.yaml.
+#
+# REQUIRED VARIABLES:
+#   - targetHost: Inventory host key to resolve
+#                 (e.g., "{{ groups[nodes] | first }}")
+#
+# OUTPUT VARIABLES:
+#   - discoveredRPiIP: Resolved IP string (set on localhost). Either equals
+#                targetHost (known IP reachable) or the user-prompted IP.
+#
+# EXAMPLE:
+#   roles:
+#     - role: findHostIP
+#       vars:
+#         targetHost: "{{ groups[nodes] | first }}"
+#
+# NOTES:
+#   - Must run in a localhost play (no SSH to target needed)
+#   - Subsequent remote plays use:
+#     hosts: "{{ hostvars['localhost'].discoveredRPiIP }}"
+#
+# Copyright 2026 Douglas WF Acheson (dwfa@dwfa.ca)
+# Licensed under Apache License 2.0. See LICENSE.md for details.
+#
+# Version: 1.1
+# Date: October 3, 2026
+##############################################################################
+---                                                   # identifies a YAML file
+
+##############################################################################
+# Find host IP
+##############################################################################
+- name: Find host IP
+  include_tasks:
+    file: "{{ taskPath }}/system/findHostIP.yaml"

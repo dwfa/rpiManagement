@@ -1,0 +1,52 @@
+##############################################################################
+# Install the DHCP server (isc-dhcp-server) and its configuration -- thin
+# role wrapper
+#
+# USAGE:
+#   Called by any playbook that builds a DHCP server. Installs
+#   dhcpServerPackages, then configures dhcpd with DDNS to bind9.
+#
+# REQUIRED VARIABLES:
+#   None at the call site. dhcpServerPackages comes from vars/main.yaml;
+#   templates live in this role's templates/. Site values come from
+#   data/packages/isc-dhcp-server/metadata.yaml,
+#   data/network/inventory.json and the TSIG key.
+#
+# OPTIONAL VARIABLES:
+#   - debugFlag: Enable debug output
+#
+# EXAMPLE:
+#   - hosts:  "{{ nodes }}"
+#     become: true
+#     roles:
+#       - role: installDHCPdServer
+#
+# WORKFLOW:
+#   1. Install dhcpServerPackages via tasks/system/installPackage.yaml
+#   2. Configure dhcpd via this role's tasks/configureDHCPd.yaml
+#
+# NOTES:
+#   - installPackage.yaml uses state=latest, so a re-run upgrades the
+#     packages if newer versions are available
+#   - installDNSServer must run first -- dhcpd sends DDNS updates to
+#     bind9, and its systemd override makes dhcpd start after bind9
+#   - reconfigureDNSServer runs configureDHCPd on its own via
+#     include_role tasks_from (backlog "Rethink reconfigureDNSServer")
+#
+# Copyright 2026 Douglas WF Acheson (dwfa@dwfa.ca)
+# Licensed under Apache License 2.0. See LICENSE.md for details.
+#
+# Version: 1.0
+# Date: October 4, 2026
+##############################################################################
+---                                                   # identifies a YAML file
+
+- name: Install DHCP server packages
+  ansible.builtin.include_tasks:
+    file: "{{ taskPath }}/system/installPackage.yaml"
+  vars:
+    packageList: "{{ dhcpServerPackages }}"
+
+- name: Configure dhcpd
+  ansible.builtin.include_tasks:
+    file: configureDHCPd.yaml

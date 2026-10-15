@@ -29,12 +29,16 @@
 #   4. configureKeyboard -- keyboard layout
 #   5. configureWiFiCC  -- Wi-Fi country code
 #   6. configureMemory  -- gpu_mem in config.txt
-#   7. configureGraphics -- HDMI mode + framebuffer
-#   8. configureConsole -- cmdline.txt video= mode
-#   9. configureBootOrder -- EEPROM BOOT_ORDER (RPi 4/5 only)
-#  10. configurePersistentJournal -- /var/log/journal + 256M cap so
+#   7. configureFan     -- gpio-fan overlay in config.txt (RPi 4B with
+#      a PWM fan on GPIO only; asks unless fanInstalled is set)
+#   8. setBootConfig    -- onboard devices in config.txt (audio, camera
+#      and DSI display probes; off unless enabled in baseConfig.yaml)
+#   9. configureGraphics -- HDMI mode + framebuffer
+#  10. configureConsole -- cmdline.txt video= mode
+#  11. configureBootOrder -- EEPROM BOOT_ORDER (RPi 4/5 only)
+#  12. configurePersistentJournal -- /var/log/journal + 256M cap so
 #      post-mortem logs survive across boots.
-#  11. Reboot the target and wait for it to come back -- locale,
+#  13. Reboot the target and wait for it to come back -- locale,
 #      gpu_mem, framebuffer, video= and BOOT_ORDER all need a reboot
 #      to take effect. One reboot at the end covers them all.
 #
@@ -50,8 +54,8 @@
 # Copyright 2026 Douglas WF Acheson (dwfa@dwfa.ca)
 # Licensed under Apache License 2.0. See LICENSE.md for details.
 #
-# Version: 1.1
-# Date: September 13, 2026
+# Version: 1.3
+# Date: October 5, 2026
 ##############################################################################
 ---                                                   # identifies a YAML file
 
@@ -84,6 +88,22 @@
 - name: Configure GPU memory
   ansible.builtin.include_tasks:
     file: "{{ taskPath }}/rpi/configureMemory.yaml"
+
+- name: Configure GPIO fan
+  ansible.builtin.include_tasks:
+    file: "{{ taskPath }}/rpi/configureFan.yaml"
+
+- name: Configure onboard devices
+  ansible.builtin.include_tasks:
+    file: "{{ taskPath }}/rpi/setBootConfig.yaml"
+  vars:
+    bootConfigLines:
+      - key:  "dtparam=audio="
+        line: "dtparam=audio={{ 'on' if audioEnabled | bool else 'off' }}"
+      - key:  "camera_auto_detect="
+        line: "camera_auto_detect={{ 1 if cameraAutoDetect | bool else 0 }}"
+      - key:  "display_auto_detect="
+        line: "display_auto_detect={{ 1 if displayAutoDetect | bool else 0 }}"
 
 - name: Configure graphics
   ansible.builtin.include_tasks:

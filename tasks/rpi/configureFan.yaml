@@ -1,0 +1,148 @@
+##############################################################################
+# Configure a PWM fan curve for a Raspberry Pi 4B via config.txt
+#
+# USAGE:
+#   include_tasks from roles/configureBaseRPi/tasks/main.yaml (after
+#   baseConfig.yaml has been loaded). Only acts on a Raspberry Pi 4
+#   Model B; every other model is skipped without a prompt.
+#
+# REQUIRED VARIABLES:
+#   - fanGPIO:        BCM GPIO of the fan's PWM wire; hardware PWM pin
+#                     12, 13, 18 or 19 (baseConfig.yaml)
+#   - fanCurve:       4 steps of {tempC, speedPct} (baseConfig.yaml)
+#   - fanHystC:       Degrees below a step's tempC before the fan drops
+#                     back a step (baseConfig.yaml)
+#   - bootConfigPath: usually /boot/firmware/config.txt
+#
+# OPTIONAL VARIABLES:
+#   - fanInstalled: true/false -- skip the prompt (per host or
+#                   --extra-vars) for unattended runs
+#   - debugFlag:    enable debug output
+#
+# WORKFLOW:
+#   1. Read the model from /proc/device-tree/model
+#   2. On a Pi 4B with fanInstalled unset: ask whether a PWM fan is
+#      wired to GPIO fanGPIO
+#   3. On a Pi 4B with a fan: validate the settings, remove any old
+#      gpio-fan or single-line pwm-fan entry, and write the pwm-fan block:
+#      the overlay line followed by one dtparam= line per setting
+#
+# NOTES:
+#   - Written for the 52Pi Armor Lite ZP-0110: red -> pin 4 (5V),
+#     black -> pin 6 (GND), blue -> pin 12 (GPIO 18)
+#   - The prompt pauses the play; set fanInstalled for unattended runs
+#   - pwm-fan uses the Pi's hardware PWM, which the 3.5 mm audio jack
+#     shares -- keep audioEnabled false on a Pi with this fan
+#   - A PWM value of 0 (below the first step) fully stops this fan
+#   - Answering no does not remove an existing fan line
+#   - The settings are separate dtparam= lines, not one long overlay
+#     line: the firmware reads only bootConfigMaxLine characters of a
+#     line and drops the rest. A dtparam= applies to the overlay above
+#     it, so the lines are written as one marked block.
+#   - Idempotent: one marked block, replaced in place
+#   - Effective only after reboot (configureBaseRPi reboots at the end)
+#
+# Copyright 2026 Douglas WF Acheson (dwfa@dwfa.ca)
+# Licensed under Apache License 2.0. See LICENSE.md for details.
+#
+# Version: 2.0
+# Date: October 13, 2026
+##############################################################################
+---                                                   # identifies a YAML file
+
+##############################################################################
+# Step 1: Read the RPi model
+##############################################################################
+- name: Read RPi model
+  ansible.builtin.slurp:
+    src: /proc/device-tree/model
+  register: _cfModelRaw
+
+- name: Set RPi model fact
+  ansible.builtin.set_fact:
+    _cfModel: "{{ _cfModelRaw.content | b64decode | replace('\u0000', '') }}"
+
+##############################################################################
+# Steps 2-3: Pi 4B only -- ask (unless fanInstalled is set), then configure
+##############################################################################
+- name: Configure GPIO fan on a Pi 4B
+  when: _cfModel is match('Raspberry Pi 4 Model B')
+  block:
+    - name: Ask whether a PWM fan is wired to GPIO [{{ fanGPIO }}]
+      ansible.builtin.include_tasks:
+        file: "{{ taskPath }}/ui/niceInput.yaml"
+      vars:
+        title: "PWM fan on GPIO {{ fanGPIO }}?"
+        data: >-
+          This is a {{ _cfModel }}. Does it have a PWM fan wired to
+          GPIO {{ fanGPIO }} (physical pin 12)? [y/N]
+      when: fanInstalled is not defined
+
+    - name: Set fan answer
+      ansible.builtin.set_fact:
+        _cfHasFan: >-
+          {{ (fanInstalled | bool) if fanInstalled is defined
+             else (promptValue | default('') | lower in ['y', 'yes']) }}
+
+    - name: "Debug: fan"
+      ansible.builtin.debug:
+        msg: >-
+          [DEBUG] *** model=[{{ _cfModel }}] fan=[{{ _cfHasFan }}]
+          action=[{{ 'set pwm-fan curve' if _cfHasFan | bool else 'skip (no fan)' }}]
+      when: debugFlag | default(0) | int == 1
+
+    - name: Configure PWM fan curve
+      when: _cfHasFan | bool
+      block:
+        - name: Validate fan settings
+          ansible.builtin.assert:
+            that:
+              - fanGPIO | int in [12, 13, 18, 19]
+              - fanCurve | length == 4
+            fail_msg: >-
+              [ERROR] *** pwm-fan needs fanGPIO 12, 13, 18 or 19 and
+              exactly 4 fanCurve steps
+            quiet: true
+
+        - name: Build pwm-fan block
+          ansible.builtin.set_fact:
+            _cfBlock: |-
+              dtoverlay=pwm-fan,fan_gpio_{{ fanGPIO }}
+              {% for s in fanCurve %}
+              dtparam=fan_temp{{ loop.index0 }}={{ s.tempC * 1000 }}
+              dtparam=fan_temp{{ loop.index0 }}_hyst={{ fanHystC * 1000 }}
+              dtparam=fan_temp{{ loop.index0 }}_speed={{ (s.speedPct * 255 / 100) | round | int }}
+              {% endfor %}
+
+        - name: Check pwm-fan block line lengths
+          ansible.builtin.assert:
+            that: _cfBlock.splitlines() | map('length') | max <= bootConfigMaxLine | int
+            fail_msg: >-
+              [ERROR] *** a pwm-fan line is longer than the
+              {{ bootConfigMaxLine }} characters the firmware reads
+            quiet: true
+
+        - name: Remove old gpio-fan and single-line pwm-fan entries
+          ansible.builtin.lineinfile:
+            path:   "{{ bootConfigPath }}"
+            regexp: '^\s*dtoverlay=(gpio-fan|pwm-fan,.*fan_temp)'
+            state:  absent
+
+        - name: Set pwm-fan block in config.txt
+          ansible.builtin.blockinfile:
+            path:   "{{ bootConfigPath }}"
+            marker: "# {mark} ANSIBLE MANAGED BLOCK pwm-fan"
+            block:  "{{ _cfBlock }}"
+            create: false
+            # backup: off -- /boot/firmware is FAT32 and rejects Ansible's
+            # backup filename (it contains colons)
+
+##############################################################################
+# Cleanup temporary facts
+##############################################################################
+- name: Cleanup temporary facts
+  ansible.builtin.set_fact:
+    _cfModelRaw: null
+    _cfModel:    null
+    _cfHasFan:   null
+    _cfBlock:    null

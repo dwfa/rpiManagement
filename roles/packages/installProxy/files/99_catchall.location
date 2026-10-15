@@ -1,0 +1,21 @@
+###############################################################################
+# nginx catch-all location block
+#
+# Author: Acheson, Douglas WF (dwfa@dwfa.ca)
+#
+# Copyright 2026 Douglas WF Acheson (dwfa@dwfa.ca)
+# Licensed under Apache License 2.0. See LICENSE.md for details.
+#
+# Version: 1.0
+# Date: May 7, 2026
+#
+# Included from the default server block via the
+# /etc/nginx/sites-enabled/default-locations/*.location glob. The 99_
+# prefix ensures this loads last so more specific locations (e.g.
+# /admin for webmin) register first.
+###############################################################################
+location /
+{
+	default_type text/html ;
+	return 200 '<!DOCTYPE html><html><body><p>Move along ... nothing to see here!!!</p></body></html>' ;
+}

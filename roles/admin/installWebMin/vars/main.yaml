@@ -1,0 +1,14 @@
+##############################################################################
+# Ansible role variables for installWebMin
+#
+# Copyright 2026 Douglas WF Acheson (dwfa@dwfa.ca)
+# Licensed under Apache License 2.0. See LICENSE.md for details.
+#
+# Version: 1.1
+# Date: October 14, 2026
+##############################################################################
+---                                            # identifies a YAML config file
+
+webminPackages:
+  - webmin
+  - libxml-parser-perl          # XML::Parser, needed by Webmin's XML-RPC API

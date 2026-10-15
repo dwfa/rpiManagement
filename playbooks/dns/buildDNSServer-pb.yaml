@@ -1,119 +1,125 @@
 ##############################################################################
-# Build DNS / DHCP RPi server
+# Build the DNS / DHCP server
 #
-# Provisions a freshly-imaged RPi (already bootstrapped via
-# postCreate-pb.yaml) into the project's DNS / DHCP server. Layered:
+# USAGE:
+#   Run once on an RPi that initRPi-pb.yaml has already set up. Installs
+#   and configures bind9, isc-dhcp-server, nginx, webmin, pi-hole, nut
+#   and uctLCD.
 #
-#   Play 1 (localhost) -- validate prereqs + load credentials:
-#     - verify wildcard cert exists under data/pki/
-#     - decrypt dwfa user vault via prepareRemoteCredentials
+# OPTIONAL VARIABLES:
+#   - nodes: Inventory host to build (default: dnsInstaller)
 #
-#   Play 2 (target, become):
-#     - createUsers          -- dwfa + wwwAdmin
-#     - configureBaseRPi     -- TZ, locale, keyboard, wifi country,
-#                               GPU memory, framebuffer, console video,
-#                               EEPROM BOOT_ORDER; reboot at the end
-#     - installPackages      -- base list (vim, zsh, fish)
-#     - installPackages      -- nginx-core, nginx, bind9, bind9utils,
-#                               dnsutils, isc-dhcp-server, webmin.
-#                               Each per-package configure.yaml runs
-#                               via installPackages' auto-discovery.
-#                               Webmin is intentionally last so its
-#                               module-detection picks up bind/dhcp.
-#     - installPihole        -- native install + configure pi-hole;
-#                               nginx reverse-proxies /pihole/ to
-#                               FTL:8080; restarts webmin at the end
-#                               so its module-detection picks up the
-#                               final state on disk (pi-hole is not
-#                               an apt package, so it lives outside
-#                               installPackages).
+# EXAMPLE:
+#   ansible-playbook playbooks/dns/buildDNSServer-pb.yaml
 #
-#   Play 3 (localhost) -- cleanup materialized SSH keys.
+# WORKFLOW:
+#   1. Playbook Initialization (localhost): bootstrap, write builder key
+#   2. Verify prerequisites (localhost): wildcard cert, TSIG key
+#   3. Build DNS server (dnsInstaller, as the builder user)
+#   4. Remove SSH key files (localhost)
 #
-# PREREQUISITES:
-#   - Run [./managePKI.sh] first to materialize data/pki/
-#     (CA + wildcard cert; the pre_tasks block fails fast otherwise)
-#   - postCreate-pb.yaml has already run against this host (dwfa user
-#     exists, static IP applied, host reachable at the dns inventory
-#     address). [./buildDNSServer.sh] chains postCreate -> this
-#     playbook for a fresh build.
+# NOTES:
+#   - Run playbooks/managePKI-pb.yaml first -- it creates the wildcard
+#     cert and TSIG key that Play 2 checks for
+#   - See each play's banner for details
 #
 # Copyright 2026 Douglas WF Acheson (dwfa@dwfa.ca)
 # Licensed under Apache License 2.0. See LICENSE.md for details.
 #
-# Version: 3.1
-# Date: May 17, 2026
+# Version: 4.0
+# Date: October 3, 2026
 ##############################################################################
 ---                                            # identifies a YAML config file
 
 ##############################################################################
-# Play 1: Validate prerequisites and load credentials on the controller
+# Play 1: This is the Playbook Initialization play which runs on the localhost
+# It will do the following:
+#   1. bootstrap: Ensure required ansible and python packages are installed
+#   2. writeSSHKey: Write the builder user's SSH key to data/ssh
 ##############################################################################
-- name: Prepare local resources
+- name: Playbook Initialization
   hosts:        localhost
   connection:   local
   gather_facts: false
 
   roles:
     - role: bootstrap
-    - role: verifyWildcardCert
-    - role: verifyTSIGKey
-    - role: prepareRemoteCredentials
+    - role: writeSSHKey
       vars:
         userDataPath: "{{ dataPath }}/users/{{ builderUser }}/user.yaml"
 
 ##############################################################################
-# Play 2: Provision DNS server services on the target host
+# Play 2: This play verifies the DNS server's prerequisites and runs on the
+# localhost
+# It will do the following:
+#   1. verifyWildcardCert: Fail if the wildcard cert is not in data/pki
+#   2. verifyTSIGKey: Fail if the DDNS TSIG key is not in data
 ##############################################################################
-- name: Provision DNS server services
-  hosts:        "{{ nodes | default('installer') }}"
+- name: Playbook Initialization
+  hosts:        localhost
+  connection:   local
+  gather_facts: false
+
+  roles:
+    - role: verifyWildcardCert
+    - role: verifyTSIGKey
+
+##############################################################################
+# Play 3: This play builds the DNS / DHCP server and runs on the new RPi
+# (dnsInstaller, as the builder user)
+# It will do the following:
+#   1. createUsers: Create the DNS server's users (dnsUsers)
+#   2. configureBaseRPi: Set TZ, locale, keyboard, Wi-Fi country, console
+#      video, GPU memory, EEPROM BOOT_ORDER
+#   3. installFish: Install fish
+#   4. installVim: Install vim and its system-wide config
+#   5. installUctLCD: Install the UCTRONICS status LCD daemon
+#   6. installProxy: Install nginx as the HTTPS front door for webmin and
+#      pi-hole
+#   7. installDNSServer: Install and configure bind9 and pi-hole
+#   8. installDHCPdServer: Install and configure isc-dhcp-server (DDNS
+#      updates to bind9)
+#   9. installNUT: Install and configure NUT as the UPS server (UPS
+#      attached by USB)
+#  10. installWebMin: Add Webmin's apt repository, install and configure
+#      Webmin behind nginx at /admin (last, so it sees every service)
+# Note: installProxy must run before webmin and pi-hole -- both add their
+#       nginx location files to it
+##############################################################################
+- name: Build DNS server
+  hosts:        "{{ nodes | default('dnsInstaller') }}"
   become:       true
   gather_facts: true
 
-  # Load remote connection vars (connectionKey.yaml or connectionPWD.yaml)
-  # and the DNS server's user list (dnsUsers).
+  # Builder user's credentials + connection settings (key or password).
+  # dnsUsers comes from data/group_vars/dns.yaml
   vars_files:
-    - "{{ pbPath }}/vars/connection{{ hostvars['localhost'].userData.file }}.yaml"
-    - "{{ dataPath }}/dnsServer/users.yaml"
+    - "{{ dataPath }}/users/{{ builderUser }}/user.yaml"
+    - "{{ pbPath }}/vars/connection.yaml"
 
   roles:
     - role: createUsers
       vars:
         userNames: "{{ dnsUsers }}"
     - role: configureBaseRPi
-    - role: installPackages
-    - role: installPackages
-      vars:
-        packageList:
-          - nginx-core
-          - nginx
-          - bind9
-          - bind9utils
-          - dnsutils
-          - isc-dhcp-server
-          - nut
-          # webmin listed LAST so its install-time module scan sees
-          # every other service already installed on the host and
-          # auto-enables the matching webmin modules (bind9, dhcpd,
-          # nginx, nut, ...). New services added to this list belong
-          # ABOVE webmin for the same reason.
-          - webmin
-        # Per-package vars are scoped to that package's configure step
-        # only (installPackages plumbs them via configurePackage's
-        # include_tasks.apply.vars) -- no cross-package leak.
-        packageVars:
-          nut:
-            nutRole: server
-    # uctLCD and Pi-hole are native installs (see BACKLOG
-    # "Revisit containerized pi-hole").
-    # They are not apt packages, so it does not flow through installPackages.
-    - role: installPihole
+    - role: installFish
+    - role: installVim
     - role: installUctLCD
+    - role: installProxy
+    - role: installDNSServer
+    - role: installDHCPdServer
+    - role: installNUT
+      vars:
+        nutRole: server
+                                    # webmin installed LAST so it activates
+    - role: installWebMin           # modules for installed pkgs
 
 ##############################################################################
-# Play 3: Cleanup materialized SSH keys on the controller
+# Play 4: This play removes the SSH key files and runs on the localhost
+# It will do the following:
+#   1. clearLocal: Remove the builder user's SSH key files from data/ssh
 ##############################################################################
-- name: Cleanup materialized SSH keys
+- name: Playbook Cleanup
   hosts:        localhost
   connection:   local
   gather_facts: false

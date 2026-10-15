@@ -3,33 +3,42 @@
 #
 # USAGE:
 #   Moves an already-provisioned DNS server host off its imager /
-#   post-install address (typically 192.168.129.1, from
+#   post-install address (the inventory host's ansible_host, from
 #   data/network/staticIP/installer.yaml) onto its final address from
-#   data/network/staticIP/dns.yaml (192.168.2.17). NetworkManager
-#   handles the live switch via a fresh .nmconnection file.
+#   data/network/staticIP/dns.yaml. The active NetworkManager
+#   connection is changed in place, the box reboots onto the new
+#   address, and verifyDNSServer checks the result there.
 #
-#   Idempotent: if the host is already on the target address (dns.yaml
-#   `ipDetails.address`), setStaticIP's online strategy short-circuits
-#   and Play 2 is a no-op.
+#   `nodes` names one inventory HOST (default dnsInstaller -- the box
+#   that was just built), not a group. The dns group also holds
+#   dnsLive, the box in service; targeting the group would pick the
+#   wrong one.
+#
+#   The address to move ONTO is dnsLive's ansible_host in the inventory
+#   (the box in service), passed to setStaticIP as targetAddress.
+#   Netmask, gateway, dns and domain still come from
+#   data/network/staticIP/dns.yaml.
+#
+#   Run once per build.
 #
 # EXAMPLE:
-#   ansible-playbook --extra-vars "nodes=dns" playbooks/dns/dnsCutOver-pb.yaml
+#   ansible-playbook playbooks/dns/dnsCutOver-pb.yaml
+#   ansible-playbook --extra-vars "nodes=dnsInstaller" playbooks/dns/dnsCutOver-pb.yaml
 #
 # WORKFLOW:
 #   Play 1 (localhost):
 #     1. bootstrap: Standard project bootstrap
-#     2. getTargetHostIP: Resolve the DNS host's current IP -- try the
-#        inventory address first, prompt (niceInput) if unreachable
-#     3. prepareRemoteCredentials: Load builder user credentials
-#     4. post_task: Load dns.yaml `ipDetails.address` as `targetIP` on
-#        localhost so Play 2 can gate on it
-#   Play 2 (target - as builder):
-#     5. setStaticIP: Online strategy against
-#        data/network/staticIP/dns.yaml. Writes eth0-manual.nmconnection
-#        and switches the live NM connection; waits for SSH on the new
-#        address. Skipped if _currentIP == _targetIP.
-#   Play 3 (localhost):
-#     6. clearLocal: Remove materialized SSH keys
+#     2. prepareRemoteCredentials: Load builder user credentials
+#   Play 2 (target host `nodes`, default dnsInstaller - as builder):
+#     3. setStaticIP: Online strategy against
+#        data/network/staticIP/dns.yaml. Changes the eth0 connection
+#        in place, asks before rebooting (take the old server off the
+#        address then), reboots, waits for SSH on the new address.
+#   Play 3 (dnsLive - the new address, as builder):
+#     4. verifyDNSServer: DNS server contract at the new address; also
+#        checks no file under /etc still holds the installer address
+#   Play 4 (localhost):
+#     5. clearLocal: Remove materialized SSH keys
 #
 # PREREQUISITES:
 #   - DNS host already provisioned (bind9, dhcpd, pi-hole, etc.
@@ -37,66 +46,50 @@
 #   - Builder user exists on the target with valid SSH credentials
 #   - data/network/staticIP/dns.yaml populated with the target
 #     ipDetails (address, netmask, gateway, dns, domain)
-#   - The target address (.2.17) is not currently in use by another
-#     host on the LAN
+#   - The target address (dns.yaml ipDetails.address) is not currently
+#     in use by another host on the LAN -- in particular the box in
+#     service (dnsLive) must be moved off it or powered down first
 #
 # NOTES:
-#   - Cutover is one-way in the sense that after Play 2, subsequent
-#     runs of this playbook find the host already at the target IP
-#     and skip the switch (idempotent).
-#   - No service reconfiguration is required on the DNS server: bind9
-#     and dhcpd listen on 0.0.0.0 / all interfaces, so they follow the
-#     new address automatically.
+#   - Cutover is one-way: afterwards the box is no longer at the target
+#     host's ansible_host, so a re-run cannot connect until the
+#     inventory is updated (dnsLive = the new box, dnsInstaller = the
+#     installer address for the next build).
+#   - The reboot restarts every service on the new address. Services
+#     that bind to their start-up address (pi-hole) need it; a live
+#     address switch leaves them on the old address.
 #   - Any stale DHCP lease for the imager address on the DHCP server
 #     should be released or purged separately -- out of scope here.
 #
 # Copyright 2026 Douglas WF Acheson (dwfa@dwfa.ca)
 # Licensed under Apache License 2.0. See LICENSE.md for details.
 #
-# Version: 1.0
-# Date: September 12, 2026
+# Version: 2.0
+# Date: October 13, 2026
 ##############################################################################
 ---                                            # identifies a YAML config file
 
 ##############################################################################
-# Play 1: Resolve target host IP and load builder credentials (localhost)
+# Play 1: Load builder credentials (localhost)
 # Note: Vault decryption works on localhost (task-level include_vars)
 ##############################################################################
-- name: Load builder credentials and resolve DNS host
+- name: Playbook Initialization
   hosts:        localhost
   connection:   local
   gather_facts: false
 
   roles:
     - role: bootstrap
-    - role: getTargetHostIP
-      vars:
-        targetHost: "{{ groups[nodes | default('dns')] | first }}"
     - role: prepareRemoteCredentials
       vars:
         userDataPath: "{{ dataPath }}/users/{{ builderUser }}/user.yaml"
 
-  post_tasks:
-    # Load the DNS host's target static IP into a localhost fact so Play 2
-    # can gate on it (and skip entirely when the host is already there).
-    - name: Load target static IP for gating Play 2
-      ansible.builtin.set_fact:
-        targetIP: "{{ (lookup('file', dataPath ~ '/network/staticIP/dns.yaml') | from_yaml).ipDetails.address }}"
-
 ##############################################################################
-# Play 2: Cut DNS host over from current IP to dns.yaml target IP.
-#
-# Skip condition (role-level `when:` on setStaticIP):
-#   _currentIP != _targetIP
-#     - _currentIP: where getTargetHostIP found the host reachable
-#                   (localhost fact currentIP, aliased)
-#     - _targetIP:  where dns.yaml says the DNS host should live
-#                   (localhost fact targetIP, aliased)
-#   Equal → setStaticIP's tasks all skip. Different → setStaticIP runs
-#   and switches the host onto the target address.
+# Play 2: Cut the target host over from its current IP (its ansible_host)
+# to dnsLive's IP (the address of the box in service).
 ##############################################################################
 - name: Cut DNS host over to final static IP
-  hosts:        "{{ _currentIP }}"
+  hosts:        "{{ nodes | default('dnsInstaller') }}"
   become:       true
   gather_facts: false
 
@@ -106,19 +99,34 @@
 
   roles:
     - role: setStaticIP
-      when: _currentIP != _targetIP
       vars:
-        currentAddress:   "{{ _currentIP }}"
+        currentAddress:   "{{ ansible_host }}"
+        targetAddress:    "{{ hostvars['dnsLive'].ansible_host }}"
         staticIPDataPath: "{{ dataPath }}/network/staticIP/dns.yaml"
-
-  vars:
-    _currentIP: "{{ hostvars['localhost'].currentIP }}"
-    _targetIP:  "{{ hostvars['localhost'].targetIP }}"
+        confirmSwitch:    true
 
 ##############################################################################
-# Play 3: Cleanup materialized SSH keys on the controller
+# Play 3: Verify the DNS server at its new address (dnsLive)
 ##############################################################################
-- name: Cleanup materialized SSH keys
+- name: Verify DNS server at the new address
+  hosts:        dnsLive
+  become:       true
+  gather_facts: false
+
+  # Load remote connection vars (connectionKey.yaml or connectionPWD.yaml)
+  vars_files:
+    - "{{ pbPath }}/vars/connection{{ hostvars['localhost'].userData.file }}.yaml"
+
+  roles:
+    - role: verifyDNSServer
+      vars:
+        expectedHostname: >-
+          {{ (lookup('file', dataPath ~ '/network/staticIP/dns.yaml') | from_yaml).ipDetails.hostname | default('') }}
+
+##############################################################################
+# Play 4: Cleanup materialized SSH keys on the controller
+##############################################################################
+- name: Playbook Cleanup
   hosts:        localhost
   connection:   local
   gather_facts: false

@@ -1,0 +1,115 @@
+##############################################################################
+# Internal helper task to add addresses to one interface via NetworkManager
+#
+# USAGE:
+#   Called by configureNetworkStrategies/networkManager.yaml once per
+#   interface in nwAliases. Do not call directly.
+#
+# REQUIRED VARIABLES (passed via loop):
+#   - nmInterface: Interface to add addresses to (e.g. "lo", "eth0")
+#   - nmAddresses: Addresses for that interface, CIDR form
+#                  (e.g. ["127.0.0.2/8"])
+#
+# WORKFLOW:
+#   1. Find the NetworkManager profile active on the interface. An
+#      "external" one (NetworkManager only watching, e.g. lo before we
+#      add a profile) counts as none.
+#   2. No profile: create lo-aliases for lo (keeps 127.0.0.1/8); fail for
+#      any other interface.
+#   3. Add only the addresses the profile does not already have.
+#   4. Bring the profile up only if something changed.
+#
+# NOTES:
+#   - Internal helper task - called by networkManager.yaml in a loop
+#   - Only adds addresses; removing one from nwAliases does not remove
+#     it from the profile
+#   - The profile is found by asking NetworkManager, so its name does
+#     not have to match the interface (e.g. eth0 -> eth0-manual)
+#   - `nmcli -g ipv4.addresses` lists addresses as "a/n, b/n"
+#
+# Copyright 2026 Douglas WF Acheson (dwfa@dwfa.ca)
+# Licensed under Apache License 2.0. See LICENSE.md for details.
+#
+# Version: 1.0
+# Date: October 4, 2026
+##############################################################################
+---                                                   # identifies a YAML file
+
+##############################################################################
+# Step 1: Find the profile active on the interface
+##############################################################################
+- name: Find NetworkManager profile on [{{ nmInterface }}]
+  ansible.builtin.command:
+    argv: [nmcli, -g, "GENERAL.STATE,GENERAL.CONNECTION",
+           device, show, "{{ nmInterface }}"]
+  register: _nmaDevice
+  changed_when: false
+
+- name: Set profile name for [{{ nmInterface }}]
+  ansible.builtin.set_fact:
+    _nmaProfile: >-
+      {{ '' if 'externally' in _nmaDevice.stdout_lines[0]
+         else _nmaDevice.stdout_lines[1] | default('') }}
+
+##############################################################################
+# Step 2: No profile -- create one for lo; fail for anything else
+##############################################################################
+- name: Fail when [{{ nmInterface }}] has no NetworkManager profile
+  ansible.builtin.fail:
+    msg: "[ERROR] *** No NetworkManager profile on [{{ nmInterface }}]"
+  when:
+    - _nmaProfile == ''
+    - nmInterface != 'lo'
+
+- name: Create loopback profile lo-aliases
+  when:
+    - _nmaProfile == ''
+    - nmInterface == 'lo'
+  block:
+    - name: Add lo-aliases profile (keeps 127.0.0.1/8)
+      ansible.builtin.command:
+        argv: [nmcli, connection, add, type, loopback, ifname, lo,
+               con-name, lo-aliases, ipv4.method, manual, ipv4.addresses,
+               "{{ (['127.0.0.1/8'] + nmAddresses) | join(',') }}"]
+      register: _nmaAdd
+
+    - name: Use lo-aliases as the profile
+      ansible.builtin.set_fact:
+        _nmaProfile: lo-aliases
+
+##############################################################################
+# Step 3: Add only the addresses the profile does not already have
+##############################################################################
+- name: Read [{{ _nmaProfile }}] addresses
+  ansible.builtin.command:
+    argv: [nmcli, -g, ipv4.addresses, connection, show, "{{ _nmaProfile }}"]
+  register: _nmaCurrent
+  changed_when: false
+
+- name: Add missing addresses to [{{ _nmaProfile }}]
+  ansible.builtin.command:
+    argv: [nmcli, connection, modify, "{{ _nmaProfile }}",
+           +ipv4.addresses, "{{ _nmaMissing | join(',') }}"]
+  vars:
+    _nmaMissing: "{{ nmAddresses | difference(_nmaCurrent.stdout | split(', ')) }}"
+  when: _nmaMissing | length > 0
+  register: _nmaMod
+
+##############################################################################
+# Step 4: Bring the profile up only if something changed
+##############################################################################
+- name: Bring up [{{ _nmaProfile }}]
+  ansible.builtin.command:
+    argv: [nmcli, connection, up, "{{ _nmaProfile }}"]
+  when: _nmaAdd is changed or _nmaMod is changed
+
+##############################################################################
+# Cleanup temporary facts
+##############################################################################
+- name: Cleanup temporary facts
+  ansible.builtin.set_fact:
+    _nmaDevice:  null
+    _nmaProfile: null
+    _nmaCurrent: null
+    _nmaAdd:     null
+    _nmaMod:     null

@@ -14,6 +14,7 @@
 #
 # WORKFLOW:
 #   1. Validate platform is supported (macOS or Linux)
+#      macOS: verify the partition exists on an (external, physical) disk
 #   2. Normalize partition path (convert Unix-style to macOS format if needed)
 #   3. Create mount point directory if it doesn't exist
 #   4. Check if partition is already mounted elsewhere and unmount if needed
@@ -50,8 +51,8 @@
 # Copyright 2025 Douglas WF Acheson (dwfa@dwfa.ca)
 # Licensed under Apache License 2.0. See LICENSE.md for details.
 #
-# Version: 5.2
-# Date: October 25, 2025
+# Version: 5.3
+# Date: September 29, 2026
 ##############################################################################
 ---                                            # identifies a YAML config file
 
@@ -76,35 +77,45 @@
       when: ansible_facts['system'] not in ['Darwin', 'Linux']
 
 ##############################################################################
-# Validate partitionDevice descriptor (macOS).
+# Validate partitionDevice (macOS).
 #
-# On macOS the incoming value may be a diskutil-style descriptor with an
-# appended partition suffix ("/dev/diskN (external, physical):sM"). Refuse
-# to mount unless all four markers are present, then extract just
-# /dev/diskNsM. Partition suffix is required — mount always targets a
-# partition, not a whole disk.
+# Same live check as unmountDevice.yaml / writeImage.yaml: ask diskutil
+# about the partition and refuse to mount unless it exists and its parent
+# disk reports (external, physical). `diskutil list /dev/diskNsM` prints the
+# parent disk's header and fails if the partition does not exist.
+# Accepts /dev/diskNsM, or a diskutil line with a trailing sM suffix.
 ##############################################################################
-- name: Validate partitionDevice descriptor (macOS)
-  ansible.builtin.fail:
-    msg: >-
-      [ERROR] *** Refusing to mount [{{ partitionDevice }}] — not a valid
-      macOS external physical partition descriptor.
-      Missing checks: {{ _missing | join(', ') }}.
-      Expected shape: "/dev/diskN (external, physical):sM"
+- name: Validate partitionDevice (macOS)
+  when: ansible_facts['system'] == 'Darwin'
   vars:
-    _lower:    "{{ partitionDevice | lower }}"
-    _hasDisk:  "{{ partitionDevice is match('.*/dev/disk\\d+.*') }}"
-    _hasPart:  "{{ partitionDevice is search('s\\d+$') }}"
-    _hasExt:   "{{ 'external' in _lower }}"
-    _hasPhys:  "{{ 'physical' in _lower }}"
-    _missing: >-
-      {{ (['/dev/diskN'] if not _hasDisk else [])
-         + (['sM suffix'] if not _hasPart else [])
-         + (['external']  if not _hasExt  else [])
-         + (['physical']  if not _hasPhys else []) }}
-  when:
-    - ansible_facts['system'] == 'Darwin'
-    - not (_hasDisk and _hasPart and _hasExt and _hasPhys)
+    _partitionPath: >-
+      {{ (partitionDevice | regex_search('/dev/disk\d+') | default('', true))
+         + (partitionDevice | regex_search('s\d+$') | default('', true)) }}
+    _isExtPhys: >-
+      {{ (_partitionPath is search('s\d+$')) and
+         (_mountPartitionDeviceInfo.rc | default(1)) == 0 and
+         ((_mountPartitionDeviceInfo.stdout_lines | default([]) | first | default(''))
+           is search('\(external, physical\)')) }}
+  block:
+    - name: Query partitionDevice from diskutil (macOS)
+      ansible.builtin.command:
+        argv:
+          - diskutil
+          - list
+          - "{{ _partitionPath }}"
+      register:     _mountPartitionDeviceInfo
+      changed_when: false
+      failed_when:  false
+
+    - name: Refuse partition not on an external + physical disk (macOS)
+      when: not _isExtPhys
+      ansible.builtin.include_tasks: "{{ taskPath }}/ui/niceFail.yaml"
+      vars:
+        title: "Refusing to mount partition"
+        data:
+          - "partitionDevice = [{{ partitionDevice }}]"
+          - "diskutil        = [{{ _mountPartitionDeviceInfo.stdout_lines | default([]) | first | default('no such partition') }}]"
+          - "Expected: /dev/diskNsM on a /dev/diskN (external, physical)"
 
 ##############################################################################
 # Normalize partition path for platform (Unix-style to macOS if needed).
@@ -202,3 +213,4 @@
     _partitionMountCheck: null
     _mountPointCheck: null
     _mountPartitionResult: null
+    _mountPartitionDeviceInfo: null

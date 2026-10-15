@@ -1,0 +1,42 @@
+##############################################################################
+# Install fish -- thin role wrapper
+#
+# USAGE:
+#   Called by any playbook that wants fish on the target. Installs
+#   fishPackages.
+#
+# REQUIRED VARIABLES:
+#   None at the call site. fishPackages comes from vars/main.yaml.
+#
+# OPTIONAL VARIABLES:
+#   - debugFlag: Enable debug output
+#
+# EXAMPLE:
+#   - hosts:  "{{ nodes }}"
+#     become: true
+#     roles:
+#       - role: installFish
+#
+# WORKFLOW:
+#   1. Install fishPackages via tasks/system/installPackage.yaml
+#
+# NOTES:
+#   - installPackage.yaml uses state=latest, so a re-run upgrades fish
+#     if a newer version is available
+#   - Per-user fish config comes from the user's data/users/<uName>/files/
+#     tree via installUserFiles -- no system-wide config, so no configure
+#     step
+#
+# Copyright 2026 Douglas WF Acheson (dwfa@dwfa.ca)
+# Licensed under Apache License 2.0. See LICENSE.md for details.
+#
+# Version: 1.0
+# Date: October 3, 2026
+##############################################################################
+---                                                   # identifies a YAML file
+
+- name: Install fish packages
+  ansible.builtin.include_tasks:
+    file: "{{ taskPath }}/system/installPackage.yaml"
+  vars:
+    packageList: "{{ fishPackages }}"

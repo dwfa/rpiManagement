@@ -1,0 +1,154 @@
+##############################################################################
+# Install and configure the reverse proxy (nginx)
+#
+# USAGE:
+#   Called by any playbook whose target provides the HTTPS front door
+#   for web UIs (pi-hole, webmin, ...). Self-contained: package list,
+#   static files, templates and generic settings all live in this
+#   role. Only site values come from the inventory.
+#
+# REQUIRED VARIABLES:
+#   - serviceName: Short name clients use for this service (group var,
+#                  e.g. "dns"). Combined with domain for
+#                  proxyServerName.
+#   - domain:      Site domain (data/group_vars/all.yaml)
+#
+# OPTIONAL VARIABLES:
+#   - proxyServerName: Override the redirect name
+#                      (default "<serviceName>.<domain>")
+#   - proxyCertName:   Override the cert basename
+#                      (default "wildcard.<domain>")
+#   - proxyUser:       Account nginx workers run as
+#                      (default "www-data")
+#   - debugFlag:       Enable debug output
+#
+# EXAMPLE:
+#   - hosts:  "{{ nodes }}"
+#     become: true
+#     roles:
+#       - role: installProxy
+#
+# WORKFLOW:
+#   1. Fail early if serviceName is not defined for this host.
+#   2. Install proxyPackages.
+#   3. Install the wildcard cert + key into /etc/ssl/private/
+#      (must exist before nginx -t).
+#   4. Create proxyDirs.
+#   5. Copy proxyFiles, render proxyTemplates, create proxyLinks.
+#      Any change notifies "reload proxy".
+#   6. Ensure nginx is enabled and running.
+#   7. Flush handlers so the proxy is validated and reloaded before
+#      later roles (pi-hole, webmin) drop in their location snippets.
+#
+# NOTES:
+#   - nginx.conf runs the workers as proxyUser; that account must
+#     exist (e.g. via createUsers) before this role runs.
+#   - Reload (not restart) keeps existing connections alive.
+#
+# Copyright 2026 Douglas WF Acheson (dwfa@dwfa.ca)
+# Licensed under Apache License 2.0. See LICENSE.md for details.
+#
+# Version: 1.0
+# Date: September 25, 2026
+##############################################################################
+---                                                   # identifies a YAML file
+
+##############################################################################
+# Site values must come from the inventory -- fail with a clear message
+# instead of an undefined-variable error deep inside a template
+##############################################################################
+- name: Validate serviceName is defined
+  ansible.builtin.assert:
+    that:
+      - serviceName is defined
+    fail_msg: >-
+      [ERROR] *** serviceName is not defined for [{{ inventory_hostname }}].
+      Put the host in a group that defines it (e.g. data/group_vars/dns.yaml)
+      and target that host (e.g. -e nodes=dnsInstaller).
+    quiet: true
+
+- name: "Debug: proxy settings"
+  when: debugFlag | default(0) | int == 1
+  ansible.builtin.debug:
+    msg: >-
+      [DEBUG] *** proxyServerName [{{ proxyServerName }}]
+      proxyCertName [{{ proxyCertName }}]
+
+##############################################################################
+# Install
+##############################################################################
+- name: Install proxy packages
+  ansible.builtin.apt:
+    name:             "{{ proxyPackages }}"
+    state:            present
+    update_cache:     true
+    cache_valid_time: 86400
+
+- name: Install wildcard TLS cert
+  ansible.builtin.include_tasks:
+    file: "{{ taskPath }}/pki/installWildcardCert.yaml"
+
+##############################################################################
+# Configure
+##############################################################################
+- name: Create nginx directory structure
+  ansible.builtin.file:
+    path:  "{{ dirIdx }}"
+    owner: root
+    group: root
+    mode:  '0755'
+    state: directory
+  loop: "{{ proxyDirs }}"
+  loop_control:
+    loop_var: dirIdx
+    label:    "{{ dirIdx }}"
+
+- name: Deploy nginx config files
+  ansible.builtin.copy:
+    backup: true
+    src:    "{{ fileIdx.src }}"
+    dest:   "{{ fileIdx.dest }}"
+    owner:  root
+    group:  root
+    mode:   '0644'
+  loop: "{{ proxyFiles }}"
+  loop_control:
+    loop_var: fileIdx
+    label:    "{{ fileIdx.dest }}"
+  notify: reload proxy
+
+- name: Render nginx config templates
+  ansible.builtin.template:
+    backup: true
+    src:    "{{ templateIdx.src }}"
+    dest:   "{{ templateIdx.dest }}"
+    owner:  root
+    group:  root
+    mode:   '0644'
+  loop: "{{ proxyTemplates }}"
+  loop_control:
+    loop_var: templateIdx
+    label:    "{{ templateIdx.dest }}"
+  notify: reload proxy
+
+- name: Create nginx symlinks
+  ansible.builtin.file:
+    src:   "{{ linkIdx.src }}"
+    dest:  "{{ linkIdx.dest }}"
+    owner: root
+    group: root
+    state: link
+  loop: "{{ proxyLinks }}"
+  loop_control:
+    loop_var: linkIdx
+    label:    "{{ linkIdx.dest }}"
+  notify: reload proxy
+
+- name: Enable and start nginx
+  ansible.builtin.systemd:
+    name:    nginx
+    enabled: true
+    state:   started
+
+- name: Apply pending proxy reload
+  ansible.builtin.meta: flush_handlers

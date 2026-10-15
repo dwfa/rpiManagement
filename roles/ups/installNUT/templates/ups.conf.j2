@@ -1,0 +1,19 @@
+# /etc/nut/ups.conf -- master only; rendered by installNUT's configureNUT.yaml
+#
+# One [<name>] section per physically-attached UPS. Names come from
+# data/packages/nut/metadata.yaml (upsList[].name) and MUST match the
+# client-side MONITOR line (e.g. `ups0@<master>`).
+#
+# override.battery.charge.low / .runtime.low: the CyberPower OR-series
+# reports non-conservative defaults. We set explicit thresholds so
+# upsmon fires while there is still real runtime to shut down cleanly.
+
+{% for ups in upsList %}
+[{{ ups.name }}]
+    driver = {{ ups.driver }}
+    port   = {{ ups.port }}
+    desc   = "{{ ups.description }}"
+    override.battery.charge.low  = {{ ups.lowBatteryCharge }}
+    override.battery.runtime.low = {{ ups.lowBatteryRuntime }}
+
+{% endfor %}

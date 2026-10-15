@@ -1,0 +1,26 @@
+##############################################################################
+# Defaults for verifyDNSServer
+#
+# Copyright 2026 Douglas WF Acheson (dwfa@dwfa.ca)
+# Licensed under Apache License 2.0. See LICENSE.md for details.
+#
+# Version: 1.0
+# Date: October 13, 2026
+##############################################################################
+---                                            # identifies a YAML config file
+
+# Inventory hosts for the box being built and the box in service
+installerHost: dnsInstaller
+liveHost:      dnsLive
+
+# The box's eth0 address; override with -e
+expectedAddress: "{{ ansible_host }}"
+
+# The box's hostname; empty skips the hostname check
+expectedHostname: ""
+
+# At the live address the box came from the installer address;
+# at any other address there is no previous address
+previousAddress: >-
+  {{ hostvars[installerHost].ansible_host
+     if expectedAddress == hostvars[liveHost].ansible_host else '' }}

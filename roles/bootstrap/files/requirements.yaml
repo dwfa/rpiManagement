@@ -1,0 +1,46 @@
+##############################################################################
+# Controller-side prerequisites consumed by roles/bootstrap.
+#
+# pyModules:      Python packages installed via pip into the launcher venv.
+# ansibleModules: Ansible collections installed via ansible-galaxy.
+#
+# Both lists are looped by bootstrap and installed idempotently. Add
+# entries as new tasks/roles introduce new prerequisites; comment each
+# entry with what needs it and why.
+#
+# Copyright 2026 Douglas WF Acheson (dwfa@dwfa.ca)
+# Licensed under Apache License 2.0. See LICENSE.md for details.
+#
+# Version: 1.1
+# Date: October 12, 2026
+##############################################################################
+---
+
+# Bootstrap short-circuits when this file's SHA-256 matches the hash
+# stored in .venv/.bootstrap-stamp.yaml. Any edit here — adding a
+# module, changing a comment, whitespace — invalidates the cache and
+# triggers a full pip + ansible-galaxy re-run on the next invocation.
+# Delete the marker (.venv/.bootstrap-stamp.yaml) to force a rerun
+# without editing this file.
+
+pyModules:
+  # Needed by ansible.builtin.password_hash on Python 3.13+, where the
+  # stdlib crypt module was removed (PEP 594).
+  - passlib
+  # Required by the ansible.utils.ipaddr filter (which the collection
+  # itself does not bundle). Used by dhcpd.conf.j2 to derive the
+  # netmask from metadata.subnets[0].cidr.
+  - netaddr
+
+ansibleModules:
+  # Provides authorized_key (used by tasks/users/addSSHKeys) and other
+  # posix-only modules. Not shipped with ansible-core.
+  - ansible.posix
+  # Provides ipaddr / keep_keys filters. Used by
+  # tasks/network/parseInventory.yaml to derive the network address,
+  # netmask, and DDNS host when building netInventory.
+  - ansible.utils
+  # Provides openssl_privatekey / openssl_csr / x509_certificate.
+  # Used by roles/pki/installInternalCA and roles/pki/manageTSIG for
+  # CA and wildcard cert generation.
+  - community.crypto

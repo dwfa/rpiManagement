@@ -1,0 +1,54 @@
+##############################################################################
+# Install NUT (Network UPS Tools) and its configuration -- thin role
+# wrapper
+#
+# USAGE:
+#   Called by any playbook that sets up UPS monitoring. Installs
+#   nutPackages, then configures NUT as a server (UPS attached by USB)
+#   or a client (watches a NUT server over the network).
+#
+# REQUIRED VARIABLES:
+#   - nutRole: 'server' or 'client' (default: client). nutPackages comes
+#              from vars/main.yaml; templates live in this role's
+#              templates/. Site values come from
+#              data/packages/nut/metadata.yaml and the vault-encrypted
+#              data/users/upsmon/user.yaml.
+#
+# OPTIONAL VARIABLES:
+#   - debugFlag: Enable debug output
+#
+# EXAMPLE:
+#   - hosts:  "{{ nodes }}"
+#     become: true
+#     roles:
+#       - role: installNUT
+#         vars:
+#           nutRole: server
+#
+# WORKFLOW:
+#   1. Install nutPackages via tasks/system/installPackage.yaml
+#   2. Configure NUT via this role's tasks/configureNUT.yaml
+#
+# NOTES:
+#   - installPackage.yaml uses state=latest, so a re-run upgrades the
+#     packages if newer versions are available
+#   - As a server, the UPS units in metadata.yaml must be attached by
+#     USB -- the usbhid-ups driver will not start without them
+#
+# Copyright 2026 Douglas WF Acheson (dwfa@dwfa.ca)
+# Licensed under Apache License 2.0. See LICENSE.md for details.
+#
+# Version: 1.0
+# Date: October 4, 2026
+##############################################################################
+---                                                   # identifies a YAML file
+
+- name: Install NUT packages
+  ansible.builtin.include_tasks:
+    file: "{{ taskPath }}/system/installPackage.yaml"
+  vars:
+    packageList: "{{ nutPackages }}"
+
+- name: Configure NUT
+  ansible.builtin.include_tasks:
+    file: configureNUT.yaml

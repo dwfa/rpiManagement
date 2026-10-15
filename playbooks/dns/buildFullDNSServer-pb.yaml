@@ -1,34 +1,59 @@
 ##############################################################################
-# Full DNS server build
+# Build a DNS / DHCP server from a blank storage device
 #
 # USAGE:
-#   Builds a full DNS server workflow as one Ansible playbook.
+#   Chains the three build playbooks into one run: write RPi OS onto a
+#   storage device on creator, wait while you move it to the new RPi and
+#   power it on, initialize the RPi, then build the DNS server.
+#
+# EXAMPLE:
+#   ansible-playbook playbooks/dns/buildFullDNSServer-pb.yaml
 #
 # WORKFLOW:
-#   1. Build the Raspberry Pi image.
-#   2. Pause for the user to move the storage device and power on the target.
-#   3. Run post-create bootstrap.
-#   4. Build DNS server services.
+#   Plays 1-4   installRPiOS (creator): write RPi OS onto the storage
+#               device
+#   Play  5     Wait for target boot (localhost): move the storage device
+#               to the new RPi, power it on, press Enter
+#   Plays 6-12  initRPi (initializer): find the new RPi, move it to its
+#               static IP, create the builder user, remove the installer
+#               user, upgrade packages
+#   Plays 13-16 buildDNSServer (dnsInstaller): install and configure the
+#               DNS / DHCP services
 #
-# REQUIRED VARIABLES:
-#   - buildRPiImageNode: Inventory group/node used by buildRPiImage-pb.yaml.
-#   - postCreateNode: Inventory group/node used by postCreate-pb.yaml.
-#   - buildDNSServerNode: Inventory group/node used by buildDNSServer-pb.yaml.
+# NOTES:
+#   - Plays 1, 6 and 13 are each imported playbook's Playbook
+#     Initialization (bootstrap + writeSSHKey); each also ends with its
+#     own Remove SSH key files play
+#   - Imports find the playbooks folder with the findDirUp lookup (the
+#     same lookup that defines pbPath). pbPath itself cannot be used:
+#     Ansible resolves import_playbook before inventory vars are loaded
+#   - Do not pass nodes on the command line: it would override every
+#     imported playbook's target, not just installRPiOS's
+#   - Moving the box onto the live address is a separate step:
+#     playbooks/dns/dnsCutOver-pb.yaml
 #
 # Copyright 2026 Douglas WF Acheson (dwfa@dwfa.ca)
 # Licensed under Apache License 2.0. See LICENSE.md for details.
 #
-# Version: 1.0
-# Date: July 23, 2026
+# Version: 2.0
+# Date: October 4, 2026
 ##############################################################################
 ---                                            # identifies a YAML config file
 
-- ansible.builtin.import_playbook: buildRPiImage-pb.yaml
+##############################################################################
+# Plays 1-4: installRPiOS-pb.yaml -- write RPi OS onto the storage device
+# on creator
+##############################################################################
+- ansible.builtin.import_playbook: >-
+    {{ lookup('findDirUp', 'playbooks', playbook_dir) }}/rpi/installRPiOS-pb.yaml
   vars:
-    buildRPiImageNode: preinstaller
+    nodes: creator
 
 ##############################################################################
-# Pause for physical handoff between image build and target bootstrap.
+# Play 5: This play waits for the new RPi to boot and runs on the localhost
+# It will do the following:
+#   1. niceWait: Pause until the storage device is in the new RPi and it
+#      has finished its first boot
 ##############################################################################
 - name: Wait for target boot
   hosts:        localhost
@@ -40,13 +65,18 @@
       vars:
         title: "Wait for target boot"
         data: >-
-          Insert the storage device into the target RPi, power it on, wait for
-          it to appear on the network at the installer IP, then press Enter.
+          Move the storage device from creator to the new RPi, power it on
+          and let it finish its first boot, then press Enter. The next step
+          finds the RPi on the network, or asks for its address.
 
-- ansible.builtin.import_playbook: postCreate-pb.yaml
-  vars:
-    postCreateNode: installer
+##############################################################################
+# Plays 6-12: initRPi-pb.yaml -- initialize the new RPi (initializer)
+##############################################################################
+- ansible.builtin.import_playbook: >-
+    {{ lookup('findDirUp', 'playbooks', playbook_dir) }}/rpi/initRPi-pb.yaml
 
-- ansible.builtin.import_playbook: buildDNSServer-pb.yaml
-  vars:
-    buildDNSServerNode: installer
+##############################################################################
+# Plays 13-16: buildDNSServer-pb.yaml -- build the DNS server (dnsInstaller)
+##############################################################################
+- ansible.builtin.import_playbook: >-
+    {{ lookup('findDirUp', 'playbooks', playbook_dir) }}/dns/buildDNSServer-pb.yaml

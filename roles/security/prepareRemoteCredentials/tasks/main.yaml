@@ -62,8 +62,8 @@
 # Copyright 2026 Douglas WF Acheson (dwfa@dwfa.ca)
 # Licensed under Apache License 2.0. See LICENSE.md for details.
 #
-# Version: 2.5
-# Date: March 22, 2026
+# Version: 2.6
+# Date: October 3, 2026
 ##############################################################################
 ---                                            # identifies a YAML config file
 
@@ -94,13 +94,13 @@
 ##############################################################################
 - name: Materialize SSH keys
   ansible.builtin.include_tasks:
-    file: "{{ taskPath }}/users/materializeSSHKey.yaml"
+    file: "{{ taskPath }}/users/writeSSHKeyFiles.yaml"
 
 ##############################################################################
 # Note: _rawUserData is intentionally NOT cleaned up here. It was loaded
 # via include_vars (a "var", not a "fact"), and facts take precedence over
 # vars in Ansible. Setting it to null via set_fact would create a fact
 # that blocks the next include_vars reload, breaking subsequent calls
-# (e.g., when postCreate-pb.yaml reloads credentials for a different user
+# (e.g., when initRPi-pb.yaml reloads credentials for a different user
 # in a later play).
 ##############################################################################

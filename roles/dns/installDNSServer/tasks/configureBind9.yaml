@@ -1,0 +1,170 @@
+##############################################################################
+# Configure bind9: render zone files + named.conf.{local,options} from
+# the network inventory (netInventory) + data/ddns/tsig/*.
+#
+# USAGE:
+#   Step 2 of installDNSServer's tasks/main.yaml. reconfigureDNSServer
+#   runs it on its own via include_role tasks_from: configureBind9.
+#
+#   Loads daemon config from data/packages/bind9/metadata.yaml, builds
+#   netInventory (via the shared parseInventory adapter), loads the
+#   vault-encrypted TSIG key, renders zones as
+#   DDNS-managed SKELETONS (SOA + NS + static hosts only; dhcpd fills
+#   in DDNS-managed records at lease time via RFC 2136), validates
+#   with named-checkzone + named-checkconf, reloads bind9.
+#
+# REQUIRED VARIABLES:
+#   None at the call site. Driven by:
+#     - data/packages/bind9/metadata.yaml
+#     - netInventory (built by tasks/network/parseInventory.yaml)
+#     - data/ddns/tsig/{{ domain }}.tsig.key.yaml (TSIG key)
+#
+# OPTIONAL VARIABLES:
+#   - debugFlag: Enable debug output
+#
+# WORKFLOW:
+#   1. Load bind metadata (listen, lanCIDRs, tsigKeyPath, zone files)
+#   2. Build netInventory (cached per play)
+#   3. Load TSIG key YAML (decrypts vault-encrypted secret in task
+#      context; template consumes tsigKey.name / .algorithm / .secret)
+#   4. Render forward zone (SOA + NS + static records)
+#   5. Render reverse zone (same shape)
+#   6. Render named.conf.local (zone declarations with allow-update
+#      referencing the TSIG key)
+#   7. Render named.conf.options (LAN ACL + TSIG key block + listen
+#      + forwarders + DNSSEC)
+#   8. Validate zones with named-checkzone, then overall config with
+#      named-checkconf — fail loudly on errors
+#   9. Reload bind9 (graceful — existing connections survive)
+#
+# NOTES:
+#   - Zone files live in /var/lib/bind, owned bind:bind 0644: DDNS
+#     updates make bind9 write a journal beside each zone file
+#   - SOA serial is the controller's epoch at render time — strictly
+#     monotonic, which is all bind cares about for replication
+#   - Static records are netInventory.dns.staticRecords; DDNS-managed
+#     hosts are written by dhcpd at runtime
+#   - Single reverse zone matches the actual broadcast domain
+#   - reload (not restart) so existing query connections survive
+#
+# Copyright 2026 Douglas WF Acheson (dwfa@dwfa.ca)
+# Licensed under Apache License 2.0. See LICENSE.md for details.
+#
+# Version: 4.1
+# Date: October 13, 2026
+##############################################################################
+---                                                   # identifies a YAML file
+
+##############################################################################
+# Step 1: Load metadata
+##############################################################################
+- name: Load bind configuration manifest
+  ansible.builtin.include_vars:
+    file: "{{ dataPath }}/packages/bind9/metadata.yaml"
+
+##############################################################################
+# Step 2: Build netInventory (cached per play)
+##############################################################################
+- name: Ensure network inventory is parsed
+  ansible.builtin.include_tasks: "{{ taskPath }}/network/parseInventory.yaml"
+
+##############################################################################
+# Step 3: Load the TSIG key (vault-encrypted secret) shared with dhcpd
+##############################################################################
+- name: Load TSIG key
+  ansible.builtin.include_vars:
+    file: "{{ tsigKeyPath }}"
+
+##############################################################################
+# Step 3b: Ensure bind9's DDNS listen address is live on `lo`
+#
+# bind9's listen-on port 53 binds a secondary loopback address so it
+# can accept DDNS updates from the co-located isc-dhcp-server without
+# fighting pi-hole for 0.0.0.0:53. Address comes from
+# netInventory.dns.ddns.address
+# (CIDR form). Runs BEFORE the template render + service restart so
+# the address is bindable when bind9 next starts.
+##############################################################################
+- name: Ensure DDNS loopback alias is up on lo
+  ansible.builtin.include_tasks: "{{ taskPath }}/network/configureNetwork.yaml"
+  vars:
+    nwAliases:
+      - interface: lo
+        address:   "{{ netInventory.dns.ddns.address }}"
+        label:     ddns
+
+##############################################################################
+# Step 4: Render the forward zone file (static hosts + skeleton)
+##############################################################################
+- name: Render forward zone
+  ansible.builtin.template:
+    src:   bind9/forward.j2
+    dest:  "{{ forwardZoneFile }}"
+    owner: bind
+    group: bind
+    mode:  '0644'
+
+##############################################################################
+# Step 5: Render the reverse zone file
+##############################################################################
+- name: Render reverse zone
+  ansible.builtin.template:
+    src:   bind9/reverse.j2
+    dest:  "{{ reverseZoneFile }}"
+    owner: bind
+    group: bind
+    mode:  '0644'
+
+##############################################################################
+# Step 6: Render named.conf.local (zone declarations + allow-update)
+##############################################################################
+- name: Render named.conf.local
+  ansible.builtin.template:
+    src:    bind9/named.conf.local.j2
+    dest:   /etc/bind/named.conf.local
+    owner:  root
+    group:  bind
+    mode:   '0644'
+    backup: true
+
+##############################################################################
+# Step 7: Render named.conf.options (LAN ACL + TSIG key + listen + forwarders)
+##############################################################################
+- name: Render named.conf.options
+  ansible.builtin.template:
+    src:    bind9/named.conf.options.j2
+    dest:   /etc/bind/named.conf.options
+    owner:  root
+    group:  bind
+    mode:   '0644'
+    backup: true
+
+##############################################################################
+# Step 8a: Validate every rendered zone file
+##############################################################################
+- name: Validate forward zone
+  ansible.builtin.command:
+    cmd: "named-checkzone {{ netInventory.dns.domain }} {{ forwardZoneFile }}"
+  changed_when: false
+
+- name: Validate reverse zone
+  ansible.builtin.command:
+    cmd: "named-checkzone {{ netInventory.dns.reverseOrigin }} {{ reverseZoneFile }}"
+  changed_when: false
+
+##############################################################################
+# Step 8b: Validate the overall bind configuration
+##############################################################################
+- name: Validate bind configuration
+  ansible.builtin.command:
+    cmd: named-checkconf
+  changed_when: false
+
+##############################################################################
+# Step 9: Reload bind9 to pick up the new zones
+##############################################################################
+- name: Enable and reload bind9
+  ansible.builtin.systemd:
+    name:    bind9
+    enabled: true
+    state:   reloaded

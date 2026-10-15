@@ -1,0 +1,130 @@
+##############################################################################
+# Ansible task to wipe old signatures from a whole device
+#
+# USAGE:
+#   Clears partition-table and filesystem signatures from a device before
+#   an image is written to it. `dd` only overwrites the start of the
+#   device; signatures at the END survive (ZFS keeps 2 of its 4 labels in
+#   the last 512 KiB, GPT keeps its backup table in the last few KiB).
+#   RPi OS first-boot resize then grows p2 over them, libblkid sees an
+#   ambiguous p2 (ext4 + zfs_member), no PARTUUID link is created, and
+#   the boot drops to the initramfs BusyBox shell.
+#
+#   DESTRUCTIVE. Does not validate or confirm -- the caller must have
+#   validated the device and confirmed with the user first (writeImage
+#   does both before including this task).
+#
+# REQUIRED VARIABLES:
+#   - device: Whole-device path (e.g., /dev/disk4, /dev/sdb)
+#
+# OPTIONAL VARIABLES:
+#   - debugFlag: Enable debug output
+#
+# WORKFLOW:
+#   1. Validate device is provided
+#   2. Linux: `wipefs --all` (every known signature, start and end)
+#   3. macOS (no wipefs): read the device size from diskutil, then zero
+#      the last 1 MiB via the raw device node (/dev/rdiskN)
+#   4. Display result (debug mode only)
+#   5. Cleanup temporary variables
+#
+# EXAMPLE:
+#   - name: Wipe device before writing image
+#     include_tasks:
+#       file: "{{ taskPath }}/fileSystem/wipeDevice.yaml"
+#     vars:
+#       device: "/dev/sdb"
+#
+# NOTES:
+#   - Requires root (become) for raw device access
+#   - The device must already be unmounted (see unmountDevice.yaml)
+#   - macOS only clears the tail; the start of the device is overwritten
+#     by the image write that follows
+#
+# Copyright 2026 Douglas WF Acheson (dwfa@dwfa.ca)
+# Licensed under Apache License 2.0. See LICENSE.md for details.
+#
+# Version: 1.0
+# Date: September 29, 2026
+##############################################################################
+---                                            # identifies a YAML config file
+
+##############################################################################
+# Validate required parameters
+##############################################################################
+- name: Validate device is provided
+  when: device is not defined or device == ''
+  ansible.builtin.fail:
+    msg: "[ERROR] *** device is required for wipeDevice task but not provided"
+
+##############################################################################
+# Linux: wipe every known signature on the device
+##############################################################################
+- name: Wipe device signatures (Linux)
+  when: ansible_facts['system'] == 'Linux'
+  ansible.builtin.command:
+    argv:
+      - wipefs
+      - --all
+      - "{{ device }}"
+  register:     _wipeDeviceResult
+  changed_when: _wipeDeviceResult.stdout | length > 0
+
+##############################################################################
+# macOS: zero the last 1 MiB (no wipefs on macOS)
+##############################################################################
+- name: Zero device tail (macOS)
+  when: ansible_facts['system'] == 'Darwin'
+  vars:
+    _devicePath: "{{ device | regex_search('/dev/disk\\d+') }}"
+    _rawDevicePath: "{{ _devicePath | replace('/dev/disk', '/dev/rdisk') }}"
+    _deviceBytes: >-
+      {{ (_wipeDeviceInfo.stdout | default('')
+          | regex_search('\((\d+) Bytes\)', '\1') | default(['0'], true)
+          | first) | int }}
+    _deviceMiB: "{{ (_deviceBytes | int) // 1048576 }}"
+  block:
+    - name: Read device size (macOS)
+      ansible.builtin.command:
+        argv:
+          - diskutil
+          - info
+          - "{{ _devicePath }}"
+      register:     _wipeDeviceInfo
+      changed_when: false
+
+    - name: Fail if device size is unknown (macOS)
+      when: (_deviceMiB | int) < 2
+      ansible.builtin.include_tasks: "{{ taskPath }}/ui/niceFail.yaml"
+      vars:
+        title: "Cannot determine device size"
+        data:
+          - "device = [{{ device }}]"
+          - "bytes  = [{{ _deviceBytes }}]"
+
+    - name: Zero last 1 MiB of device (macOS)
+      ansible.builtin.command:
+        argv:
+          - dd
+          - if=/dev/zero
+          - "of={{ _rawDevicePath }}"
+          - bs=1m
+          - "seek={{ (_deviceMiB | int) - 1 }}"
+          - count=1
+      register: _wipeDeviceResult
+
+- name: "Debug: wipe result"
+  when: debugFlag | default(0) | int == 1
+  ansible.builtin.debug:
+    msg: >-
+      [DEBUG] *** Wiped device [{{ device }}]:
+      [{{ _wipeDeviceResult.stdout | default('') }}
+      {{ _wipeDeviceResult.stderr | default('') }}]
+
+##############################################################################
+# Cleanup temporary facts
+##############################################################################
+- name: Cleanup temporary facts
+  ansible.builtin.set_fact:
+    _wipeDeviceInfo: null
+    _wipeDeviceResult: null

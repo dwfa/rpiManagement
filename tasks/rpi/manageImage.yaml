@@ -13,11 +13,19 @@
 #   - taskPath: Path to tasks directory
 #   - debugFlag: (optional) Enable debug output
 #
+# OPTIONAL VARIABLES:
+#   - rpiImagePin: Filename of a local, already-decompressed image in
+#                  imageDir (e.g. "2026-06-18-raspios-trixie-arm64-lite.img").
+#                  When set, the catalog check and download are skipped
+#                  and imagePath is pointed at this file. Use to hold
+#                  back a broken upstream release.
+#
 # OUTPUT VARIABLES:
 #   - imagePath: Path to current RPi OS image (symlink to decompressed image)
 #       This fact is consumed by createRPiImage role via defaultImageFilePath
 #
 # WORKFLOW:
+#   0. If rpiImagePin is set: verify the file exists, link it, stop
 #   1. Check for existing local image and extract metadata
 #   2. Fetch RPi OS catalog from API
 #   3. Compare local vs. available image (by date and checksum)
@@ -45,8 +53,8 @@
 # Copyright 2025 Douglas WF Acheson (dwfa@dwfa.ca)
 # Licensed under Apache License 2.0. See LICENSE.md for details.
 #
-# Version: 1.7
-# Date: October 18, 2025
+# Version: 1.8
+# Date: September 28, 2026
 ##############################################################################
 ---                                            # identifies a YAML config file
 
@@ -57,9 +65,43 @@
     mode: '0755'
 
 ##############################################################################
+# Pinned image: skip the catalog and download; point the current-image
+# link at a specific local image
+##############################################################################
+- name: Use pinned RPi OS image
+  when: rpiImagePin | default('') | length > 0
+  block:
+    - name: Check pinned image exists
+      stat:
+        path: "{{ imageDir }}/{{ rpiImagePin }}"
+      register: _pinStat
+
+    - name: Fail if pinned image is missing
+      when: not _pinStat.stat.exists
+      ansible.builtin.include_tasks: "{{ taskPath }}/ui/niceFail.yaml"
+      vars:
+        title: "Pinned RPi OS image not found"
+        data:
+          - "rpiImagePin = [{{ rpiImagePin }}]"
+          - "imageDir    = [{{ imageDir }}]"
+          - "Download or restore the image, or unset rpiImagePin"
+
+    - name: Link current image to pinned image
+      file:
+        src:   "{{ imageDir }}/{{ rpiImagePin }}"
+        dest:  "{{ imagePath }}"
+        state: link
+        force: yes
+
+    - name: Display pinned image
+      debug:
+        msg: "[INFO] *** Using pinned image [{{ rpiImagePin }}]; catalog check skipped"
+
+##############################################################################
 # Check for existing local image and extract metadata
 ##############################################################################
 - name: Get local image info
+  when: rpiImagePin | default('') | length == 0
   block:
     - name: Get symlink metadata
       stat:
@@ -100,6 +142,7 @@
 # Fetch RPi OS catalog from API and extract image metadata
 ##############################################################################
 - name: Fetch and process RPi OS catalog
+  when: rpiImagePin | default('') | length == 0
   block:
     - name: Fetch RPi OS catalog info from API
       uri:
@@ -213,7 +256,9 @@
            if _currentImage.date is defined and _currentImage.date == _newImage.date and
               _currentImage.checksum != _newImage.checksum else
          '[DEBUG] *** Download needed: NO - local image is current' }}
-  when: debugFlag is defined
+  when:
+    - rpiImagePin | default('') | length == 0
+    - debugFlag is defined
 
 ##############################################################################
 # Download, decompress, verify, and symlink new RPi OS image
@@ -315,3 +360,4 @@
     _newImage: null
     _downloadResult: null
     _decompressedChecksum: null
+    _pinStat: null

@@ -1,81 +1,152 @@
 ##############################################################################
-# Load the canonical network inventory JSON into a play-scoped fact.
+# Network inventory adapter: translate the inventory JSON into `netInventory`.
 #
 # USAGE:
-#   include_tasks from any role/task that needs the network inventory.
-#   Sets `netInventory` as a play-scoped shared fact:
+#   include_tasks from any role/task that needs network data, then read
+#   `netInventory` only. Nothing outside this file reads the JSON or knows its
+#   layout.
 #
 #     - include_tasks: "{{ taskPath }}/network/parseInventory.yaml"
-#     - debug: var=netInventory.groups
-#
-#   The task is cached: the first caller in a play loads the file;
-#   subsequent callers in the same play short-circuit on the
-#   `netInventory is defined` guard so the JSON is read only once per
-#   playbook run — important for multi-service plays like
-#   reconfigureDNSServer where bind9 + isc-dhcp-server + pi-hole all
-#   need the same data.
+#     - debug: var=netInventory.dhcp.reservations
 #
 # REQUIRED VARIABLES:
 #   None at the call site. Driven by:
-#     - {{ dataPath }}/network/inventory.json (v5 schema — see
+#     - {{ dataPath }}/network/inventory.json (schema v6 — see
 #       data/network/inventorySchema.jsonc)
 #
 # OPTIONAL VARIABLES:
-#   - debugFlag: enable debug output (parse summary line)
+#   - debugFlag: enable debug output (view summary line)
+#
+# OUTPUT VARIABLES:
+#   - netInventory: in-memory view of the network, one section per service.
+#
+#     network:
+#       cidr            "192.168.0.0/16"
+#       gateway         "192.168.0.254"
+#       networkAddress  "192.168.0.0"            (derived from cidr)
+#       netmask         "255.255.0.0"            (derived from cidr)
+#     dhcp:
+#       defaultLeaseTimeSecs, maxLeaseTimeSecs
+#       pools           [{startIP, endIP, leaseTimeSecs}]
+#       reservations    [{name, ip, wiredMAC, wirelessMAC}]
+#                       hosts with dhcpManaged: true; a MAC is null when
+#                       the host has none of that kind
+#     dns:
+#       domain, server, primaryNS, adminContact, forwarders,
+#       dnssecValidation
+#       reverseOrigin   "168.192.in-addr.arpa"   (derived from cidr: its
+#                       whole octets, reversed)
+#       ddns            {address: "127.0.0.2/8", host: "127.0.0.2"}
+#       staticRecords   [{name, ip}]
+#                       named hosts with ddnsManaged: false
 #
 # WORKFLOW:
-#   1. Skip if `netInventory` is already defined in this play
-#   2. Load inventory.json via include_vars into a transient `_piRaw`
-#      (delegated to localhost — file lives on the controller only)
-#   3. Promote to a play-scoped `netInventory` fact via set_fact
-#      (NOT register — see CACHING note below)
-#   4. Emit a one-line parse summary when debugFlag is on
+#   1. Decide once whether to build (`netInventory` not yet defined)
+#   2. Load the JSON into transient `_parseInventoryRaw`
+#   3. Fail unless the file is schema v6
+#   4. Build `netInventory` via set_fact (NOT register — see CACHING)
+#   5. Emit a one-line summary when debugFlag is on
+#   6. Clear the transient facts
 #
 # CACHING:
-#   The load goes into a transient `_piRaw` and is then promoted to
-#   `netInventory` via set_fact. This split matters: `register:` fires
-#   even on SKIPPED tasks (it assigns a skip placeholder), so naively
-#   using `register: netInventory` here would overwrite a previously-
-#   cached netInventory with `{"skipped": true}` on the second include.
-#   set_fact only runs when the task actually executes, so the cache
-#   survives subsequent skipped invocations from other services in the
-#   same play.
+#   `netInventory` is built once per play; later includes skip the build.
+#   The build decision is taken once, before the block, into
+#   `_parseInventoryBuild`: a block `when:` is re-checked for every
+#   task, so guarding on `netInventory is not defined` directly would skip
+#   the tasks after the set_fact. `netInventory` is set with set_fact
+#   because `register:` also fires on a skipped task and would
+#   overwrite the cached view with a skip placeholder.
 #
 # NOTES:
-#   - Naming: `netInventory` (no underscore) is intentional. The
-#     project's `_<name>` convention marks transient/role-local facts
-#     that get cleaned up; this one is intentionally play-scoped and
-#     shared across consumers, like userData.
-#   - include_vars auto-detects JSON when the file extension is .json.
+#   - `netInventory` (no underscore) is intentionally play-scoped and shared
+#     across consumers, like userData.
 #
 # Copyright 2026 Douglas WF Acheson (dwfa@dwfa.ca)
 # Licensed under Apache License 2.0. See LICENSE.md for details.
 #
-# Version: 3.0
-# Date: September 06, 2026
+# Version: 4.0
+# Date: October 11, 2026
 ##############################################################################
 ---                                                   # identifies a YAML file
 
-- name: Parse network inventory (cached per play)
-  when: netInventory is not defined
+- name: Decide whether to build the network view
+  ansible.builtin.set_fact:
+    _parseInventoryBuild: "{{ netInventory is not defined }}"
+
+- name: Build network view (cached per play)
+  when: _parseInventoryBuild | bool
   block:
 
     - name: Load network inventory JSON
       ansible.builtin.include_vars:
         file: "{{ dataPath }}/network/inventory.json"
-        name: _piRaw
+        name: _parseInventoryRaw
       delegate_to: localhost
 
-    - name: Cache parsed inventory as play-scoped fact
-      ansible.builtin.set_fact:
-        netInventory: "{{ _piRaw }}"
+    - name: Assert inventory is schema v6
+      ansible.builtin.assert:
+        that:
+          - (_parseInventoryRaw.metadata.schemaVersion | string).split('.')[0] == '6'
+        fail_msg: >-
+          inventory schemaVersion is
+          [{{ _parseInventoryRaw.metadata.schemaVersion | default('missing') }}];
+          this adapter reads v6
+        quiet: true
 
-    - name: "Debug: inventory parse"
+    - name: Translate inventory into netInventory
+      ansible.builtin.set_fact:
+        netInventory:
+          network:
+            cidr:           "{{ _net.cidr }}"
+            gateway:        "{{ _net.gateway }}"
+            networkAddress: "{{ _net.cidr | ansible.utils.ipaddr('network') }}"
+            netmask:        "{{ _net.cidr | ansible.utils.ipaddr('netmask') }}"
+          dhcp:
+            defaultLeaseTimeSecs: "{{ _net.dhcp.defaultLeaseTimeSecs }}"
+            maxLeaseTimeSecs:     "{{ _net.dhcp.maxLeaseTimeSecs }}"
+            pools: >-
+              {{ _net.dhcp.pools
+                 | ansible.utils.keep_keys(target=['startIP', 'endIP', 'leaseTimeSecs']) }}
+            reservations: >-
+              {{ _hosts
+                 | selectattr('dhcpManaged')
+                 | ansible.utils.keep_keys(target=['name', 'ip', 'wiredMAC', 'wirelessMAC']) }}
+          dns:
+            domain:           "{{ _net.dns.domain }}"
+            server:           "{{ _net.dns.server }}"
+            primaryNS:        "{{ _net.dns.primaryNS }}"
+            adminContact:     "{{ _net.dns.adminContact }}"
+            forwarders:       "{{ _net.dns.forwarders }}"
+            dnssecValidation: "{{ _net.dns.dnssecValidation }}"
+            reverseOrigin: >-
+              {{ ((_net.cidr | ansible.utils.ipaddr('network')).split('.')
+                  [:(_net.cidr.split('/')[1] | int) // 8]
+                  | reverse | list + ['in-addr', 'arpa']) | join('.') }}
+            ddns:
+              address: "{{ _net.dns.ddns.address }}"
+              host:    "{{ _net.dns.ddns.address | ansible.utils.ipaddr('address') }}"
+            staticRecords: >-
+              {{ _hosts
+                 | selectattr('name')
+                 | rejectattr('ddnsManaged')
+                 | ansible.utils.keep_keys(target=['name', 'ip']) }}
+      vars:
+        _net:    "{{ _parseInventoryRaw.network }}"
+        _hosts:  "{{ _net.dhcp.assignedIPs.groups | map(attribute='hosts') | flatten }}"
+
+    - name: "Debug: network view"
       ansible.builtin.debug:
         msg: >-
-          🌐 [DEBUG] *** loaded [{{ netInventory.metadata.statistics.totalHosts }}] hosts across
-          [{{ netInventory.metadata.statistics.groups }}] groups;
-          dhcpManaged=[{{ netInventory.metadata.statistics.dhcpManaged }}];
-          ddnsManaged=[{{ netInventory.metadata.statistics.ddnsManaged }}];
-          retired=[{{ netInventory.metadata.statistics.retired }}]
+          🌐 [DEBUG] *** netInventory: network [{{ netInventory.network.cidr }}];
+          reservations [{{ netInventory.dhcp.reservations | length }}];
+          pools [{{ netInventory.dhcp.pools | length }}];
+          staticRecords [{{ netInventory.dns.staticRecords | length }}]
       when: debugFlag | default(0) | int == 1
+
+##############################################################################
+# Cleanup temporary facts
+##############################################################################
+- name: Cleanup temporary facts
+  ansible.builtin.set_fact:
+    _parseInventoryRaw:   null
+    _parseInventoryBuild: null

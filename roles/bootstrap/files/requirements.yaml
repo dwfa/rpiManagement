@@ -11,8 +11,8 @@
 # Copyright 2026 Douglas WF Acheson (dwfa@dwfa.ca)
 # Licensed under Apache License 2.0. See LICENSE.md for details.
 #
-# Version: 1.1
-# Date: October 12, 2026
+# Version: 1.2
+# Date: October 17, 2026
 ##############################################################################
 ---
 
@@ -44,3 +44,6 @@ ansibleModules:
   # Used by roles/pki/installInternalCA and roles/pki/manageTSIG for
   # CA and wildcard cert generation.
   - community.crypto
+  # Provides docker_compose_v2. Used by tasks/docker/startCompose.yaml
+  # to start Docker Compose projects.
+  - community.docker

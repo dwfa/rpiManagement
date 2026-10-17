@@ -1,0 +1,43 @@
+##############################################################################
+# Start a Docker Compose project
+#
+# USAGE:
+#   Brings up the Compose project in composePath (docker compose up),
+#   pulling only images that are missing. Include it with include_tasks
+#   so the community.docker module is resolved at run time, after
+#   bootstrap has installed the collection.
+#
+# REQUIRED VARIABLES:
+#   - composePath: Directory holding docker-compose.yml
+#
+# OPTIONAL VARIABLES:
+#   - debugFlag: Enable debug output
+#
+# EXAMPLE:
+#   - name: Start the Compose project
+#     ansible.builtin.include_tasks:
+#       file: "{{ taskPath }}/docker/startCompose.yaml"
+#     vars:
+#       composePath: /opt/myStack
+#
+# NOTES:
+#   - Needs the Docker CLI with the compose plugin on the target
+#
+# Copyright 2026 Douglas WF Acheson (dwfa@dwfa.ca)
+# Licensed under Apache License 2.0. See LICENSE.md for details.
+#
+# Version: 1.0
+# Date: October 16, 2026
+##############################################################################
+---                                                   # identifies a YAML file
+
+- name: Validate composePath is provided
+  ansible.builtin.fail:
+    msg: "[ERROR] *** composePath is required for startCompose task"
+  when: composePath is not defined
+
+- name: "Start Compose project [{{ composePath }}]"
+  community.docker.docker_compose_v2:
+    project_src: "{{ composePath }}"
+    state:       present
+    pull:        missing

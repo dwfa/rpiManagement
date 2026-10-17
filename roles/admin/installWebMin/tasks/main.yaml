@@ -8,9 +8,9 @@
 #   location file.
 #
 # REQUIRED VARIABLES:
-#   None at the call site. webminPackages comes from vars/main.yaml;
-#   01_webmin.location lives in this role's files/. The apt repository
-#   and config edits come from data/packages/webmin/metadata.yaml.
+#   None at the call site. webminAPTRepo and webminPackages come from
+#   vars/main.yaml; 01_webmin.location lives in this role's files/. The
+#   config edits come from data/packages/webmin/metadata.yaml.
 #
 # OPTIONAL VARIABLES:
 #   - debugFlag: Enable debug output
@@ -22,7 +22,7 @@
 #       - role: installWebMin
 #
 # WORKFLOW:
-#   1. Add Webmin's apt repository via tasks/system/setupAptRepo.yaml
+#   1. Add Webmin's apt repository via tasks/system/setupAPTRepo.yaml
 #   2. Install webminPackages via tasks/system/installPackage.yaml
 #   3. Configure Webmin via this role's tasks/configureWebmin.yaml
 #
@@ -33,22 +33,21 @@
 #     location file and validates nginx
 #   - Run this role LAST: Webmin's install-time module scan only enables
 #     modules for services already installed (bind9, dhcpd, nginx, NUT)
-#   - setupAptRepo.yaml may write Webmin's key fingerprint back into
-#     data/packages/webmin/metadata.yaml
 #
 # Copyright 2026 Douglas WF Acheson (dwfa@dwfa.ca)
 # Licensed under Apache License 2.0. See LICENSE.md for details.
 #
-# Version: 1.0
-# Date: October 4, 2026
+# Version: 1.1
+# Date: October 15, 2026
 ##############################################################################
 ---                                                   # identifies a YAML file
 
 - name: Add Webmin apt repository
   ansible.builtin.include_tasks:
-    file: "{{ taskPath }}/system/setupAptRepo.yaml"
+    file: "{{ taskPath }}/system/setupAPTRepo.yaml"
   vars:
     packageName: webmin
+    aptRepo:     "{{ webminAPTRepo }}"
 
 - name: Install Webmin packages
   ansible.builtin.include_tasks:

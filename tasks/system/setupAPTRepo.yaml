@@ -1,0 +1,164 @@
+##############################################################################
+# Set up a 3rd-party apt repository for one package from the caller's
+# aptRepo. Idempotent.
+#
+# USAGE:
+#   Install the aptRepo signing key into /etc/apt/keyrings/ (dearmored
+#   to binary .gpg format) and write the sources entry into
+#   /etc/apt/sources.list.d/. The calling role holds the aptRepo block
+#   in its vars.
+#
+# REQUIRED VARIABLES:
+#   - packageName: Package name, used for the temp key file and messages
+#   - aptRepo:     aptRepo block (schema below). Values may use the
+#                  target's facts.
+#
+# OPTIONAL VARIABLES:
+#   - debugFlag: Enable debug output
+#
+# WORKFLOW:
+#   1. Validate packageName and aptRepo are provided
+#   2. Ensure gnupg is installed (needed for dearmor)
+#   3. Ensure /etc/apt/keyrings/ exists
+#   4. Download upstream key (ASCII-armored) to /tmp
+#   5. Dearmor into /etc/apt/keyrings/<keyName> (binary .gpg)
+#   6. Compute fingerprint of the dearmored key
+#   7. Report the fingerprint when it differs from aptRepo.keyFingerprint
+#   8. Add the sources entry referencing the dearmored key
+#   9. Remove the temp key file
+#
+# EXAMPLE:
+#   - include_tasks: "{{ taskPath }}/system/setupAPTRepo.yaml"
+#     vars:
+#       packageName: docker
+#       aptRepo:     "{{ dockerAPTRepo }}"
+#
+# NOTES:
+#   - Modern Debian (12+) uses Sequoia (sqv) for repo signature
+#     verification. sqv is stricter than gpgv and rejects ASCII-armored
+#     .asc keys passed via signed-by=. Hence the explicit dearmor step.
+#     Webmin's own webmin-setup-repo.sh does the same dearmor —
+#     confirms this is the correct modern convention.
+#   - Idempotent end-to-end: get_url skips if file present + checksum
+#     matches; gpg --dearmor uses creates: to skip when output exists;
+#     apt_repository skips if entry already in sources list
+#   - aptRepo schema:
+#       aptRepo:
+#         keyURL:         <URL to upstream ASCII-armored .asc key>
+#         keyFingerprint: <40-hex primary-key fingerprint — optional;
+#                          pinned in the caller's vars. A mismatch is
+#                          reported, not failed.>
+#         keyName:        <dearmored target filename in /etc/apt/keyrings/,
+#                          typically <pkg>.gpg>
+#         repoLine:       <the deb entry, with signed-by=/etc/apt/keyrings/<keyName>>
+#         filename:       <basename for /etc/apt/sources.list.d/>
+#
+# Copyright 2026 Douglas WF Acheson (dwfa@dwfa.ca)
+# Licensed under Apache License 2.0. See LICENSE.md for details.
+#
+# Version: 2.0
+# Date: October 15, 2026
+##############################################################################
+---                                                   # identifies a YAML file
+
+##############################################################################
+# Validate required parameters
+##############################################################################
+- name: Validate packageName and aptRepo are provided
+  ansible.builtin.fail:
+    msg: "[ERROR] *** packageName and aptRepo are required for setupAPTRepo task"
+  when: packageName is not defined or aptRepo is not mapping
+
+- name: "Install 3rd-party apt repo for [{{ packageName }}]"
+  block:
+    - name: "Ensure gnupg is installed (needed to dearmor 3rd-party keys)"
+      ansible.builtin.apt:
+        name:             gnupg
+        state:            present
+        update_cache:     true
+        cache_valid_time: 86400
+
+    - name: "Ensure /etc/apt/keyrings/ exists"
+      ansible.builtin.file:
+        path:  /etc/apt/keyrings
+        owner: root
+        group: root
+        mode:  '0755'
+        state: directory
+
+    - name: "Download upstream signing key (ASCII-armored)"
+      ansible.builtin.get_url:
+        url:   "{{ aptRepo.keyURL }}"
+        dest:  "/tmp/{{ packageName }}-upstream-key.asc"
+        owner: root
+        group: root
+        mode:  '0644'
+
+    - name: "Dearmor signing key into /etc/apt/keyrings/"
+      ansible.builtin.command:
+        cmd:     "gpg --dearmor --output /etc/apt/keyrings/{{ aptRepo.keyName }} /tmp/{{ packageName }}-upstream-key.asc"
+        creates: "/etc/apt/keyrings/{{ aptRepo.keyName }}"
+
+    - name: "Set perms on dearmored key"
+      ansible.builtin.file:
+        path:  "/etc/apt/keyrings/{{ aptRepo.keyName }}"
+        owner: root
+        group: root
+        mode:  '0644'
+
+    ##########################################################################
+    # Compute the fingerprint of the installed key.
+    # gpg --show-keys --with-colons output has one line per public
+    # key field, colon-separated. The `fpr:` line carries the 40-hex
+    # primary fingerprint at field index 9 (zero-based).
+    ##########################################################################
+    - name: "Compute fingerprint of installed key"
+      ansible.builtin.command:
+        cmd: "gpg --show-keys --with-colons /etc/apt/keyrings/{{ aptRepo.keyName }}"
+      register:     _sarKeyShow
+      changed_when: false
+
+    - name: "Extract fingerprint from gpg output"
+      ansible.builtin.set_fact:
+        _sarComputedFingerprint: >-
+          {{ (_sarKeyShow.stdout_lines
+              | select('match', '^fpr:')
+              | first
+              | default(':' * 10)).split(':')[9] }}
+
+    - name: "Debug: computed vs pinned fingerprint"
+      when: debugFlag | default(0) | int == 1
+      ansible.builtin.debug:
+        msg: >-
+          [DEBUG] *** [{{ packageName }}] fingerprint computed=[{{ _sarComputedFingerprint }}]
+          pinned=[{{ aptRepo.keyFingerprint | default('(none)') }}]
+
+    - name: "Report key fingerprint that differs from the pinned one"
+      when: _sarComputedFingerprint != (aptRepo.keyFingerprint | default(''))
+      ansible.builtin.debug:
+        msg: >-
+          [INFO] *** [{{ packageName }}] Key fingerprint
+          [{{ _sarComputedFingerprint }}] differs from the pinned
+          keyFingerprint [{{ aptRepo.keyFingerprint | default('(none)') }}].
+          Pin it in the caller's aptRepo vars.
+
+    - name: "Add apt repository"
+      ansible.builtin.apt_repository:
+        repo:         "{{ aptRepo.repoLine }}"
+        filename:     "{{ aptRepo.filename }}"
+        state:        present
+        update_cache: true
+
+    - name: "Remove temp ASCII-armored key (no longer needed)"
+      ansible.builtin.file:
+        path:  "/tmp/{{ packageName }}-upstream-key.asc"
+        state: absent
+
+  always:
+    ##########################################################################
+    # Cleanup temporary facts
+    ##########################################################################
+    - name: Cleanup temporary facts
+      ansible.builtin.set_fact:
+        _sarKeyShow:             null
+        _sarComputedFingerprint: null

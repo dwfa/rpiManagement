@@ -1,0 +1,58 @@
+##############################################################################
+# Install the container runtime (Docker) -- thin role wrapper
+#
+# USAGE:
+#   Called by any playbook whose target runs containers. Adds Docker's
+#   apt repository, installs dockerPackages, then ensures docker is
+#   enabled and running.
+#
+# REQUIRED VARIABLES:
+#   None at the call site. dockerAPTRepo and dockerPackages come from
+#   vars/main.yaml.
+#
+# OPTIONAL VARIABLES:
+#   - debugFlag: Enable debug output
+#
+# EXAMPLE:
+#   - hosts:  "{{ nodes }}"
+#     become: true
+#     roles:
+#       - role: installContainerRT
+#
+# WORKFLOW:
+#   1. Add Docker's apt repository via tasks/system/setupAPTRepo.yaml
+#   2. Install dockerPackages via tasks/system/installPackage.yaml
+#   3. Ensure docker is enabled and running
+#
+# NOTES:
+#   - The repo URL and release come from the target's facts, so the
+#     play must gather facts
+#   - installPackage.yaml uses state=latest, so a re-run upgrades the
+#     packages if newer versions are available
+#
+# Copyright 2026 Douglas WF Acheson (dwfa@dwfa.ca)
+# Licensed under Apache License 2.0. See LICENSE.md for details.
+#
+# Version: 1.0
+# Date: October 15, 2026
+##############################################################################
+---                                                   # identifies a YAML file
+
+- name: Add Docker apt repository
+  ansible.builtin.include_tasks:
+    file: "{{ taskPath }}/system/setupAPTRepo.yaml"
+  vars:
+    packageName: docker
+    aptRepo:     "{{ dockerAPTRepo }}"
+
+- name: Install Docker packages
+  ansible.builtin.include_tasks:
+    file: "{{ taskPath }}/system/installPackage.yaml"
+  vars:
+    packageList: "{{ dockerPackages }}"
+
+- name: Enable and start docker
+  ansible.builtin.systemd:
+    name:    docker
+    enabled: true
+    state:   started

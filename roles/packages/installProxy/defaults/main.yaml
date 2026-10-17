@@ -2,17 +2,16 @@
 # Default variables for installProxy
 #
 # Generic settings only. Site-specific values come from the inventory:
-#   - serviceName (group var, e.g. data/group_vars/dns.yaml) -- the
-#     name clients use to reach the service, independent of which
-#     machine currently provides it
-#   - domain      (data/group_vars/all.yaml)
+#   - hostName (group var, e.g. data/group_vars/dns.yaml) -- the
+#     host's name on the network
+#   - domain   (data/group_vars/all.yaml)
 # Any value here can be overridden per group or host.
 #
 # Copyright 2026 Douglas WF Acheson (dwfa@dwfa.ca)
 # Licensed under Apache License 2.0. See LICENSE.md for details.
 #
-# Version: 1.0
-# Date: September 25, 2026
+# Version: 1.1
+# Date: October 15, 2026
 ##############################################################################
 ---                                            # identifies a YAML config file
 
@@ -27,7 +26,7 @@ proxyPackages:
 # Name clients are redirected to, and the TLS cert (basename under
 # /etc/ssl/private/) served on 443
 ##############################################################################
-proxyServerName: "{{ serviceName }}.{{ domain }}"
+proxyServerName: "{{ hostName }}.{{ domain }}"
 proxyCertName:   "wildcard.{{ domain }}"
 
 ##############################################################################

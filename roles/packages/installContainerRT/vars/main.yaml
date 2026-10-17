@@ -1,0 +1,29 @@
+##############################################################################
+# Ansible role variables for installContainerRT
+#
+# Copyright 2026 Douglas WF Acheson (dwfa@dwfa.ca)
+# Licensed under Apache License 2.0. See LICENSE.md for details.
+#
+# Version: 1.0
+# Date: October 15, 2026
+##############################################################################
+---                                            # identifies a YAML config file
+
+# Docker's upstream apt repo (tasks/system/setupAPTRepo.yaml aptRepo schema).
+# The distribution and release come from the target's facts.
+dockerAPTRepo:
+  keyURL:   "https://download.docker.com/linux/{{ ansible_facts['distribution'] | lower }}/gpg"
+  keyName:  docker.gpg
+  repoLine: >-
+    deb [signed-by=/etc/apt/keyrings/docker.gpg]
+    https://download.docker.com/linux/{{ ansible_facts['distribution'] | lower }}
+    {{ ansible_facts['distribution_release'] }} stable
+  filename: docker
+
+# Docker packages installed from dockerAPTRepo
+dockerPackages:
+  - docker-ce
+  - docker-ce-cli
+  - containerd.io
+  - docker-buildx-plugin
+  - docker-compose-plugin

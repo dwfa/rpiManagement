@@ -8,14 +8,14 @@
 #   role. Only site values come from the inventory.
 #
 # REQUIRED VARIABLES:
-#   - serviceName: Short name clients use for this service (group var,
+#   - hostName:    The host's name on the network (group var,
 #                  e.g. "dns"). Combined with domain for
 #                  proxyServerName.
 #   - domain:      Site domain (data/group_vars/all.yaml)
 #
 # OPTIONAL VARIABLES:
 #   - proxyServerName: Override the redirect name
-#                      (default "<serviceName>.<domain>")
+#                      (default "<hostName>.<domain>")
 #   - proxyCertName:   Override the cert basename
 #                      (default "wildcard.<domain>")
 #   - proxyUser:       Account nginx workers run as
@@ -29,7 +29,7 @@
 #       - role: installProxy
 #
 # WORKFLOW:
-#   1. Fail early if serviceName is not defined for this host.
+#   1. Fail early if hostName is not defined for this host.
 #   2. Install proxyPackages.
 #   3. Install the wildcard cert + key into /etc/ssl/private/
 #      (must exist before nginx -t).
@@ -48,8 +48,8 @@
 # Copyright 2026 Douglas WF Acheson (dwfa@dwfa.ca)
 # Licensed under Apache License 2.0. See LICENSE.md for details.
 #
-# Version: 1.0
-# Date: September 25, 2026
+# Version: 1.1
+# Date: October 15, 2026
 ##############################################################################
 ---                                                   # identifies a YAML file
 
@@ -57,12 +57,12 @@
 # Site values must come from the inventory -- fail with a clear message
 # instead of an undefined-variable error deep inside a template
 ##############################################################################
-- name: Validate serviceName is defined
+- name: Validate hostName is defined
   ansible.builtin.assert:
     that:
-      - serviceName is defined
+      - hostName is defined
     fail_msg: >-
-      [ERROR] *** serviceName is not defined for [{{ inventory_hostname }}].
+      [ERROR] *** hostName is not defined for [{{ inventory_hostname }}].
       Put the host in a group that defines it (e.g. data/group_vars/dns.yaml)
       and target that host (e.g. -e nodes=dnsInstaller).
     quiet: true

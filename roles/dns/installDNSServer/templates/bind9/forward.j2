@@ -22,7 +22,7 @@ $ORIGIN {{ netInventory.dns.domain }}.
                 1h                              ; refresh
                 15m                             ; retry
                 1w                              ; expire
-                1h                              ; minimum / negative TTL
+                60s                             ; minimum / negative TTL
 )
 
 @       IN NS   {{ netInventory.dns.primaryNS }}.{{ netInventory.dns.domain }}.

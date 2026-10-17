@@ -1,0 +1,19 @@
+##############################################################################
+# Default variables for verifyAccess
+#
+# Copyright 2026 Douglas WF Acheson (dwfa@dwfa.ca)
+# Licensed under Apache License 2.0. See LICENSE.md for details.
+#
+# Version: 1.0
+# Date: October 16, 2026
+##############################################################################
+---                                            # identifies a YAML config file
+
+# SSH port checked and logged in to
+verifyAccessPort: 22
+
+# Seconds to wait for the SSH port and for the test login
+verifyAccessTimeout: 10
+
+# Directory the test key is written to; removed when the role finishes
+verifyAccessKeyPath: "{{ dataPath }}/ssh/verifyAccess"

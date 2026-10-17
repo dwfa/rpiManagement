@@ -33,6 +33,9 @@ library/
 # External project templates (not part of this project)
 linux-scripts/
 
+# APT repo details fetched from the web at run time (per role)
+roles/**/aptInfo/
+
 # Ansible temporary and cache files
 *.retry
 .ansible/

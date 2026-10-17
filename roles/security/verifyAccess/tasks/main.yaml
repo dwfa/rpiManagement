@@ -1,0 +1,179 @@
+##############################################################################
+# Verify which user can log in to a host over SSH
+#
+# USAGE:
+#   Run on localhost before the remote plays. Fails if the host's SSH
+#   port is not answering. Otherwise tries a key login as the user in
+#   userDataPath and sets <uName>Active on the target host to whether
+#   it works. The target's later plays use it to decide which user's
+#   work to run.
+#
+# REQUIRED VARIABLES:
+#   - targetNode:   Inventory host (or bare address) to check
+#   - userDataPath: Path to the user.yaml of the user to try
+#
+# OPTIONAL VARIABLES:
+#   - verifyAccessPort:    SSH port (default: 22)
+#   - verifyAccessTimeout: Seconds to wait (default: 10)
+#   - verifyAccessKeyPath: Directory for the test key
+#                          (default: data/ssh/verifyAccess)
+#   - debugFlag:           Enable debug output
+#
+# OUTPUT VARIABLES:
+#   - <uName>Active: Set on targetNode (delegate_facts) -- true if the
+#                    user's key login works, else false. uName comes
+#                    from userDataPath (e.g. dwfaActive). Read it with
+#                    vars[<userVar> ~ 'Active'] to keep the name out of
+#                    the code.
+#
+# EXAMPLE:
+#   - hosts:        localhost
+#     connection:   local
+#     gather_facts: false
+#     roles:
+#       - role: verifyAccess
+#         vars:
+#           targetNode:   dnsInstaller
+#           userDataPath: "{{ dataPath }}/users/{{ builderUser }}/user.yaml"
+#
+# WORKFLOW:
+#   1. Validate targetNode and userDataPath are provided
+#   2. Resolve the host's address (ansible_host, else targetNode)
+#   3. Fail if the SSH port does not answer
+#   4. Load the user's data and write its SSH key to verifyAccessKeyPath
+#   5. Try a key login (BatchMode, so it never prompts)
+#   6. Set <uName>Active on targetNode
+#   always: remove the test key and temporary facts
+#
+# NOTES:
+#   - MUST run on localhost (writes the key on the controller)
+#   - Tests key login only; a user without SSH keys always falls back
+#   - The test key lives in its own directory, so data/ssh/key.prv
+#     written by writeSSHKey is not touched
+#
+# Copyright 2026 Douglas WF Acheson (dwfa@dwfa.ca)
+# Licensed under Apache License 2.0. See LICENSE.md for details.
+#
+# Version: 1.0
+# Date: October 16, 2026
+##############################################################################
+---                                                   # identifies a YAML file
+
+- name: Validate targetNode and userDataPath are provided
+  when: >-
+    targetNode | default('') | length == 0 or
+    userDataPath | default('') | length == 0
+  ansible.builtin.include_tasks: "{{ taskPath }}/ui/niceFail.yaml"
+  vars:
+    title: "verifyAccess: missing input"
+    data:  "targetNode and userDataPath are required"
+
+- name: Resolve address for [{{ targetNode }}]
+  ansible.builtin.set_fact:
+    _vaAddress: >-
+      {{ (hostvars[targetNode].ansible_host | default(targetNode))
+           if targetNode in hostvars else targetNode }}
+
+##############################################################################
+# The SSH port must answer -- a host that is down must not be mistaken
+# for one where the user cannot log in
+##############################################################################
+- name: Check SSH port
+  block:
+    - name: "Wait for SSH on [{{ _vaAddress }}:{{ verifyAccessPort }}]"
+      ansible.builtin.wait_for:
+        host:         "{{ _vaAddress }}"
+        port:         "{{ verifyAccessPort }}"
+        search_regex: SSH
+        timeout:      "{{ verifyAccessTimeout }}"
+
+  rescue:
+    - name: Fail when SSH is not answering
+      ansible.builtin.include_tasks: "{{ taskPath }}/ui/niceFail.yaml"
+      vars:
+        title: "verifyAccess: host not answering"
+        data:  >-
+          SSH on [{{ _vaAddress }}:{{ verifyAccessPort }}] did not answer
+          within [{{ verifyAccessTimeout }}]s. Check the host is up.
+
+- name: Try key login
+  block:
+    - name: Load user data
+      ansible.builtin.include_vars:
+        file: "{{ userDataPath }}"
+        name: _vaUser
+
+    - name: Create test key directory
+      ansible.builtin.file:
+        path:  "{{ verifyAccessKeyPath }}"
+        state: directory
+        mode:  '0700'
+
+    - name: Write test SSH key
+      ansible.builtin.include_tasks:
+        file: "{{ taskPath }}/users/writeSSHKeyFiles.yaml"
+      vars:
+        userData:   "{{ _vaUser.userData }}"
+        sshKeyPath: "{{ verifyAccessKeyPath }}"
+
+    - name: "Try key login as [{{ _vaUser.userData.uName }}]"
+      ansible.builtin.command:
+        argv:
+          - ssh
+          - -o
+          - BatchMode=yes
+          - -o
+          - "ConnectTimeout={{ verifyAccessTimeout }}"
+          - -o
+          - StrictHostKeyChecking=no
+          - -o
+          - UserKnownHostsFile=/dev/null
+          - -o
+          - IdentitiesOnly=yes
+          - -i
+          - "{{ verifyAccessKeyPath }}/key.prv"
+          - -p
+          - "{{ verifyAccessPort }}"
+          - "{{ _vaUser.userData.uName }}@{{ _vaAddress }}"
+          - "true"
+      register:     _vaLoginResult
+      changed_when: false
+      failed_when:  false
+
+    ##########################################################################
+    # Store <uName>Active on the target host (not localhost), so the
+    # target's plays read it directly, e.g. vars[builderUser ~ 'Active']
+    ##########################################################################
+    - name: "Set [{{ _vaUser.userData.uName }}Active] on [{{ targetNode }}]"
+      ansible.builtin.set_fact:
+        "{{ _vaUser.userData.uName }}Active": "{{ _vaLoginResult.rc == 0 }}"
+      delegate_to:    "{{ targetNode }}"
+      delegate_facts: true
+
+    - name: "Debug: access check result"
+      when: debugFlag | default(0) | int == 1
+      ansible.builtin.debug:
+        msg: >-
+          [DEBUG] *** [{{ targetNode }}] login as
+          [{{ _vaUser.userData.uName }}] rc=[{{ _vaLoginResult.rc }}]
+
+    - name: "Access for [{{ targetNode }}]"
+      ansible.builtin.debug:
+        msg: >-
+          [INFO] *** [{{ targetNode }}]
+          {{ _vaUser.userData.uName }}Active=[{{ _vaLoginResult.rc == 0 }}]
+
+  always:
+    - name: Remove test key directory
+      ansible.builtin.file:
+        path:  "{{ verifyAccessKeyPath }}"
+        state: absent
+
+    ##########################################################################
+    # Cleanup temporary facts
+    ##########################################################################
+    - name: Cleanup temporary facts
+      ansible.builtin.set_fact:
+        _vaAddress:     null
+        _vaUser:        null
+        _vaLoginResult: null
